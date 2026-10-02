@@ -4,7 +4,7 @@
 
 ```text
 Phase 0 = COMPLETE (2026-10-02)
-M0  = NOT STARTED   (Project Foundation: workspace wiring, IPC contracts, testkit, brand pipeline)
+M0  = COMPLETE (2026-10-03)
 M1  = NOT STARTED   (Audio Engine)
 M2  = NOT STARTED   (Playback Quality)
 M3  = NOT STARTED   (Music Library)
@@ -21,7 +21,24 @@ M13 = NOT STARTED   (Distribution)
 M14 = NOT STARTED   (Final Release Audit)
 ```
 
-无任何伪造完成状态：除 Phase 0 外全部 NOT STARTED；Phase 0 只包含地基冻结（身份、文档、骨架、CI 配置），不包含任何 M1+ 业务功能。
+无任何伪造完成状态：除 Phase 0 与 M0 外全部 NOT STARTED。
+
+## M0 Completion（2026-10-03）
+
+Charter §51 M0 定义 8 项对照：
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| workspace | ✅ | 7 crates + src-tauri（M0-3 接入），cargo check/clippy/test 全绿 |
+| CI | ✅ | ci.yml 全命令就绪（tauri-build job 待 M6 激活） |
+| deny | ✅ | cargo-deny 0.20.2；licenses/bans/sources 全绿（127 包）；advisories 本机网络受限 NOT RUN → CI |
+| brand | ✅ | brand.json 单一事实（Phase 0） |
+| design tokens | ✅ | tokens.ts + 生成管线（Phase 0） |
+| IPC contracts | ✅ | M0-4：`app_info` 命令 + TS 镜像 + 双侧契约测试 |
+| testkit | ✅ | M0-5：VirtualClock / SplitMix64 RNG / 合成 PCM / NullOutput（FaultFS 留 M3/M5） |
+| project docs | ✅ | 12 份治理文档（Phase 0） |
+
+附加产出：MSRV 实测锁定 **1.87**（1.85 声明被 rubato 5.0.1 推翻，以真实工具链验证）；M1 四件套依赖锁定（symphonia 0.6.1 / cpal 0.18.2 / rubato 5.0.1 / rtrb 0.4.0）。
 
 ## Phase 0 Baseline Audit（2026-10-02）
 

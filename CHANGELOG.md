@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — M0: Project Foundation (2026-10-03)
+
+- Rust toolchain pinned: stable `x86_64-pc-windows-msvc` (rustc 1.99.0), MSRV verified at **1.87** against the real dependency tree (`rust-toolchain.toml`, DECISIONS D-011).
+- M1 audio dependency lock in `aura-core`: symphonia 0.6.1, cpal 0.18.2, rubato 5.0.1, rtrb 0.4.0 (DECISIONS D-013); `cargo deny` licenses/bans/sources green across 127 packages.
+- `src-tauri` wired into the Cargo workspace (D-010 fulfilled); placeholder brand-color icon set generated via `@tauri-apps/cli icon` (official logo lands by M6).
+- Minimal typed IPC contract: `app_info` command with brand data baked in from `brand.json`, TS mirror in `ui/src/ipc/`, contract tests on both sides.
+- `aura-testkit` substance: `VirtualClock` (deterministic clock), `DeterministicRng` (SplitMix64), synthetic PCM generators (sine/silence/DC), `NullOutput` with frame/underrun accounting (FaultFS deferred to M3/M5).
+
 ## [0.1.0] - 2026-10-02 — Phase 0: Commercial Foundation Freeze
 
 ### Added

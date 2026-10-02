@@ -61,6 +61,7 @@ ui/
 
 ## 构建与工程
 
-- Cargo workspace：7 个 aura crates；`src-tauri/` 为脚手架，**暂未加入 workspace members**，M0 接线（见 DECISIONS.md D-010）。
+- Cargo workspace：7 个 aura crates + `src-tauri`（M0-3 起为正式 member，tauri 2.12）。
 - `config/unsupported_platforms.json`：不支持平台识别表，来源系统必须据此拒绝请求。
 - CI（`.github/workflows/ci.yml`）预留全部门禁命令，见 PROGRESS.md 的当前可运行状态。
+- 工具链：`rust-toolchain.toml` 锁定 stable（MSVC 目标），MSRV 1.87（D-011）。
