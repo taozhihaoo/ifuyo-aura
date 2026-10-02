@@ -147,6 +147,7 @@ dependencies = [
  "rtrb",
  "rubato",
  "symphonia",
+ "symphonia-bundle-flac",
 ]
 
 [[package]]
