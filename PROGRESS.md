@@ -81,7 +81,7 @@ Phase 0 前无架构文档。已创建 `ARCHITECTURE.md`（分层、crate 职责
 | `npm run lint` | **PASS**（2026-10-02 本地） | eslint 零告警 |
 | `npm test` | **PASS**（2026-10-02 本地） | vitest 2/2（design tokens 契约） |
 | `npm run build`（vite） | **PASS**（2026-10-02 本地） | 31 modules，dist 产出正常 |
-| `tauri build` | **DEFERRED** | src-tauri 未接线（D-010），M0 激活；CI 中该 job 保留命令（`if: false` 占位） |
+| `tauri build` | **DEFERRED**（打包级）；src-tauri 已于 M0-3 接入 workspace 并通过 `cargo check/clippy`（2026-10-03）；完整打包待 UI（M6）激活，CI 中该 job 保留命令（`if: false` 占位） |
 
 由对应 Milestone 修复项：M0-2 安装 cargo-deny 并首跑；M0-3 接线 src-tauri 后激活 tauri build 门禁。
 

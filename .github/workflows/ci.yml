@@ -66,7 +66,8 @@ jobs:
   tauri-build:
     name: tauri build
     runs-on: windows-latest
-    # M0 激活：src-tauri 接线并补齐 icons 后改为 `if: true` 或直接移除本行。
+    # M0-3 已将 src-tauri 接入 workspace（cargo check/clippy/test 由上方 rust job 覆盖）。
+    # 完整 tauri build（含打包）在 UI 落地后（M6）激活：改为 `if: true` 或移除本行。
     if: false
     steps:
       - uses: actions/checkout@v4

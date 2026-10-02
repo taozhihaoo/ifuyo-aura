@@ -56,11 +56,13 @@ No commercial-platform extraction。
 
 M0→M14，逐阶段实施；一次只做一个 Milestone，门禁全绿才 commit。
 
-## D-010 src-tauri 接线时机（2026-10-02）
+## D-010 src-tauri 接线时机（2026-10-02 建立，2026-10-03 已执行）
 
-`src-tauri/` 在 Phase 0 仅建立脚手架（目录、`tauri.conf.json`、入口源码），**暂不加入 Cargo workspace members、不引入 tauri 依赖编译**。
+~~`src-tauri/` 在 Phase 0 仅建立脚手架（目录、`tauri.conf.json`、入口源码），**暂不加入 Cargo workspace members、不引入 tauri 依赖编译**。~~
 
-理由：Phase 0 禁止实现 M1 之后业务功能，且本机 Rust 工具链未安装；提前把 tauri 拉进 workspace 会让 `cargo test` 拖入数百个依赖，违背"不得添加未必要的生产依赖"（§18）。M0 建立 IPC contracts 时再把 `src-tauri` 加入 members 并锁定 Tauri 2 版本。
+**已落地（M0-3，2026-10-03）**：`src-tauri` 加入 workspace members，tauri 2.12 依赖树经 `cargo check/clippy/test` 全绿。占位图标集（`src-tauri/icons/`，品牌色占位图形）由 `@tauri-apps/cli icon` 生成，正式品牌 logo 按 BRAND.md 在 M6 前替换。`ui/dist/.gitkeep` 保证 fresh clone 上 `frontendDist` 路径存在。完整 `tauri build` 打包门禁仍待 UI（M6）激活。
+
+理由（原始）：Phase 0 禁止实现 M1 之后业务功能，且本机 Rust 工具链未安装；提前把 tauri 拉进 workspace 会让 `cargo test` 拖入数百个依赖，违背"不得添加未必要的生产依赖"（§18）。M0 建立 IPC contracts 时再把 `src-tauri` 加入 members 并锁定 Tauri 2 版本。
 
 ## D-011 MSRV 与本机工具链（2026-10-02 建立，2026-10-03 更新）
 

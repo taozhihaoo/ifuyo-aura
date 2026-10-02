@@ -8,9 +8,8 @@ members = [
     "crates/aura-analysis",
     "crates/aura-synth",
     "crates/aura-testkit",
+    "src-tauri",
 ]
-# src-tauri 暂不加入 members，M0 接线（DECISIONS D-010）
-exclude = ["src-tauri"]
 
 [workspace.package]
 version = "0.1.0"

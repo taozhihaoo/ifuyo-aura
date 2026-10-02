@@ -3,10 +3,12 @@
 
 # ---- Rust ----
 /target/
+# tauri-build 生成的 capabilities schema 等本地生成物
+src-tauri/gen/
 
 # ---- Node / 前端 ----
 node_modules/
-ui/dist/
+ui/dist/*
 coverage/
 /build/
 
