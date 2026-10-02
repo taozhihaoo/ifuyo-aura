@@ -11,6 +11,7 @@ pub mod audio;
 pub mod error;
 pub mod types;
 
+pub use audio::gain::{GainSmoother, SMOOTHING_WINDOW_MS};
 pub use audio::position::PositionTracker;
 pub use error::AudioError;
 pub use types::{
