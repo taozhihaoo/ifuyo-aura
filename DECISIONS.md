@@ -65,7 +65,22 @@ M0→M14，逐阶段实施；一次只做一个 Milestone，门禁全绿才 comm
 ## D-011 MSRV 与本机工具链（2026-10-02 建立，2026-10-03 更新）
 
 - **工具链（2026-10-03 就绪）**：本机安装 VS Build Tools 2022（MSVC 14.44）+ rustup stable `x86_64-pc-windows-msvc`（rustc 1.99.0），`rust-toolchain.toml` 锁定 channel=stable，与 CI windows-latest 目标一致。首次 `cargo fmt --check` / `clippy -D warnings` / `test --workspace` 已全绿。
-- **MSRV**：声明为 `1.85`（edition 2021 + workspace lints 需 1.74+，留验证余量）。依赖锁定（M0-2）若抬高低限，将更新此处与 `Cargo.toml` 的 `rust-version`。
+- **MSRV**：`1.87`（2026-10-03 以真实 1.87 工具链全 workspace check 验证通过；由 rubato 5.0.1 抬高，最初声明的 1.85 不成立）。
+
+## D-013 M1 音频依赖锁定（2026-10-03）
+
+`aura-core` 锁定 M1 四件套（crates.io 当前稳定版）：
+
+| crate | 版本 | 用途 |
+|---|---|---|
+| `symphonia` | 0.6.1 | 解码；默认特性全开，覆盖 Charter §36 格式矩阵（M1 实装时可裁剪特性） |
+| `cpal` | 0.18.2 | 音频输出（Windows WASAPI shared） |
+| `rubato` | 5.0.1 | 重采样 |
+| `rtrb` | 0.4.0 | lock-free SPSC ring buffer |
+
+- `cargo deny check licenses bans sources` 全绿（127 包依赖树，无 GPL/AGPL/LGPL）。
+- `cargo deny check advisories` 本机因无法连接 github.com（RustSec advisory-db clone 超时）NOT RUN，由 CI 执行。
+- 只锁定到 minor 版本（如 `"0.6.1"`），`Cargo.lock` 精确固定；升级走显式决策。
 - 备注：Windows-first 项目固定 MSVC 目标；不使用 windows-gnu。
 
 ## D-012 品牌色进入 brand.json（2026-10-02）

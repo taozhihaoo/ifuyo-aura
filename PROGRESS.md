@@ -76,7 +76,7 @@ Phase 0 前无架构文档。已创建 `ARCHITECTURE.md`（分层、crate 职责
 | `cargo fmt --check` | **PASS**（2026-10-03 本地 msvc） | 首次真实执行，零 diff |
 | `cargo clippy --workspace --all-targets -- -D warnings` | **PASS**（2026-10-03 本地 msvc） | 零告警 |
 | `cargo test --workspace` | **PASS**（2026-10-03 本地 msvc） | 7 crates 骨架测试全过 |
-| `cargo deny check` | **NOT RUN** | cargo-deny 安装与首跑在 M0-2（依赖锁定一并执行） |
+| `cargo deny check` | **部分 PASS**（2026-10-03 本地）：licenses / bans / sources 全绿（127 包）；advisories 因本机无法连接 github.com **NOT RUN**，由 CI 执行 |
 | `npm run typecheck` | **PASS**（2026-10-02 本地） | tsc --noEmit 零错误 |
 | `npm run lint` | **PASS**（2026-10-02 本地） | eslint 零告警 |
 | `npm test` | **PASS**（2026-10-02 本地） | vitest 2/2（design tokens 契约） |

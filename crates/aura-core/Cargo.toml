@@ -7,5 +7,12 @@ repository.workspace = true
 rust-version.workspace = true
 description = "ifuyo Aura"
 
+[dependencies]
+# M0-2 依赖锁定（M1 音频内核四件套）：
+symphonia = "0.6.1" # 解码（特性集默认全开，覆盖 Charter §36 格式矩阵；M1 实装时可裁剪）
+cpal = "0.18.2"     # 音频输出（Windows WASAPI shared）
+rubato = "5.0.1"    # 重采样
+rtrb = "0.4.0"      # lock-free SPSC ring buffer
+
 [lints]
 workspace = true
