@@ -1,0 +1,85 @@
+# ifuyo Aura CI skeleton（Phase 0 §19）
+#
+# 预留全部门禁命令。本阶段状态（详见 PROGRESS.md）：
+# - rust / frontend / deny job：命令就绪，push 到 GitHub 后即真实运行。
+# - tauri-build job：src-tauri 尚未接线（DECISIONS D-010），M0 激活；
+#   当前以 `if: false` 保留占位，不伪造 PASS。
+# - 本地无 Rust 工具链，cargo 类门禁首次真实执行发生在 CI / M0。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  rust:
+    name: Rust (fmt / clippy / test)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo fmt --check
+        run: cargo fmt --check
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: cargo test
+        run: cargo test --workspace
+
+  deny:
+    name: cargo deny
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: install cargo-deny
+        run: cargo install cargo-deny --locked
+      - name: cargo deny check
+        run: cargo deny check
+
+  frontend:
+    name: Frontend (typecheck / lint / test)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: npm ci
+        run: npm ci
+      - name: typecheck
+        run: npm run typecheck
+      - name: lint
+        run: npm run lint
+      - name: test
+        run: npm test
+
+  tauri-build:
+    name: tauri build
+    runs-on: windows-latest
+    # M0 激活：src-tauri 接线并补齐 icons 后改为 `if: true` 或直接移除本行。
+    if: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: npm ci
+        run: npm ci
+        working-directory: ui
+      - name: tauri build
+        run: |
+          cargo install tauri-cli --locked
+          cargo tauri build

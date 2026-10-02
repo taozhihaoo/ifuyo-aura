@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "ifuyo Aura 主窗口默认能力。Phase 0 最小集：仅 core 默认权限；后续权限按里程碑最小化追加。",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

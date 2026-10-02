@@ -1,0 +1,48 @@
+# ifuyo Aura .gitignore
+# 原则（Phase 0 §12）：忽略本地产物与秘密；核心 source、docs、tests 必须被跟踪，不得过度 ignore。
+
+# ---- Rust ----
+/target/
+
+# ---- Node / 前端 ----
+node_modules/
+ui/dist/
+coverage/
+/build/
+
+# ---- 测试与截图产物（docs/screenshots 的正式截图另行跟踪） ----
+test-results/
+playwright-report/
+/screenshots/
+
+# ---- 本地数据库 / 缓存 / 日志 ----
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
+
+# ---- 秘密与凭据 ----
+.env
+.env.*
+*.key
+*.pem
+*.pfx
+*.p12
+secrets/
+credentials*.json
+
+# ---- 用户音乐：绝不入库 ----
+*.mp3
+*.flac
+*.m4a
+*.ogg
+*.opus
+*.aac
+*.wav
+*.wma
+*.aiff
+
+# ---- 工具本地配置 ----
+.zcodeignore

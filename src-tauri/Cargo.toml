@@ -1,0 +1,20 @@
+[package]
+name = "aura-shell"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/taozhihaoo/ifuyo-aura"
+description = "ifuyo Aura Tauri shell"
+
+[lib]
+name = "aura_shell_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+# 注意：本 crate 目前被根 workspace exclude（DECISIONS D-010），
+# M0 建立 IPC contracts 时加入 members 并锁定版本。

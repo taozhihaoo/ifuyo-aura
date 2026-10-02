@@ -1,0 +1,47 @@
+/* ifuyo Aura 基础壳样式。视觉系统按里程碑（M6）落地，此处仅是最小可运行入口。 */
+@import '../generated/tokens.css';
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: rgba(255, 255, 255, 0.92);
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', system-ui, sans-serif;
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+}
+
+.phase-card {
+  text-align: center;
+  user-select: none;
+}
+
+.phase-card h1 {
+  font-size: 32px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.phase-card p {
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

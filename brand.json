@@ -1,0 +1,15 @@
+{
+  "name": "ifuyo Aura",
+  "vendor": "ifuyo · 伊芙游",
+  "slogan": "以光与梦，编织每一次游玩。",
+  "site": "https://ifuyo.com",
+  "version": "0.1.0",
+  "copyright": "Copyright © 2026 ifuyo · 伊芙游",
+  "colors": {
+    "bg": "#0B0E14",
+    "rose": "#F2789F",
+    "violet": "#8B7CF6",
+    "sky": "#5CC8F2",
+    "mint": "#6FE3C1"
+  }
+}

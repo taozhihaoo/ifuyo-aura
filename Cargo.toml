@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/aura-core",
+    "crates/aura-sources",
+    "crates/aura-cache",
+    "crates/aura-library",
+    "crates/aura-analysis",
+    "crates/aura-synth",
+    "crates/aura-testkit",
+]
+# src-tauri 暂不加入 members，M0 接线（DECISIONS D-010）
+exclude = ["src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/taozhihaoo/ifuyo-aura"
+rust-version = "1.85"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

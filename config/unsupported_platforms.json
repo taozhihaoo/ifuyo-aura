@@ -1,0 +1,80 @@
+{
+  "$comment": "ifuyo Aura 不支持平台注册表。来源系统 resolve 前必须匹配本表；命中即拒绝且不得发出任何请求。政策见 CONTENT_POLICY.md。新增禁止平台只改本表。",
+  "version": 1,
+  "policy": {
+    "on_match": "reject_without_request",
+    "user_message": "该平台不受支持，请使用本地文件或开放来源。"
+  },
+  "platforms": [
+    {
+      "id": "youtube",
+      "name": "YouTube",
+      "domains": ["youtube.com", "youtu.be", "youtube-nocookie.com"]
+    },
+    {
+      "id": "spotify",
+      "name": "Spotify",
+      "domains": ["spotify.com", "open.spotify.com", "scdn.co"]
+    },
+    {
+      "id": "netease-music",
+      "name": "网易云音乐",
+      "domains": ["music.163.com"]
+    },
+    {
+      "id": "qq-music",
+      "name": "QQ音乐",
+      "domains": ["y.qq.com", "music.qq.com", "qqmusic.qq.com"]
+    },
+    {
+      "id": "apple-music",
+      "name": "Apple Music",
+      "domains": ["music.apple.com"]
+    },
+    {
+      "id": "tidal",
+      "name": "TIDAL",
+      "domains": ["tidal.com"]
+    },
+    {
+      "id": "deezer",
+      "name": "Deezer",
+      "domains": ["deezer.com"]
+    },
+    {
+      "id": "amazon-music",
+      "name": "Amazon Music",
+      "domains": ["music.amazon.com", "amazon.com"]
+    },
+    {
+      "id": "kugou",
+      "name": "酷狗音乐",
+      "domains": ["kugou.com"]
+    },
+    {
+      "id": "kuwo",
+      "name": "酷我音乐",
+      "domains": ["kuwo.cn"]
+    },
+    {
+      "id": "migu-music",
+      "name": "咪咕音乐",
+      "domains": ["music.migu.cn"]
+    },
+    {
+      "id": "soundcloud",
+      "name": "SoundCloud",
+      "domains": ["soundcloud.com"]
+    },
+    {
+      "id": "pandora",
+      "name": "Pandora",
+      "domains": ["pandora.com"]
+    },
+    {
+      "id": "bilibili",
+      "name": "bilibili",
+      "domains": ["bilibili.com", "b23.tv"]
+    }
+  ]
+}
