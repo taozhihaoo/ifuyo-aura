@@ -1,0 +1,4 @@
+# 工具链锁定（rustup）
+# channel 稳定在 stable，host triple 为 x86_64-pc-windows-msvc（与 CI windows-latest 一致）。
+[toolchain]
+channel = "stable"

@@ -31,10 +31,10 @@ M14 = NOT STARTED   (Final Release Audit)
 |---|---|
 | OS | Windows 11 (10.0.26200), x64 |
 | Shell | Git Bash (MINGW64), PowerShell 5.1 备用 |
-| Rust / Cargo / rustup | **未安装**（已检查 PATH、`%USERPROFILE%\.cargo`、`.rustup`、Program Files） |
+| Rust / Cargo | ✅ 已安装（2026-10-03）：rustup stable `x86_64-pc-windows-msvc`，rustc/cargo 1.99.0，VS Build Tools 2022 (MSVC 14.44)；见 DECISIONS D-011 |
 | Node / npm | node v24.19.0 / npm 11.17.0 |
-| Tauri CLI | 未安装 |
-| cargo-deny | 未安装 |
+| Tauri CLI | 未安装（按需经 cargo tauri / npm 引入） |
+| cargo-deny | 未安装（M0-2 安装并首跑） |
 
 ### B. Git
 
@@ -73,17 +73,17 @@ Phase 0 前无架构文档。已创建 `ARCHITECTURE.md`（分层、crate 职责
 
 | 门禁命令 | 状态 | 说明 |
 |---|---|---|
-| `cargo fmt --check` | **NOT RUN** | 本机无 Rust 工具链；命令与 workspace 配置就绪，CI / M0 首次执行 |
-| `cargo clippy --workspace --all-targets -- -D warnings` | **NOT RUN** | 同上 |
-| `cargo test --workspace` | **NOT RUN** | 同上（crates 为零依赖空骨架，风险极低） |
-| `cargo deny check` | **NOT RUN** | `deny.toml` 就绪；cargo-deny 未安装，CI 执行 |
+| `cargo fmt --check` | **PASS**（2026-10-03 本地 msvc） | 首次真实执行，零 diff |
+| `cargo clippy --workspace --all-targets -- -D warnings` | **PASS**（2026-10-03 本地 msvc） | 零告警 |
+| `cargo test --workspace` | **PASS**（2026-10-03 本地 msvc） | 7 crates 骨架测试全过 |
+| `cargo deny check` | **NOT RUN** | cargo-deny 安装与首跑在 M0-2（依赖锁定一并执行） |
 | `npm run typecheck` | **PASS**（2026-10-02 本地） | tsc --noEmit 零错误 |
 | `npm run lint` | **PASS**（2026-10-02 本地） | eslint 零告警 |
 | `npm test` | **PASS**（2026-10-02 本地） | vitest 2/2（design tokens 契约） |
 | `npm run build`（vite） | **PASS**（2026-10-02 本地） | 31 modules，dist 产出正常 |
 | `tauri build` | **DEFERRED** | src-tauri 未接线（D-010），M0 激活；CI 中该 job 保留命令（`if: false` 占位） |
 
-由对应 Milestone 修复项：M0 负责 Rust 工具链接入后的首次 cargo 门禁全绿与 tauri build 激活。
+由对应 Milestone 修复项：M0-2 安装 cargo-deny 并首跑；M0-3 接线 src-tauri 后激活 tauri build 门禁。
 
 ## Phase 0 Final Audit（2026-10-02，§21）
 

@@ -62,9 +62,11 @@ M0→M14，逐阶段实施；一次只做一个 Milestone，门禁全绿才 comm
 
 理由：Phase 0 禁止实现 M1 之后业务功能，且本机 Rust 工具链未安装；提前把 tauri 拉进 workspace 会让 `cargo test` 拖入数百个依赖，违背"不得添加未必要的生产依赖"（§18）。M0 建立 IPC contracts 时再把 `src-tauri` 加入 members 并锁定 Tauri 2 版本。
 
-## D-011 MSRV 暂缺（2026-10-02）
+## D-011 MSRV 与本机工具链（2026-10-02 建立，2026-10-03 更新）
 
-MSRV（最低支持 Rust 版本）待首次真实依赖解析后在 M0/M1 确定并记录于此与 CI。本机当前无 Rust 工具链，CI 使用 `stable`。
+- **工具链（2026-10-03 就绪）**：本机安装 VS Build Tools 2022（MSVC 14.44）+ rustup stable `x86_64-pc-windows-msvc`（rustc 1.99.0），`rust-toolchain.toml` 锁定 channel=stable，与 CI windows-latest 目标一致。首次 `cargo fmt --check` / `clippy -D warnings` / `test --workspace` 已全绿。
+- **MSRV**：声明为 `1.85`（edition 2021 + workspace lints 需 1.74+，留验证余量）。依赖锁定（M0-2）若抬高低限，将更新此处与 `Cargo.toml` 的 `rust-version`。
+- 备注：Windows-first 项目固定 MSVC 目标；不使用 windows-gnu。
 
 ## D-012 品牌色进入 brand.json（2026-10-02）
 
