@@ -79,6 +79,12 @@ impl Generation {
     /// 首个 generation。
     pub const FIRST: Generation = Generation(1);
 
+    /// 从原子计数等原始值重建（crate 内部/恢复场景使用）。
+    #[must_use]
+    pub const fn from_raw(v: u64) -> Self {
+        Self(v)
+    }
+
     #[must_use]
     pub const fn next(self) -> Self {
         Self(self.0.saturating_add(1))
