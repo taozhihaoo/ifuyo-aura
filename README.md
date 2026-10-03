@@ -50,7 +50,7 @@
 
 - Aurora FPS 绝对值未在真实 GPU 桌面环境采样（机制已内建：`canvas[data-fps]`）；Mica 视觉效果需 Win11 实机确认（API + fallback 已就绪）。
 - 数小时级桌面 soak 未在本开发环境执行（远程虚拟显示）；本地复测脚本见 `docs/PERF.md`。
-- 安装包（NSIS bundle）未签名；M6 仅验证 unsigned 构建产物。
+- 安装包（NSIS bundle）未签名；M6 已实际产出 unsigned 产物（`tauri build`）。
 
 ## 构建
 

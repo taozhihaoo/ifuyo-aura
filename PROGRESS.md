@@ -184,6 +184,9 @@ M6-B = PASS（下篇，全部为真实实现；无「声明完成未验证」项
 - queue 游标模型（next/previous/remove/current，单一权威 §197）；palette Open Folder/File/URL（filter 与 M3 同步）
 - Aurora VISUAL_TEST_MODE + 运行时 FPS 计数（data-fps）；titlebar 双击最大化；键盘图 Alt+1/2/3、Ctrl+Q/M
 - capabilities 补 mini 窗口权限（D-076）；custom-protocol 发布构建 feature（D-075）
+- **tauri build 实测 PASS**（§304/§211）：`npx tauri build` →
+  `target/release/aura-shell.exe` + `bundle/nsis/ifuyo Aura_0.1.0_x64-setup.exe`
+  （8.02 MiB，unsigned——签名未配置，§211 不伪造 signed）
 
 ### Tests
 
