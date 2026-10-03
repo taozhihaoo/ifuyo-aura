@@ -138,6 +138,12 @@ version = "0.1.0"
 [[package]]
 name = "aura-cache"
 version = "0.1.0"
+dependencies = [
+ "aura-sources",
+ "rusqlite",
+ "sha2",
+ "siphasher",
+]
 
 [[package]]
 name = "aura-core"

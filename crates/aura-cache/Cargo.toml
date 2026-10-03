@@ -9,3 +9,9 @@ description = "ifuyo Aura"
 
 [lints]
 workspace = true
+
+[dependencies]
+aura-sources = { version = "0.1.0", path = "../aura-sources" }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+sha2 = "0.10"
+siphasher = "1"

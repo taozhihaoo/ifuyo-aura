@@ -8,4 +8,6 @@
 
 pub mod audio;
 pub mod clock;
+pub mod faultfs;
 pub mod rng;
+pub mod test_http;
