@@ -26,6 +26,7 @@ pub use decoder::Decoder;
 pub use engine::command::{AudioCommandQueue, CommandQueueError};
 pub use engine::player::Engine;
 pub use error::AudioError;
+pub use output::device::CpalOutput;
 pub use output::null::NullOutput;
 pub use output::{AudioOutput, OutputStage, SharedOutputState};
 pub use resampler::Resampler;

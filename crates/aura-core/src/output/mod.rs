@@ -8,6 +8,7 @@
 //! Callback 铁律（M1 §31）：`OutputStage::render` 路径零 allocation、零锁、
 //! 零 logging、零 syscall、零 panic；由 `tests/zero_alloc.rs` 用计数分配器证明。
 
+pub mod device;
 pub mod null;
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
