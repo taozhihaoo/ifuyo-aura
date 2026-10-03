@@ -1,21 +1,11 @@
-//! ifuyo Aura 网络缓存：256 KiB 分块、原子改名、SQLite 元数据（WAL）、
-//! Range、prefetch、LRU、pin、故障注入自愈。
+//! ifuyo Aura 网络缓存（M5）：256 KiB 分块、原子改名、SQLite 元数据（WAL）、
+//! Range 读取、按需拉取、prefetch、LRU、pin、故障自愈。
 //!
-//! 只有 `Allowed` 来源允许持久缓存；`Forbidden` 来源必须从代码结构上
-//! 保证所有执行路径零写盘。
+//! 策略硬门禁（§3–§7）：只有 `Allowed` 来源允许持久缓存；`Forbidden`
+//! 来源从代码结构上保证所有执行路径零写盘；`SessionOnly` 仅进程内内存。
 //!
-//! Phase 0：仅 crate 边界；M5 起填充实现。
+//! 边界（§2/§91）：cache 不知道 WASAPI/CPAL/EQ/UI；持久化写入全部经过
+//! 统一策略门（`CacheWriteGuard` 语义）；数据库与 M3 library 完全隔离（§15/§28）。
 
-/// 阶段标识；M5 实装后移除。
-#[must_use]
-pub const fn phase() -> &'static str {
-    "phase-0-skeleton"
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn skeleton_compiles() {
-        assert_eq!(super::phase(), "phase-0-skeleton");
-    }
-}
+pub mod error;
+pub mod keys;

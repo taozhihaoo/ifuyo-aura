@@ -143,6 +143,7 @@ dependencies = [
  "rusqlite",
  "sha2",
  "siphasher",
+ "url",
 ]
 
 [[package]]
