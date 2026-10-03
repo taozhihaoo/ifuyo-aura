@@ -45,16 +45,18 @@ pub struct CpalOutput {
     format: AudioFormat,
     shared: SharedOutputState,
     device_errors: DeviceErrorCounter,
+    _eq_bus: Arc<crate::dsp::EqBus>,
 }
 
 impl CpalOutput {
     /// 打开默认输出设备并创建流（立即开始播放）。
     ///
-    /// `consumer` 与 `shared` 来自 Engine 的生产管线；设备实际格式
-    /// （采样率/声道）以设备默认配置为准。
+    /// `consumer` 与 `shared` 来自 Engine 的生产管线；`eq_bus` 为 EQ 快照总线。
+    /// 设备实际格式（采样率/声道）以设备默认配置为准。
     pub fn open_default(
         consumer: ConsumerHandle,
         shared: SharedOutputState,
+        eq_bus: Arc<crate::dsp::EqBus>,
     ) -> Result<Self, AudioError> {
         let host = cpal::default_host();
         let device = host
@@ -80,6 +82,7 @@ impl CpalOutput {
                 let mut stage = OutputStage::new(sample_rate, channels);
                 let mut consumer = consumer;
                 let shared_cb = shared.clone();
+                let eq_cb = Arc::clone(&eq_bus);
                 device.build_output_stream(
                     config,
                     move |data: &mut [f32], _info| {
@@ -88,6 +91,7 @@ impl CpalOutput {
                             &mut consumer,
                             &shared_cb,
                             crate::types::PlaybackState::Playing,
+                            Some(&eq_cb),
                         );
                     },
                     move |err| {
@@ -101,6 +105,7 @@ impl CpalOutput {
                 let mut stage = OutputStage::new(sample_rate, channels);
                 let mut consumer = consumer;
                 let shared_cb = shared.clone();
+                let eq_cb = Arc::clone(&eq_bus);
                 // 预分配 f32 工作区（回调内零分配；按固定块渲染后转换）
                 const SCRATCH_FRAMES: usize = 1024;
                 let mut scratch = vec![0.0f32; SCRATCH_FRAMES * usize::from(channels.get())];
@@ -117,6 +122,7 @@ impl CpalOutput {
                                 &mut consumer,
                                 &shared_cb,
                                 crate::types::PlaybackState::Playing,
+                                Some(&eq_cb),
                             );
                             let _ = rendered;
                             for (dst, src) in block.iter_mut().zip(scratch[..want].iter()) {
@@ -146,6 +152,7 @@ impl CpalOutput {
             format,
             shared,
             device_errors,
+            _eq_bus: eq_bus,
         })
     }
 

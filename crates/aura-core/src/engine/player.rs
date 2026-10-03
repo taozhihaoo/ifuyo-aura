@@ -22,12 +22,15 @@ use crate::audio::buffer::{ring_buffer, ConsumerHandle, ProducerHandle};
 use crate::audio::crossfade::crossfade_frames;
 use crate::decoder::pcm::map_channels_into;
 use crate::decoder::Decoder;
+use crate::dsp::TrackLoudness;
 use crate::engine::command::AudioCommandQueue;
 use crate::error::AudioError;
+use crate::output::device_state::OutputDeviceState;
 use crate::output::null::NullOutput;
 use crate::output::SharedOutputState;
 use crate::resampler::Resampler;
 use crate::track::TrackFrameRange;
+use std::sync::Arc;
 
 use crate::types::{
     AudioCommand, AudioFormat, Channels, Generation, PlaybackState, SampleRate, Volume,
@@ -84,6 +87,18 @@ pub struct Engine {
     preload_window_frames: u64,
     /// crossfade 长度（输出帧）；0 = 关闭（gapless 优先）。
     crossfade_frames: u64,
+    /// 输出设备状态（M2 §26–28）。
+    device_state: OutputDeviceState,
+    /// 设备流错误计数（stream error 上报）。
+    device_errors: u64,
+    /// 音轨响度元数据（M2 消费端）。
+    track_loudness: TrackLoudness,
+    /// loudness 归一开关。
+    loudness_enabled: bool,
+    /// preamp 线性增益。
+    preamp_gain: f32,
+    /// EQ 参数总线。
+    eq_bus: Arc<crate::dsp::EqBus>,
     /// 曲目过渡状态。
     transition: TransitionState,
     /// crossfade 中 B 管线的映射输出。
@@ -147,6 +162,12 @@ impl Engine {
             preload_window_frames: DEFAULT_PRELOAD_WINDOW_FRAMES,
             track_boundaries: Vec::new(),
             track_frame_ranges: Vec::new(),
+            device_state: OutputDeviceState::Connected,
+            device_errors: 0,
+            track_loudness: TrackLoudness::missing(),
+            loudness_enabled: false,
+            preamp_gain: 1.0,
+            eq_bus: Arc::new(crate::dsp::EqBus::new(crate::dsp::EqCoeffs::passthrough())),
             output,
             chunk_buf: vec![0.0; chunk_frames * usize::from(channels.get())],
             shared,
@@ -264,6 +285,115 @@ impl Engine {
         self.transition = TransitionState::Normal;
         self.mapped_b.clear();
         self.next_track_decoded = 0;
+    }
+
+    // ===== M2：响度 / preamp / EQ（控制面）=====
+
+    /// 设置音轨响度元数据（控制面提供；M2 只消费，§2/§19）。
+    pub fn set_track_loudness(&mut self, loudness: TrackLoudness, enabled: bool) {
+        self.track_loudness = loudness;
+        self.loudness_enabled = enabled;
+        self.refresh_track_gain();
+    }
+
+    /// 设置 preamp（dB，−12 ~ +12，§39）。
+    pub fn set_preamp_db(&mut self, db: f32) {
+        let db = db.clamp(-12.0, 12.0);
+        self.preamp_gain = 10.0f32.powf(db / 20.0);
+        self.refresh_track_gain();
+    }
+
+    #[must_use]
+    pub const fn preamp_gain(&self) -> f32 {
+        self.preamp_gain
+    }
+
+    /// 发布 EQ 频段（系数在控制面计算，快照原子发布，§41–42）。
+    pub fn set_eq_bands(&mut self, bands: &[crate::dsp::EqBand]) {
+        let coeffs = crate::dsp::EqCoeffs::from_bands(bands, self.sample_rate.get() as f32);
+        self.eq_bus.store(&coeffs);
+    }
+
+    /// 按预设发布 EQ。
+    pub fn set_eq_preset(&mut self, preset: &crate::dsp::EqPreset) {
+        self.set_eq_bands(&crate::dsp::bands_from_preset(preset));
+    }
+
+    #[must_use]
+    pub fn eq_bus(&self) -> &crate::dsp::EqBus {
+        &self.eq_bus
+    }
+
+    /// 重算音轨静态增益 = loudness gain × preamp（§44 前两级合并进平滑目标）。
+    fn refresh_track_gain(&mut self) {
+        let lg = crate::dsp::loudness_gain(&self.track_loudness, self.loudness_enabled);
+        let v = lg * self.preamp_gain;
+        self.output.shared().set_track_gain(v);
+    }
+
+    // ===== M2：输出设备热插拔（§26–33）=====
+
+    /// 设备断开：安全暂停（保留曲目/位置/状态），可恢复。不 panic。
+    pub fn device_removed(&mut self) {
+        self.device_state = OutputDeviceState::Removed;
+        if self.state == PlaybackState::Playing {
+            self.state = PlaybackState::Paused; // 安全暂停（§27-4）
+        }
+        // 位置保留（§32）；曲目/解码器保留（§27-2,3）
+    }
+
+    /// 设备恢复：进入可恢复暂停状态，**不自动播放**（§28）。
+    pub fn device_restored(&mut self, sample_rate: SampleRate, channels: Channels) {
+        self.device_state = OutputDeviceState::Connected;
+        let _ = self.set_output_format(sample_rate, channels);
+    }
+
+    /// 默认设备变化：与设备断开/恢复同一处理路径（§29）。
+    pub fn default_device_changed(&mut self, sample_rate: SampleRate, channels: Channels) {
+        self.device_restored(sample_rate, channels);
+    }
+
+    /// 设备流错误上报（由适配器错误回调经控制面转入；不 panic）。
+    pub fn report_device_error(&mut self) {
+        self.device_errors += 1;
+    }
+
+    #[must_use]
+    pub const fn device_state(&self) -> OutputDeviceState {
+        self.device_state
+    }
+
+    #[must_use]
+    pub const fn device_errors(&self) -> u64 {
+        self.device_errors
+    }
+
+    /// 新设备格式重配置（§31）：重建重采样器与渲染缓冲，位置保留（§32）。
+    pub fn set_output_format(
+        &mut self,
+        sample_rate: SampleRate,
+        channels: Channels,
+    ) -> Result<(), AudioError> {
+        if self.sample_rate.get() != sample_rate.get() || self.channels.get() != channels.get() {
+            self.sample_rate = sample_rate;
+            self.channels = channels;
+            // 按当前解码器源格式重建重采样器（解码器格式未变）
+            let src = self
+                .decoder
+                .as_ref()
+                .map(|d| d.format())
+                .map(|f| f.sample_rate.get())
+                .unwrap_or(sample_rate.get());
+            let src_rate = SampleRate::new(src)?;
+            self.resampler = Resampler::new(src_rate, sample_rate, channels)?;
+            self.resample_in.clear();
+            let chunk_frames = (self.output.chunk_frames()).max(1);
+            self.chunk_buf = vec![0.0; chunk_frames * usize::from(channels.get())];
+            self.output
+                .stage_mut()
+                .reset_eq(usize::from(channels.get()));
+        }
+        Ok(())
     }
 
     /// TrackFrameRange 记账（M2 §8）：每条已播放音轨的有效帧范围。
@@ -605,6 +735,7 @@ impl Engine {
                     &mut self.consumer,
                     &shared,
                     self.state,
+                    Some(&self.eq_bus),
                 )
             };
             let _ = got;

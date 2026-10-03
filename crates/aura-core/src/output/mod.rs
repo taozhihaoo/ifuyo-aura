@@ -9,6 +9,7 @@
 //! 零 logging、零 syscall、零 panic；由 `tests/zero_alloc.rs` 用计数分配器证明。
 
 pub mod device;
+pub mod device_state;
 pub mod null;
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -27,6 +28,8 @@ pub struct SharedOutputState {
     pub underruns: Arc<AtomicU64>,
     /// 目标增益（f32 bits；由控制面写入）。
     pub target_gain_bits: Arc<AtomicU32>,
+    /// 音轨静态增益（loudness × preamp；f32 bits）。
+    pub track_gain_bits: Arc<AtomicU32>,
 }
 
 impl SharedOutputState {
@@ -36,6 +39,7 @@ impl SharedOutputState {
             position: Arc::new(AtomicU64::new(0)),
             underruns: Arc::new(AtomicU64::new(0)),
             target_gain_bits: Arc::new(AtomicU32::new(1.0f32.to_bits())),
+            track_gain_bits: Arc::new(AtomicU32::new(1.0f32.to_bits())),
         }
     }
 
@@ -46,6 +50,15 @@ impl SharedOutputState {
 
     fn target_gain(&self) -> f32 {
         f32::from_bits(self.target_gain_bits.load(Ordering::Acquire))
+    }
+
+    /// 控制面：设置音轨静态增益（loudness × preamp 线性积）。
+    pub fn set_track_gain(&self, v: f32) {
+        self.track_gain_bits.store(v.to_bits(), Ordering::Release);
+    }
+
+    fn track_gain(&self) -> f32 {
+        f32::from_bits(self.track_gain_bits.load(Ordering::Acquire))
     }
 
     pub fn add_position(&self, frames: u64) {
@@ -68,6 +81,9 @@ pub struct OutputStage {
     smoother: GainSmoother,
     seen_generation: Generation,
     channels: Channels,
+    eq_cascade: crate::dsp::EqCascade,
+    local_eq: crate::dsp::EqCoeffs,
+    last_eq_version: u32,
 }
 
 impl OutputStage {
@@ -77,12 +93,22 @@ impl OutputStage {
             smoother: GainSmoother::new(sample_rate),
             seen_generation: Generation::FIRST,
             channels,
+            eq_cascade: crate::dsp::EqCascade::new(usize::from(channels.get())),
+            local_eq: crate::dsp::EqCoeffs::passthrough(),
+            last_eq_version: 0,
         }
     }
 
     #[must_use]
     pub const fn channels(&self) -> Channels {
         self.channels
+    }
+
+    /// 重建 EQ 级联状态（输出声道数变化时，M2 §31）。
+    pub fn reset_eq(&mut self, channels: usize) {
+        self.eq_cascade = crate::dsp::EqCascade::new(channels);
+        self.local_eq = crate::dsp::EqCoeffs::passthrough();
+        self.last_eq_version = 0;
     }
 
     /// 渲染至多 `out.len()` 个采样：从 ring buffer 弹出 → underrun 补静音 →
@@ -95,6 +121,7 @@ impl OutputStage {
         consumer: &mut ConsumerHandle,
         shared: &SharedOutputState,
         state: PlaybackState,
+        eq_bus: Option<&crate::dsp::EqBus>,
     ) -> u64 {
         // Stopped/Paused：输出静音，位置不动
         if state != PlaybackState::Playing {
@@ -121,6 +148,23 @@ impl OutputStage {
         let target = shared.target_gain();
         self.smoother.set_target(target);
         self.smoother.process(out);
+        // 音轨静态增益（loudness × preamp，§44 第一级）
+        let track_gain = shared.track_gain();
+        if track_gain != 1.0 {
+            for s in out.iter_mut() {
+                *s *= track_gain;
+            }
+        }
+        // EQ（§44 第三级；快照经 EqBus 原子发布，回调 load 无锁）
+        if let Some(bus) = eq_bus {
+            let v = bus.version();
+            if v != self.last_eq_version && bus.load_into(&mut self.local_eq) {
+                self.last_eq_version = v;
+            }
+            self.eq_cascade.process(&self.local_eq, out);
+        }
+        // Limiter（§44 末级，§21）
+        crate::dsp::limit_block(out);
         // 位置按输出实际消费的帧数推进（underrun 静音帧也是被消费的时间）
         shared.add_position(frames as u64);
         frames as u64

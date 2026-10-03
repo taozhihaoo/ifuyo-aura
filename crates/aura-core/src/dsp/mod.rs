@@ -215,6 +215,53 @@ pub fn rbj_coeffs(band: &EqBand, sample_rate: f32) -> BiquadCoeffs {
     }
 }
 
+/// EQ 级联（Direct Form I，按声道独立状态；M2 §37）。
+#[derive(Debug, Clone)]
+pub struct EqCascade {
+    /// 每声道每频段的状态 (x1, x2, y1, y2)。
+    states: Vec<[f32; 4]>,
+    channels: usize,
+}
+
+impl EqCascade {
+    #[must_use]
+    pub fn new(channels: usize) -> Self {
+        Self {
+            states: vec![[0.0; 4]; channels * 10],
+            channels,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        for s in &mut self.states {
+            *s = [0.0; 4];
+        }
+    }
+
+    /// 对交错 PCM 应用 10-band 级联（按声道独立处理）。
+    pub fn process(&mut self, coeffs: &EqCoeffs, data: &mut [f32]) {
+        let ch = self.channels;
+        for c in 0..ch {
+            for frame in data.chunks_exact_mut(ch) {
+                let mut sample = frame[c];
+                for (band_idx, band_coeffs) in coeffs.bands.iter().enumerate() {
+                    let st = &mut self.states[c * 10 + band_idx];
+                    let y =
+                        band_coeffs.b0 * sample + band_coeffs.b1 * st[0] + band_coeffs.b2 * st[1]
+                            - band_coeffs.a1 * st[2]
+                            - band_coeffs.a2 * st[3];
+                    st[1] = st[0];
+                    st[0] = sample;
+                    st[3] = st[2];
+                    st[2] = y;
+                    sample = y;
+                }
+                frame[c] = sample;
+            }
+        }
+    }
+}
+
 /// EQ 预设（M2 §38）：纯数据（每频段 gain_db）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EqPreset {
