@@ -19,5 +19,5 @@ serde_json = "1"
 url = "2"
 
 [dev-dependencies]
-aura-testkit = { path = "../aura-testkit" }
+aura-testkit = { version = "0.1.0", path = "../aura-testkit" }
 symphonia = "0.6.1"

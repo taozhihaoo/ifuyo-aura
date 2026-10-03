@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — M4: Source System / Local / Direct HTTP / Internet Radio / ICY / Radio Browser (2026-10-04)
+
+- `aura-sources` crate: unified Source model (SourceKind/CachePolicy/Resolved/ResolvedLicense/Attribution/StreamMetadataEvent/SourceState), `resolve_input` with §13 ordering (local → URL validation → blocklist-before-any-request → network probe), Local Source reusing aura-library metadata.
+- Network security: URL scheme whitelist, credential-URL rejection, per-hop redirect revalidation (≤5), custom DNS resolver with per-IP private-network check (DNS-rebind-proof), private-network policy with explicit allow knob, platform blocklist (config/unsupported_platforms.json) with zero-request DNS-spy proof, bounded response bodies, redacted URL logging.
+- HttpClient: reqwest blocking + rustls, descriptive UA `ifuyo Aura/<version>`, connect/metadata-total/stream-idle timeout split, fake std-TCP HTTP test server with Range support.
+- ICY: pure metadata parser (UTF-8-safe, malformed-block drop) + arbitrary-boundary IcyReader stripper + StreamTitle split + event channel; protocol cap 4080 bytes.
+- NetworkAudioStream: bounded pipe (finite 1MiB, live ≤30s by bitrate) + feeder thread with ownership-handoff cancellation, consumer-side idle timeout, Range re-request seek (stale-generation pollution fixed), backpressure.
+- Internet Radio: live/non-seekable/Forbidden semantics, zero-disk-write tests, live-EOF semantics.
+- Radio Browser: /json/servers discovery (no hardcoded server), production-random + test-injected mirror selectors, bounded fallback, tolerant station parser, url_resolved preferred with recorded field, codec support filter, click reporting default-OFF (zero requests), SourceUnavailable offline semantics.
+- aura-core: AudioByteStream trait + MediaSource adapter + StreamingDecoder (symphonia probe, default registry); symphonia `mp3` feature enabled (default features exclude it); ResolvedStream.byte_size wired for Range seek; engine integration tests (direct MP3 → Engine PCM non-silent, seek-then-decode, ICY stream decode).
+- Tests: 85 aura-sources tests (workspace ≈300). PERF.md M4: ICY strip 1818 MB/s, URL validation 0.96µs, local resolve 65.9µs, live buffer caps.
+
 ### Added — M3: Music Library / Metadata / SQLite / Search / Artwork (2026-10-04)
 
 - `aura-library` crate: local directory scanner (iterative, cancellable, per-file error tolerant, no-reparse-follow policy, root boundary via canonicalize), extension filter (.flac/.mp3/.ogg/.oga/.wav/.m4a/.alac) with content-probe rejection of fake audio.

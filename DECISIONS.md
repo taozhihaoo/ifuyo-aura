@@ -227,3 +227,31 @@ M3 无分析数据（BPM/Key/Energy 属 M8），`filter_tracks` 全量拉活跃�
 ## D-048 M3 依赖引入（2026-10-04，M3）
 
 `lofty 0.22`（标签，MSRV 1.85）、`rusqlite 0.40 + bundled`（SQLite，bundled 自带 FTS5）、`notify 8.2`（watcher，CC0）、`image =0.25.9`（MSRV 1.85；**固定等号版本**——0.25.10 MSRV 1.88 超出工作区 1.87）、`siphasher 1.0`（SipHash-2-4-128）、`unicode-normalization 0.1`（NFC/NFKD）。全部许可在 deny 白名单；image/jpeg+png 最小 feature（无 webp/avif/gif）。
+
+## D-049 M4 来源依赖与 async 边界（2026-10-04，M4）
+
+`reqwest 0.12 blocking + rustls-tls + json`（无 tokio 直依；blocking 内部 runtime 由 reqwest 托管）。选 blocking 的理由：workspace 全同步栈、M1 Decoder 是 pull 模型、取消可用"所有权交接 + drop response 关 socket"满足（D-052）；M6 Tauri 层如需 async，由应用层 `spawn_blocking` 桥接。serde/serde_json 用于 Radio Browser 解析。
+
+## D-050 ICY metadata 上限（2026-10-04，M4）
+
+协议形状上限：长度字节 ≤255 → 块 ≤4080 字节（255×16）。`MAX_ICY_METADATA_BYTES = 4080`，超出（不可能的声明）视为流损坏 → 该块丢弃、流终止（不消费音频）。非 UTF-8/畸形键值 → 仅丢弃该块，音频继续（§36）。
+
+## D-051 流缓冲容量（2026-10-04，M4）
+
+finite：1 MiB 固定。live：`min(bitrate×30s, 2 MiB)`，未知码率 256 KiB（≈64kbps×30s），下限 256 KiB（§37 滚动 ≤30s）。容量构造时固定，运行期不增长（§29/§100）。
+
+## D-052 网络流取消协议（2026-10-04，M4）
+
+reqwest blocking 无 per-read timeout。协议：`Response` 唯一宿主是共享 slot；feeder 分段借用（take → read 一块 → 放回）。取消方持锁取走并 drop → socket 关闭 → feeder 下一次 read 错误退出（正常服务器毫秒级）。stalled-read 期间消费侧立即返回 Timeout（不等 socket；keepalive 15s 兜底关闭）。已知限制：服务器彻底静默时 feeder 线程最终退出时间取决于 TCP keepalive，消费侧永远不被阻塞。
+
+## D-053 DNS 层 IP 复检（2026-10-04，M4）
+
+自定义 `reqwest::dns::Resolve`：解析结果逐 IP 过私网检查，任一私网 IP 且策略 deny → 整个解析失败（不给 hyper 任何可用地址），防 rebinding（§18）。host 字符串层检查（localhost/.local/IP 字面量）仍在 validate_url 先行。
+
+## D-054 url_resolved 使用与记录（2026-10-04，M4）
+
+播放一律优先 `url_resolved`，缺失回退 `url`；实际使用的字段由 `Station::stream_url()` 返回（调用方可记录），不静默切换。
+
+## D-055 symphonia mp3 特性（2026-10-04，M4）
+
+symphonia 元 crate 默认特性**不含 mp3**（只有 flac/ogg/vorbis/wav/adpcm/mkv/pcm）。Charter §14 支持矩阵含 MP3 且网络电台以 MP3 为主 → aura-core 显式 `features = ["mp3"]`（symphonia-bundle-mp3，MPL-2.0 纯 Rust；§74 只禁止 AAC/FDK 类）。probe 解码器（StreamingDecoder）覆盖网络场景未知容器；FLAC 仍走 M1 具体类型路径（D-015 不变）。

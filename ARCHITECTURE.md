@@ -133,6 +133,17 @@ ring buffer 容量按帧对齐（Engine 默认 buffer/8 = 渲染块）。overrun
 - **watcher**（D-043）：notify → EventCoalescer（500ms 窗口、终态合并、注入时钟）→ rescan 候选；watcher 路径零 DB 写。
 - **时间**：核心不读 wall-clock；LibraryService 接受注入时钟（`set_clock`），扫描/统计时间戳可确定性测试。
 
+### Source Architecture（M4）
+
+`aura-sources` 职责链（§7）：`Input → Detection → Resolution → Resolved(+License/Attribution/CachePolicy)`。不负责 audio output / persistent cache（M5）/ UI / SQLite 直写（§93）。
+
+- **Source trait 面**（§8）：`search(query)` / `resolve(input)`；`Resolved { streams, meta(Track/Stream/Provider 三分), license(Unknown/Known 不猜测), cache_policy, attribution }`。`SourceKind` 强类型（Local/DirectHttp/InternetRadio/RadioBrowser/Podcast/Hls）。
+- **Resolver 顺序**（§13）：本地存在文件 → URL 校验（scheme 白名单/凭据拒绝/封锁平台/私网，全部先于网络）→ 网络探测（icy 头→电台形态；Accept-Ranges+Content-Length→Seekable）→ 未知输入明确报错。
+- **网络栈**（D-049/052/053）：reqwest blocking + rustls；重定向 ≤5 逐跳重校验；自定义 DNS 解析器逐 IP 私网复检（防 rebinding）；响应体上限；`NetworkAudioStream` = 有界管道 + feeder 线程 + 所有权交接取消协议 + 消费侧空闲检测 + Range 重请求 seek。
+- **ICY 管线**：`Icy-MetaData: 1` → `IcyReader`（任意 read 边界安全）剥离 metadata → 音频逐字节透传 → `StreamMetadataEvent` mpsc 通道。
+- **Radio Browser 流程**：`/json/servers` 发现 → 选择器（生产随机/测试注入）→ fallback ≤3 → search（name/country/language/codec）→ `url_resolved` 优先（记录字段）→ click 默认 OFF。
+- **Source → Audio Core 边界**（§55/§58）：`AudioByteStream` trait（core 定义，sources 实现）→ `MediaSource` 适配 → `StreamingDecoder`（symphonia probe）→ M1 Decoder → Resampler → Buffer。core 不认识 reqwest，sources 不碰 CPAL。
+- **取消与错误传播**（§22/§59）：`SourceError` 全链路可诊断、不 panic、不泄漏凭据；`Cancelled` 语义端到端。
 ## 构建与工程
 
 - Cargo workspace：7 个 aura crates + `src-tauri`（M0-3 起为正式 member，tauri 2.12）。

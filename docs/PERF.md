@@ -75,3 +75,23 @@ cargo test -p aura-core --release --test m2_integration_v1 -- --ignored --nocapt
 ```text
 cargo test -p aura-library --release --test perf_baseline -- --ignored --nocapture
 ```
+
+## M4 基线（release 构建；2026-10-04，M4-i）
+
+环境：同 M3（Windows 11 x64、rustc 1.99.0）；HTTP 数字为 127.0.0.1 fake server 回环。
+
+| 项目 | 结果 | 说明 |
+|---|---|---|
+| 本地 resolve | **65.9 µs/次** | 存在性 + 扩展名 + aura-library 标签解析 |
+| URL 校验 | **0.96 µs/次** | parse + scheme/凭据/封锁表/私网全套 |
+| 直链 HTTP resolve（回环） | 5.48 ms/次 | GET + 头探测（网络 RTT 主导；公网来源取决于远端） |
+| ICY 剥离吞吐 | **1818 MB/s**（1MB 流 579µs） | IcyReader 流式剥离 + 元数据解析 |
+| Radio Browser 解析 | 3.5 µs/条（2000 条电台） | serde 逐条容错解析 |
+| servers 解析 | 0.2 µs/条（500 条） | 同上 |
+| live 缓冲上限 | 128kbps→480KB；320kbps→1.2MB；未知→256KB；finite→1MiB | min(码率×30s, 2MiB)（§37/D-051） |
+
+### 复测命令
+
+```text
+cargo test -p aura-sources --release --test perf_baseline -- --ignored --nocapture
+```

@@ -43,3 +43,12 @@
 ## 四、识别机制
 
 `config/unsupported_platforms.json` 是不支持平台的事实来源（域名模式列表）。来源系统 resolve 前必须先匹配该表；命中即拒绝。新增禁止平台只改配置表，不改业务代码。
+
+## M4 来源内容政策补充（2026-10-04，与实现一致）
+
+- **direct URL / 网络电台 / Radio Browser**：允许，均为用户主动触发（§4）；商业平台（YouTube/Spotify/网易云/QQ/Apple Music/TIDAL/Deezer/Amazon/Kugou/Kuwo/咪咕/SoundCloud/Pandora/Bilibili）在 `config/unsupported_platforms.json` 注册，命中即拒绝且**零请求**（§3）。
+- **禁止**：抓取/提取类（yt-dlp 类）、登录态访问、DRM（Widevine/FairPlay/SAMPLE-AES）、受保护 HLS（遇 `EXT-X-KEY` 立即拒绝——B 级 HLS 若实现）、签名破解。
+- **AAC**：官方构建不含 AAC 解码器（§74，无 FDK/LGPL）；AAC 电台 → 明确 `UnsupportedCodec` 提示，不静默换源（§78）。
+- **许可/署名**：`ResolvedLicense` 只有明确证据才声明具体许可（§52）；Radio Browser 目录 metadata ≠ 音频许可（§51）；无明确署名要求不编造（§53）。
+- **缓存政策**：Local=Allowed；Direct HTTP=SessionOnly；Radio=Forbidden（≤30s 内存）；未知=SessionOnly，绝不默认 Allowed（§2/§94）。
+- **元数据富化**：无在线 enrichment/online artwork/online lyrics（M4 禁止清单）；网络 metadata 不自动入库（§92）。
