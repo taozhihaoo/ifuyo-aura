@@ -18,7 +18,9 @@ struct PlatformsDoc {
 
 #[derive(Debug, Clone, Deserialize)]
 struct PolicyDoc {
+    // on_match 语义固定为 reject_without_request（§3）；字段仅为文档自校验保留。
     #[serde(default)]
+    #[allow(dead_code)]
     on_match: String,
     #[serde(default)]
     user_message: String,
@@ -27,6 +29,8 @@ struct PolicyDoc {
 #[derive(Debug, Clone, Deserialize)]
 struct PlatformEntry {
     id: String,
+    #[serde(default)]
+    #[allow(dead_code)]
     name: String,
     domains: Vec<String>,
 }
