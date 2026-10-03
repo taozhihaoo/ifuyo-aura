@@ -1,11 +1,111 @@
-// Phase 0 最小入口：真实品牌信息 + 阶段状态，不预演任何 M1+ 功能。
-// 样式全部经 base.css 消费生成的 CSS variables，此处无裸色值。
+// App shell（§6/§7/§16/§31）：titlebar + navigation + pages + hosts。
+// 高频视觉走 Aurora/位置插值（§10/§14），不经 Zustand 全树渲染。
+import { useEffect } from 'react';
+import { useUiStore, usePlayerStore, useSettingsStore } from './state/stores';
+import { ipc } from './ipc/client';
+import { TitleBar } from './shell/TitleBar';
+import { Sidebar } from './shell/Sidebar';
+import { NowPlayingPage } from './features/nowplaying/NowPlayingPage';
+import { LibraryPage } from './features/library/LibraryPage';
+import { MapPage } from './features/map/MapPage';
+import { CommandPalette } from './features/palette/CommandPalette';
+import { AuroraCanvas } from './visual/AuroraCanvas';
+import { SettingsPanel } from './features/settings/SettingsPanel';
+import { QueueDrawer } from './features/queue/QueueDrawer';
+import { isMiniPlayer, MiniPlayer, useMiniPlayerOpener } from './windows/MiniPlayer';
+
 export default function App() {
+  const isMini = isMiniPlayer();
+  useMiniPlayerOpener();
+  const view = useUiStore((s) => s.view);
+  const setView = useUiStore((s) => s.setView);
+  const setPaletteOpen = useUiStore((s) => s.setPaletteOpen);
+
+  // 启动优先级（§155）：shell → settings → player snapshot → library。
+  useEffect(() => {
+    ipc
+      .getSettings()
+      .then((s) =>
+        useSettingsStore.getState().setAll({
+          locale: s.language === 'en' ? 'en' : 'zh-CN',
+          uiScale: s.uiScale,
+          reducedMotion: s.reducedMotion,
+          loudnessEnabled: s.loudnessEnabled,
+          crossfadeSeconds: s.crossfadeSeconds,
+          eqEnabled: s.eqEnabled,
+          eqPreset: s.eqPreset,
+        }),
+      )
+      .catch(() => undefined);
+    const pull = () =>
+      ipc
+        .playerSnapshot()
+        .then((s) => usePlayerStore.getState().setSnapshot(s))
+        .catch(() => undefined);
+    pull();
+    const timer = window.setInterval(pull, 250);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // UI scale（§107）：root font-size 真实影响布局/字号/间距。
+  const uiScale = useSettingsStore((s) => s.uiScale);
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${16 * uiScale}px`;
+  }, [uiScale]);
+
+  // 全局快捷键（§103）：输入中不拦截 Space。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen(true);
+        return;
+      }
+      if (typing) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        const snap = usePlayerStore.getState().snapshot;
+        if (snap?.state === 'playing') ipc.pause().catch(() => undefined);
+        else ipc.play().catch(() => undefined);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setView('library');
+        window.setTimeout(() => {
+          document.getElementById('library-search')?.focus();
+        }, 50);
+      }
+      if (e.key === 'Escape') {
+        useUiStore.getState().setQueueOpen(false);
+        useUiStore.getState().setSettingsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [setPaletteOpen, setView]);
+
+  if (isMini) {
+    return <MiniPlayer />;
+  }
+
   return (
-    <main className="phase-card">
-      <h1>ifuyo Aura</h1>
-      <p>以光与梦，编织每一次游玩。</p>
-      <p>Phase 0 skeleton — brand tokens verified.</p>
-    </main>
+    <div className="app-root" data-view={view}>
+      <TitleBar />
+      <div className="app-body">
+        <Sidebar />
+        <main className="app-main" role="main">
+          {view === 'now-playing' && <NowPlayingPage />}
+          {view === 'library' && <LibraryPage />}
+          {view === 'map' && <MapPage />}
+        </main>
+        <AuroraCanvas />
+      </div>
+      <CommandPalette />
+      <SettingsPanel />
+      <QueueDrawer />
+    </div>
   );
 }

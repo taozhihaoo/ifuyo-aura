@@ -12,9 +12,12 @@
     "tokens": "node ../scripts/generate-tokens.mjs"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.13",
     "@tauri-apps/api": "^2.12.1",
+    "@tauri-apps/plugin-dialog": "^2.8.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@eslint/js": "^9.14.0",
