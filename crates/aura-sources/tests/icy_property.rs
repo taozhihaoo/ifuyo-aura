@@ -17,7 +17,6 @@ fn property_icy_audio_fidelity_across_boundaries() {
         let blocks = usize::try_from(rng.next_u64() % 8 + 1).unwrap_or(1);
         let mut audio: Vec<u8> = Vec::new();
         let mut wire: Vec<u8> = Vec::new();
-        let mut expected_meta_count = 0u32;
         for b in 0..blocks {
             let chunk_len = metaint;
             let mut chunk = vec![0u8; chunk_len];
@@ -40,9 +39,6 @@ fn property_icy_audio_fidelity_across_boundaries() {
                 wire.push(u8::try_from(padded / 16).unwrap());
                 wire.extend_from_slice(&meta_text);
                 wire.extend(std::iter::repeat_n(b' ', padded - meta_text.len()));
-                if valid {
-                    expected_meta_count += 1;
-                }
             } else {
                 wire.push(0);
             }
