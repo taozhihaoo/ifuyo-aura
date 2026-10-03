@@ -289,7 +289,7 @@ fn dns_spy_is_active_for_allowed_hosts() {
         Err(std::io::Error::other("spy: no network in tests"))
     }));
     let c = client(cfg);
-    let url = c.validate(&"http://127.0.0.1:1/x").unwrap();
+    let url = c.validate("http://127.0.0.1:1/x").unwrap();
     // 127.0.0.1 是 IP 直连，不走 DNS spy → 连接失败。
     let e = c.get_text(&url, 100).unwrap_err();
     assert!(
