@@ -159,15 +159,17 @@ fn search_10k_records() {
 }
 
 fn parsed_for(title: &str, artist: &str, album: &str) -> aura_library::metadata::ParsedFile {
-    let mut m = aura_library::types::TrackMetadata::default();
-    m.title = Some(title.to_string());
-    m.artist = Some(artist.to_string());
-    m.album = Some(album.to_string());
-    m.duration_frames = Some(2000);
-    m.sample_rate = Some(8000);
-    m.channels = Some(1);
-    m.codec = Some("flac".into());
-    m.container = Some("flac".into());
+    let m = aura_library::types::TrackMetadata {
+        title: Some(title.to_string()),
+        artist: Some(artist.to_string()),
+        album: Some(album.to_string()),
+        duration_frames: Some(2000),
+        sample_rate: Some(8000),
+        channels: Some(1),
+        codec: Some("flac".into()),
+        container: Some("flac".into()),
+        ..Default::default()
+    };
     aura_library::metadata::ParsedFile {
         metadata: m,
         artwork: None,
