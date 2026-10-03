@@ -11,7 +11,6 @@ use aura_cache::error::CacheError;
 use aura_cache::keys::content_key;
 use aura_cache::manager::{CacheConfig, CacheManager, EntryDeclaration};
 use aura_sources::model::CachePolicy;
-use aura_testkit::clock::VirtualClock;
 
 fn decl(ck: &str, policy: CachePolicy) -> EntryDeclaration {
     EntryDeclaration {

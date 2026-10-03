@@ -23,6 +23,12 @@ pub struct Route {
     pub malformed: bool,
     /// `true` = 支持 Range 请求（解析 Range 头并回 206 切片）。
     pub range: bool,
+    /// 请求带 `If-None-Match` 且匹配 `etag` 时回 304（条件请求仿真）。
+    pub cond_304: bool,
+    /// 只在第 `min_request..=max_request` 个全局请求（0 起）匹配
+    /// （重试序列仿真：500→500→ok，§106 确定性）。
+    pub min_request: usize,
+    pub max_request: usize,
 }
 
 impl Route {
@@ -36,6 +42,9 @@ impl Route {
             delay_ms: 0,
             malformed: false,
             range: false,
+            cond_304: false,
+            min_request: 0,
+            max_request: usize::MAX,
         }
     }
 
@@ -62,6 +71,19 @@ impl Route {
             delay_ms: 0,
             malformed: false,
             range: false,
+            cond_304: false,
+            min_request: 0,
+            max_request: usize::MAX,
+        }
+    }
+
+    /// 指定全局请求序号窗口的响应（重试序列仿真）。
+    #[must_use]
+    pub fn at(path: &'static str, status: u16, min_request: usize, max_request: usize) -> Self {
+        Self {
+            min_request,
+            max_request,
+            ..Self::status(path, status)
         }
     }
 
@@ -75,6 +97,33 @@ impl Route {
             delay_ms: 0,
             malformed: false,
             range: false,
+            cond_304: false,
+            min_request: 0,
+            max_request: usize::MAX,
+        }
+    }
+
+    /// 带 ETag/Last-Modified 的可条件请求响应。
+    #[must_use]
+    pub fn ok_validators(
+        path: &'static str,
+        content_type: &str,
+        body: Vec<u8>,
+        etag: &str,
+        last_modified: &str,
+    ) -> Self {
+        Self {
+            headers: vec![
+                ("Content-Type".into(), content_type.into()),
+                ("ETag".into(), etag.into()),
+                ("Last-Modified".into(), last_modified.into()),
+                ("Accept-Ranges".into(), "bytes".into()),
+            ],
+            range: true,
+            cond_304: true,
+            min_request: 0,
+            max_request: usize::MAX,
+            ..Self::ok(path, content_type, body)
         }
     }
 }
@@ -85,6 +134,7 @@ pub struct FakeHttp {
     shutdown: Arc<AtomicBool>,
     requests: Arc<Mutex<Vec<String>>>,
     raw_heads: Arc<Mutex<Vec<String>>>,
+    routes: Arc<Mutex<Vec<Route>>>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -97,7 +147,8 @@ impl FakeHttp {
         let requests: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let raw_heads: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
-        let routes: Arc<Vec<Route>> = Arc::new(routes);
+        let routes: Arc<Mutex<Vec<Route>>> = Arc::new(Mutex::new(routes));
+        let routes2 = Arc::clone(&routes);
         let shutdown2 = Arc::clone(&shutdown);
         let requests2 = Arc::clone(&requests);
         let heads2 = Arc::clone(&raw_heads);
@@ -106,11 +157,12 @@ impl FakeHttp {
             while !shutdown2.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((stream, _)) => {
-                        let routes = Arc::clone(&routes);
+                        let routes3 = Arc::clone(&routes2);
                         let requests = Arc::clone(&requests2);
                         let heads = Arc::clone(&heads2);
                         std::thread::spawn(move || {
-                            handle_conn(stream, &routes, &requests, &heads);
+                            let snapshot: Vec<Route> = routes3.lock().expect("routes lock").clone();
+                            handle_conn(stream, &snapshot, &requests, &heads);
                         });
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -126,8 +178,14 @@ impl FakeHttp {
             shutdown,
             requests,
             raw_heads,
+            routes,
             thread: Some(thread),
         }
+    }
+
+    /// 运行时替换路由（内容变更/ETag 变更仿真）。
+    pub fn set_routes(&self, routes: Vec<Route>) {
+        *self.routes.lock().expect("routes lock") = routes;
     }
 
     /// 收到的原始请求头块（S31 断言请求头用）。
@@ -199,6 +257,11 @@ fn handle_conn(
         .find(|l| l.to_ascii_lowercase().starts_with("range:"))
         .and_then(|l| l.split_once(':'))
         .map(|(_, v)| v.trim().to_string());
+    let if_none_match = text
+        .lines()
+        .find(|l| l.to_ascii_lowercase().starts_with("if-none-match:"))
+        .and_then(|l| l.split_once(':'))
+        .map(|(_, v)| v.trim().trim_matches('"').to_string());
     let request_line = text.lines().next().unwrap_or("");
     let path_full = request_line
         .split_whitespace()
@@ -212,7 +275,15 @@ fn handle_conn(
         .expect("requests lock")
         .push(path_full.clone());
 
-    let Some(route) = routes.iter().find(|r| r.path == path) else {
+    let seq = requests
+        .lock()
+        .expect("requests lock")
+        .len()
+        .saturating_sub(1);
+    let Some(route) = routes
+        .iter()
+        .find(|r| r.path == path && seq >= r.min_request && seq <= r.max_request)
+    else {
         let _ = write_response(
             &mut stream,
             404,
@@ -244,32 +315,38 @@ fn handle_conn(
         }
     }
 
-    // Range 支持（network_stream seek 测试）：`bytes=a-` 切片回 206。
-    if route.range {
-        if let Some(spec) = range_header {
-            if let Some(start) = spec
-                .strip_prefix("bytes=")
-                .and_then(|s| s.split('-').next())
-                .and_then(|s| s.parse::<usize>().ok())
-            {
-                let start = start.min(route.body.len());
-                let slice = &route.body[start..];
-                let head = format!(
-                    "HTTP/1.1 206 Partial Content
-Content-Type: application/octet-stream
-Content-Range: bytes {}-{}/{}
-Content-Length: {}
-Accept-Ranges: bytes
+    serve_route(
+        &mut stream,
+        route,
+        range_header.as_deref(),
+        if_none_match.as_deref(),
+    );
+    let _ = stream.flush();
+}
+
+fn serve_route(
+    stream: &mut TcpStream,
+    route: &Route,
+    range_header: Option<&str>,
+    if_none_match: Option<&str>,
+) {
+    // §40 条件请求：If-None-Match 命中 → 304（无体）。
+    if route.cond_304 {
+        if let (Some(inm), Some(etag)) = (
+            if_none_match,
+            route
+                .headers
+                .iter()
+                .find(|(k, _)| k == "ETag")
+                .map(|(_, v)| v.as_str()),
+        ) {
+            if inm == etag.trim_matches('"') {
+                let _ = stream.write_all(
+                    b"HTTP/1.1 304 Not Modified
 Connection: close
 
 ",
-                    start,
-                    route.body.len().saturating_sub(1),
-                    route.body.len(),
-                    slice.len()
                 );
-                let _ = stream.write_all(head.as_bytes());
-                let _ = stream.write_all(slice);
                 let _ = stream.flush();
                 let _ = stream.shutdown(std::net::Shutdown::Write);
                 return;
@@ -277,8 +354,39 @@ Connection: close
         }
     }
 
+    // Range 支持（§33）：`bytes=start-end`（双端）或 `bytes=start-`（到尾）。
+    if route.range {
+        if let Some(spec) = range_header {
+            if let Some(spec) = spec.strip_prefix("bytes=") {
+                let (s_part, e_part) = spec.split_once('-').unwrap_or((spec, ""));
+                let start = s_part.trim().parse::<usize>().ok();
+                let end_req = e_part.trim().parse::<usize>().ok();
+                if let Some(start) = start {
+                    let start = start.min(route.body.len());
+                    let end = end_req
+                        .map(|e| (e + 1).min(route.body.len()))
+                        .unwrap_or(route.body.len())
+                        .max(start);
+                    let slice = &route.body[start..end];
+                    let head = format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Type: application/octet-stream\r\nContent-Range: bytes {}-{}/{}\r\nContent-Length: {}\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n",
+                        start,
+                        end.saturating_sub(1),
+                        route.body.len(),
+                        slice.len()
+                    );
+                    let _ = stream.write_all(head.as_bytes());
+                    let _ = stream.write_all(slice);
+                    let _ = stream.flush();
+                    let _ = stream.shutdown(std::net::Shutdown::Write);
+                    return;
+                }
+            }
+        }
+    }
+
     let _ = write_response(
-        &mut stream,
+        stream,
         route.status,
         &route.headers,
         &route.body,

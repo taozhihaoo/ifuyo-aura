@@ -17,6 +17,17 @@ use crate::error::{short, Result, SourceError};
 use crate::platform_block::PlatformBlocklist;
 use crate::url_policy::{validate_url, NetworkPolicy};
 
+/// 干净字节流抽象（§122）：M5 cache 层与 HTTP 客户端之间的最小边界。
+/// aura-cache 只见本 trait，不直接依赖 reqwest Response 类型。
+pub mod byte_stream {
+    use std::io::Read;
+
+    /// 可读、可发送、可取消（Drop 即断连）的网络字节源。
+    pub trait ByteStream: Read + Send {}
+
+    impl ByteStream for reqwest::blocking::Response {}
+}
+
 /// 描述性 UA（§20）：不伪装浏览器、不为空。
 pub const USER_AGENT: &str = concat!("ifuyo Aura/", env!("CARGO_PKG_VERSION"));
 
@@ -235,6 +246,36 @@ impl HttpClient {
     /// 网络/状态码/重定向策略拒绝。
     pub fn get_stream(&self, url: &url::Url) -> Result<reqwest::blocking::Response> {
         self.get_stream_with_headers(url, &[])
+    }
+
+    /// GET 流（装箱字节源；M5 cache 层经此消费响应，§122：
+    /// aura-cache 不直接依赖 reqwest Response 类型）。
+    ///
+    /// # Errors
+    /// 同 [`HttpClient::get_stream`]。
+    pub fn get_stream_boxed(
+        &self,
+        url: &url::Url,
+        headers: &[(&str, String)],
+    ) -> Result<Box<dyn byte_stream::ByteStream>> {
+        let resp = self.get_stream_with_headers(url, headers)?;
+        Ok(Box::new(resp) as Box<dyn byte_stream::ByteStream>)
+    }
+
+    /// 带头的 metadata GET（条件 revalidation 用，§40–§42）。
+    ///
+    /// # Errors
+    /// 同 [`HttpClient::get_stream`]。
+    pub fn metadata_get_with_headers(
+        &self,
+        url: &url::Url,
+        headers: &[(&str, String)],
+    ) -> Result<reqwest::blocking::RequestBuilder> {
+        let mut req = self.metadata.get(url.clone());
+        for (k, v) in headers {
+            req = req.header(*k, v);
+        }
+        Ok(req)
     }
 
     /// 同 [`HttpClient::get_stream`]，附加请求头（如 Range、Icy-MetaData）。

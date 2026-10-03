@@ -255,6 +255,49 @@ impl CacheManager {
             })
     }
 
+    /// entry 快照（reader revalidation 用）。
+    #[must_use]
+    pub fn entry_snapshot(&self, content_key: &str) -> Option<crate::db::CacheEntryRow> {
+        self.db
+            .lock()
+            .expect("db lock")
+            .get_entry(content_key)
+            .unwrap_or(None)
+    }
+
+    /// §43：内容变更 → 作废该 key 全部 chunks（文件 + 行），保留 entry
+    /// 行与 pin（重填后自然恢复）。
+    pub fn invalidate_content(&self, content_key: &str) {
+        let rows = self
+            .db
+            .lock()
+            .expect("db lock")
+            .list_chunks(content_key)
+            .unwrap_or_default();
+        let ndb = self.db.lock().expect("db lock");
+        for r in &rows {
+            let _ = ndb.delete_chunk(content_key, r.chunk_index);
+        }
+        drop(ndb);
+        let _ = self.store.remove_entry_files(content_key);
+    }
+
+    /// 更新 entry 的 validator（revalidation 后）。
+    pub fn update_validators(
+        &self,
+        content_key: &str,
+        etag: Option<String>,
+        last_modified: Option<String>,
+    ) {
+        if let Ok(tx) = self.db.lock().expect("db lock").transaction() {
+            let _ = tx.execute(
+                "UPDATE cache_entries SET etag = ?2, last_modified = ?3 WHERE content_key = ?1",
+                rusqlite::params![content_key, etag, last_modified],
+            );
+            let _ = tx.commit();
+        }
+    }
+
     /// §7 统一写入门。
     ///
     /// - `Forbidden` → `PolicyViolation`（任何执行路径零持久写，§6）；
