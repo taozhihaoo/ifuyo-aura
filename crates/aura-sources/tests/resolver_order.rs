@@ -30,10 +30,12 @@ fn allow_private(mut cfg: HttpConfig) -> HttpConfig {
 /// Seekable + Finite + CachePolicy::Allowed。
 #[test]
 fn local_file_resolution() {
-    let mut cfg = HttpConfig::default();
-    cfg.dns_override = Some(Arc::new(|_h| {
-        Err(std::io::Error::other("no network for local resolution"))
-    }));
+    let cfg = HttpConfig {
+        dns_override: Some(Arc::new(|_h| {
+            Err(std::io::Error::other("no network for local resolution"))
+        })),
+        ..HttpConfig::default()
+    };
     let http = HttpClient::new(cfg, Arc::new(PlatformBlocklist::embedded().unwrap())).unwrap();
     let path = fixtures("sine_8k.flac");
     let r = resolve_input(
@@ -184,6 +186,7 @@ fn http_probe_distinguishes_radio_and_direct() {
             body: radio_body,
             delay_ms: 0,
             malformed: false,
+            range: false,
         },
         common::Route {
             path: "/file.mp3",
@@ -196,6 +199,7 @@ fn http_probe_distinguishes_radio_and_direct() {
             body: vec![0x55u8; 64],
             delay_ms: 0,
             malformed: false,
+            range: false,
         },
     ]);
     let http = HttpClient::new(

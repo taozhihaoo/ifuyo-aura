@@ -189,6 +189,7 @@ fn metadata_timeout() {
         body: b"late".to_vec(),
         delay_ms: 3000,
         malformed: false,
+        range: false,
     }]);
     let cfg = allow_private(HttpConfig {
         metadata_timeout: Duration::from_millis(300),
@@ -227,6 +228,7 @@ fn malformed_response_no_panic() {
         body: Vec::new(),
         delay_ms: 0,
         malformed: true,
+        range: false,
     }]);
     let c = client(allow_private(HttpConfig::default()));
     let url = c.validate(&srv.url("/junk")).unwrap();

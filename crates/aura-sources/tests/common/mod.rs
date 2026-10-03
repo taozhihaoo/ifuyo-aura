@@ -20,6 +20,8 @@ pub struct Route {
     pub delay_ms: u64,
     /// `true` = 返回畸形响应字节（不是合法 HTTP）。
     pub malformed: bool,
+    /// `true` = 支持 Range 请求（解析 Range 头并回 206 切片）。
+    pub range: bool,
 }
 
 impl Route {
@@ -32,6 +34,20 @@ impl Route {
             body,
             delay_ms: 0,
             malformed: false,
+            range: false,
+        }
+    }
+
+    /// 带 Accept-Ranges/Content-Length 的可 seek 音频响应。
+    #[must_use]
+    pub fn ok_seekable(path: &'static str, content_type: &str, body: Vec<u8>) -> Self {
+        Self {
+            headers: vec![
+                ("Content-Type".into(), content_type.into()),
+                ("Accept-Ranges".into(), "bytes".into()),
+            ],
+            range: true,
+            ..Self::ok(path, content_type, body)
         }
     }
 
@@ -44,6 +60,7 @@ impl Route {
             body: Vec::new(),
             delay_ms: 0,
             malformed: false,
+            range: false,
         }
     }
 
@@ -56,6 +73,7 @@ impl Route {
             body: b"error".to_vec(),
             delay_ms: 0,
             malformed: false,
+            range: false,
         }
     }
 }
@@ -155,6 +173,11 @@ fn handle_conn(mut stream: TcpStream, routes: &[Route], requests: &Mutex<Vec<Str
         }
     }
     let text = String::from_utf8_lossy(&buf);
+    let range_header = text
+        .lines()
+        .find(|l| l.to_ascii_lowercase().starts_with("range:"))
+        .and_then(|l| l.split_once(':'))
+        .map(|(_, v)| v.trim().to_string());
     let request_line = text.lines().next().unwrap_or("");
     let path = request_line
         .split_whitespace()
@@ -192,6 +215,39 @@ fn handle_conn(mut stream: TcpStream, routes: &[Route], requests: &Mutex<Vec<Str
                     || e.kind() == std::io::ErrorKind::TimedOut => {}
             Err(_) => return,
             Ok(_) => {} // 忽略额外数据
+        }
+    }
+
+    // Range 支持（network_stream seek 测试）：`bytes=a-` 切片回 206。
+    if route.range {
+        if let Some(spec) = range_header {
+            if let Some(start) = spec
+                .strip_prefix("bytes=")
+                .and_then(|s| s.split('-').next())
+                .and_then(|s| s.parse::<usize>().ok())
+            {
+                let start = start.min(route.body.len());
+                let slice = &route.body[start..];
+                let head = format!(
+                    "HTTP/1.1 206 Partial Content
+Content-Type: application/octet-stream
+Content-Range: bytes {}-{}/{}
+Content-Length: {}
+Accept-Ranges: bytes
+Connection: close
+
+",
+                    start,
+                    route.body.len().saturating_sub(1),
+                    route.body.len(),
+                    slice.len()
+                );
+                let _ = stream.write_all(head.as_bytes());
+                let _ = stream.write_all(slice);
+                let _ = stream.flush();
+                let _ = stream.shutdown(std::net::Shutdown::Write);
+                return;
+            }
         }
     }
 

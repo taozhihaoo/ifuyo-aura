@@ -234,11 +234,23 @@ impl HttpClient {
     /// # Errors
     /// 网络/状态码/重定向策略拒绝。
     pub fn get_stream(&self, url: &url::Url) -> Result<reqwest::blocking::Response> {
-        let resp = self
-            .streaming
-            .get(url.clone())
-            .send()
-            .map_err(SourceError::from)?;
+        self.get_stream_with_headers(url, &[])
+    }
+
+    /// 同 [`HttpClient::get_stream`]，附加请求头（如 Range、Icy-MetaData）。
+    ///
+    /// # Errors
+    /// 同 [`HttpClient::get_stream`]。
+    pub fn get_stream_with_headers(
+        &self,
+        url: &url::Url,
+        headers: &[(&str, String)],
+    ) -> Result<reqwest::blocking::Response> {
+        let mut req = self.streaming.get(url.clone());
+        for (k, v) in headers {
+            req = req.header(*k, v);
+        }
+        let resp = req.send().map_err(SourceError::from)?;
         check_status(resp.status())?;
         Ok(resp)
     }
