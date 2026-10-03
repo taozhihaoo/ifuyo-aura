@@ -16,7 +16,7 @@ fn crossfade_engine(seconds: f64) -> (Engine, aura_core::AudioCommandQueue) {
     .unwrap();
     engine.set_crossfade_seconds(seconds);
     let rate = u64::from(RATE);
-    engine.load_track(Box::new(SyntheticDecoder::new(
+    let _ = engine.load_track(Box::new(SyntheticDecoder::new(
         RATE,
         2,
         rate,
@@ -42,7 +42,7 @@ fn crossfade_engine(seconds: f64) -> (Engine, aura_core::AudioCommandQueue) {
 
 fn render_two_tracks(engine: &mut Engine, poster: &mut aura_core::AudioCommandQueue) {
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(2 * u64::from(RATE));
+    let _ = engine.render_for_frames(2 * u64::from(RATE));
 }
 
 #[test]
@@ -84,7 +84,7 @@ fn crossfade_gain_monotonic_no_nan() {
     )
     .unwrap();
     engine.set_crossfade_seconds(6.0);
-    engine.load_track(Box::new(SyntheticDecoder::new(
+    let _ = engine.load_track(Box::new(SyntheticDecoder::new(
         RATE,
         2,
         rate,
@@ -99,8 +99,8 @@ fn crossfade_gain_monotonic_no_nan() {
         Waveform::Dc(-0.5),
     )));
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(rate / 2);
-    engine.render_for_frames(rate);
+    let _ = engine.render_for_frames(rate / 2);
+    let _ = engine.render_for_frames(rate);
     let cap = engine.capture();
     assert!(cap.iter().all(|s| s.is_finite()), "无 NaN/Inf");
 
@@ -122,7 +122,7 @@ fn crossfade_deterministic() {
     let run = || {
         let (mut engine, mut poster) = crossfade_engine(6.0);
         poster.post(AudioCommand::Play).unwrap();
-        engine.render_for_frames(2 * 48_000);
+        let _ = engine.render_for_frames(2 * 48_000);
         engine.capture().to_vec()
     };
     assert_eq!(run(), run(), "同输入必须产出相同 PCM（§17）");

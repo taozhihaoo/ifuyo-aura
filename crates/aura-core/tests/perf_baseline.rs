@@ -105,10 +105,10 @@ fn perf_baselines() {
             .unwrap();
         poster.post(aura_core::AudioCommand::Play).unwrap();
         // 预热
-        engine.render_for_frames(8192);
+        let _ = engine.render_for_frames(8192);
         let frames_total = 48_000u64 * 60; // 等效 60 秒
         let t = Instant::now();
-        engine.render_for_frames(frames_total);
+        let _ = engine.render_for_frames(frames_total);
         let el = t.elapsed();
         println!(
             "render: {frames_total} frames in {el:?} => {:.1}× real-time",
@@ -145,7 +145,7 @@ fn perf_m2_full_dsp_callback() {
         true,
     );
     engine.set_eq_preset(&aura_core::dsp::EQ_PRESETS[1]);
-    engine.load_track(Box::new(SyntheticDecoder::new(
+    let _ = engine.load_track(Box::new(SyntheticDecoder::new(
         RATE,
         2,
         RATE64 * 100,
@@ -160,12 +160,12 @@ fn perf_m2_full_dsp_callback() {
         .post(AudioCommand::SetVolume { volume: 0.8 })
         .unwrap();
     // 预热
-    engine.render_for_frames(8192);
+    let _ = engine.render_for_frames(8192);
     let chunks = 5000usize;
     let mut times = Vec::with_capacity(chunks);
     for _ in 0..chunks {
         let t = std::time::Instant::now();
-        engine.render_for_frames(1024);
+        let _ = engine.render_for_frames(1024);
         times.push(t.elapsed());
     }
     times.sort();

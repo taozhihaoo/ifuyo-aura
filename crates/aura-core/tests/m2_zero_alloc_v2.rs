@@ -69,7 +69,7 @@ static A: CountingAlloc = CountingAlloc;
 #[test]
 fn full_dsp_callback_zero_allocation() {
     let (mut engine, mut poster) = full_dsp_engine();
-    engine.load_track(sine_track(440.0, RATE64 * 10));
+    let _ = engine.load_track(sine_track(440.0, RATE64 * 10));
     engine.reserve_capture(4096);
     poster.post(AudioCommand::Play).unwrap();
     poster
@@ -87,7 +87,7 @@ fn full_dsp_callback_zero_allocation() {
     // 同形状预热块（触发 stage 内一次性分配，如 EQ 系数首次加载）
     // block 缓冲在 warm 计数**之前**分配（度量窗口内不允许任何分配）
     let mut block = vec![0.0f32; 1024 * 2];
-    engine.render_block_only(&mut block);
+    let _ = engine.render_block_only(&mut block);
     let warm = ALLOC_COUNT.load(Ordering::Relaxed);
 
     // 度量窗口：**纯回调路径**（stage.render：pop → 净化 → volume 平滑 →

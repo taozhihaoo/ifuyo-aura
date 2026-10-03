@@ -59,7 +59,7 @@ fn callback_render_path_is_allocation_free() {
         .unwrap();
 
     // 预热：触发所有一次性分配（捕获缓冲、解码缓冲、映射缓冲等）
-    engine.render_for_frames(4096);
+    let _ = engine.render_for_frames(4096);
     engine.clear_capture();
 
     // 度量边界（D-026）：M1 单线程引擎中 decode/fill 属解码面（分配允许），

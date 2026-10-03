@@ -67,10 +67,7 @@ impl CpalOutput {
             .map_err(|_| AudioError::OutputError("no default output config"))?;
 
         let config = supported.config();
-        let channels = Channels::new(
-            u16::try_from(config.channels)
-                .map_err(|_| AudioError::InvalidParameter("device channel count out of range"))?,
-        )?;
+        let channels = Channels::new(config.channels)?;
         let sample_rate = SampleRate::new(config.sample_rate)?;
         let format = AudioFormat::new(sample_rate, channels);
 

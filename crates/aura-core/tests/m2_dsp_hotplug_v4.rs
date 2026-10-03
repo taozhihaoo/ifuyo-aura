@@ -18,7 +18,7 @@ fn engine_48k() -> (Engine, aura_core::AudioCommandQueue) {
 }
 
 fn load_dc_track(engine: &mut Engine, level: f32) {
-    engine.load_track(Box::new(SyntheticDecoder::new(
+    let _ = engine.load_track(Box::new(SyntheticDecoder::new(
         RATE,
         2,
         RATE64,
@@ -43,7 +43,7 @@ fn loudness_disabled_is_unity() {
     );
     load_dc_track(&mut engine, 0.25);
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(4_800);
+    let _ = engine.render_for_frames(4_800);
     let cap = engine.capture();
     assert!(
         (cap[0] - 0.25).abs() < 1e-6,
@@ -68,7 +68,7 @@ fn loudness_minus16_unity_quieter_boosts_louder_attenuates() {
         );
         load_dc_track(&mut engine, 0.25);
         poster.post(AudioCommand::Play).unwrap();
-        engine.render_for_frames(4_800);
+        let _ = engine.render_for_frames(4_800);
         let got = engine.capture()[0];
         let expect = 0.25 * 10.0f32.powf(expect_db as f32 / 20.0);
         assert!(
@@ -92,7 +92,7 @@ fn loudness_peak_safety_caps_gain() {
     );
     load_dc_track(&mut engine, 0.25);
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(4_800);
+    let _ = engine.render_for_frames(4_800);
     let got = engine.capture()[0];
     assert!(got.is_finite() && got.abs() <= 0.9, "峰值安全: got {got}");
 }
@@ -104,7 +104,7 @@ fn loudness_missing_metadata_is_unity() {
     // 默认 missing（§25：不猜测、gain=1.0）
     load_dc_track(&mut engine, 0.25);
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(4_800);
+    let _ = engine.render_for_frames(4_800);
     assert!((engine.capture()[0] - 0.25).abs() < 1e-6);
 }
 
@@ -117,14 +117,14 @@ fn eq_flat_passthrough_and_preset_effect() {
     load_dc_track(&mut engine, 0.25);
     engine.set_eq_preset(&aura_core::dsp::EQ_PRESETS[0]);
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(9_600);
+    let _ = engine.render_for_frames(9_600);
     let flat_out = engine.capture()[9_000];
     assert!((flat_out - 0.25).abs() < 1e-3, "Flat DC 直通: {flat_out}");
 
     // Bass Boost（31Hz +6dB）：以 31Hz 正弦验证低频增益生效
     //（DC 频谱在 0Hz，peak band 对其增益为 0——物理正确，不能用 DC 验证）
     engine.clear_capture();
-    engine.load_track(Box::new(SyntheticDecoder::new(
+    let _ = engine.load_track(Box::new(SyntheticDecoder::new(
         RATE,
         2,
         RATE64,
@@ -137,7 +137,7 @@ fn eq_flat_passthrough_and_preset_effect() {
     // load_track 后状态回到 Stopped：显式恢复播放（否则输出静音）
     poster.post(AudioCommand::Play).unwrap();
     engine.set_eq_preset(&aura_core::dsp::EQ_PRESETS[1]);
-    engine.render_for_frames(28_800);
+    let _ = engine.render_for_frames(28_800);
     let boosted_max = engine
         .capture()
         .chunks_exact(2)
@@ -156,7 +156,7 @@ fn eq_extreme_gains_stable_no_explosion() {
         b.gain_db = 12.0;
     }
     engine.set_eq_bands(&bands);
-    engine.load_track(Box::new(SyntheticDecoder::new(
+    let _ = engine.load_track(Box::new(SyntheticDecoder::new(
         RATE,
         2,
         RATE64,
@@ -167,7 +167,7 @@ fn eq_extreme_gains_stable_no_explosion() {
         },
     )));
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(RATE64);
+    let _ = engine.render_for_frames(RATE64);
     let cap = engine.capture();
     assert!(cap.iter().all(|s| s.is_finite()), "极端增益下不得 NaN/Inf");
     let max = cap.iter().fold(0.0f32, |a, b| a.max(b.abs()));
@@ -182,7 +182,7 @@ fn eq_silence_and_impulse() {
                                                           // 静音输入：输出静音
     load_dc_track(&mut engine, 0.0);
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(9_600);
+    let _ = engine.render_for_frames(9_600);
     assert!(
         engine.capture().iter().all(|s| s.abs() < 1e-9),
         "静音进静音出"
@@ -190,14 +190,14 @@ fn eq_silence_and_impulse() {
 
     // impulse：有限输出
     engine.clear_capture();
-    engine.load_track(Box::new(SyntheticDecoder::new(
+    let _ = engine.load_track(Box::new(SyntheticDecoder::new(
         RATE,
         2,
         RATE64,
         512,
         Waveform::Impulse,
     )));
-    engine.render_for_frames(2_400);
+    let _ = engine.render_for_frames(2_400);
     assert!(engine.capture().iter().all(|s| s.is_finite()));
 }
 
@@ -206,7 +206,7 @@ fn eq_silence_and_impulse() {
 #[test]
 fn hotplug_remove_restores_position_no_autoplay() {
     let (mut engine, mut poster) = engine_48k();
-    engine.load_track(Box::new(SyntheticDecoder::new(
+    let _ = engine.load_track(Box::new(SyntheticDecoder::new(
         RATE,
         2,
         RATE64 * 4,
@@ -214,7 +214,7 @@ fn hotplug_remove_restores_position_no_autoplay() {
         Waveform::RampFrom(0),
     )));
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(9_600);
+    let _ = engine.render_for_frames(9_600);
     let pos_before = engine.position_frames();
     assert_eq!(pos_before, 9_600);
 
@@ -225,7 +225,7 @@ fn hotplug_remove_restores_position_no_autoplay() {
         aura_core::output::device_state::OutputDeviceState::Removed
     );
     assert_eq!(engine.state(), aura_core::PlaybackState::Paused);
-    engine.render_for_frames(9_600);
+    let _ = engine.render_for_frames(9_600);
     assert_eq!(engine.position_frames(), pos_before, "暂停期间位置不增长");
 
     // 设备恢复（不同采样率）：可恢复状态、不自动播放（§28/§31）
@@ -243,14 +243,14 @@ fn hotplug_remove_restores_position_no_autoplay() {
 
     // 用户显式恢复播放
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(2_400);
+    let _ = engine.render_for_frames(2_400);
     assert_eq!(engine.position_frames(), pos_before + 2_400);
 }
 
 #[test]
 fn hotplug_default_device_change_and_error_no_panic() {
     let (mut engine, mut poster) = engine_48k();
-    engine.load_track(Box::new(SyntheticDecoder::new(
+    let _ = engine.load_track(Box::new(SyntheticDecoder::new(
         RATE,
         2,
         RATE64 * 4,
@@ -258,7 +258,7 @@ fn hotplug_default_device_change_and_error_no_panic() {
         Waveform::RampFrom(0),
     )));
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(4_800);
+    let _ = engine.render_for_frames(4_800);
 
     // 默认设备变化 → 同恢复路径（§29）
     engine.default_device_changed(SampleRate::new(96_000).unwrap(), Channels::new(2).unwrap());
@@ -272,7 +272,7 @@ fn hotplug_default_device_change_and_error_no_panic() {
         engine.report_device_error();
     }
     assert_eq!(engine.device_errors(), 5);
-    engine.render_for_frames(2_400);
+    let _ = engine.render_for_frames(2_400);
     assert!(
         engine.track_frame_ranges().len() <= 1,
         "设备错误不得触发曲目切换"

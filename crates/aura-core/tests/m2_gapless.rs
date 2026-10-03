@@ -6,6 +6,7 @@ use aura_core::{AudioCommand, Channels, Engine, SampleRate};
 use common::{SyntheticDecoder, Waveform};
 
 const RATE: u32 = 48_000;
+#[allow(dead_code)]
 const CHUNK: usize = 128;
 
 fn engine_48k() -> (Engine, aura_core::AudioCommandQueue) {
@@ -27,10 +28,10 @@ fn m2_gapless_total_frames_and_continuity() {
     let n = 24_000u64; // 每轨 0.5s，两轨
     let (mut engine, mut poster) = engine_48k();
     engine.set_limiter_enabled(false); // D-034：ramp 溯源需线性直通
-    engine.load_track(Box::new(ramp_track(0, n)));
+    let _ = engine.load_track(Box::new(ramp_track(0, n)));
     engine.preload_next(Box::new(ramp_track(1, n)));
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(2 * n);
+    let _ = engine.render_for_frames(2 * n);
     let cap = engine.capture();
 
     assert_eq!(
@@ -66,7 +67,7 @@ fn m2_gapless_impulse_boundary_adjacent() {
     // Track A：末帧 impulse；Track B：首帧 impulse → 两个 impulse 恰好相邻
     let n = 2_000u64;
     let (mut engine, mut poster) = engine_48k();
-    engine.load_track(Box::new(SyntheticDecoder::new(
+    let _ = engine.load_track(Box::new(SyntheticDecoder::new(
         RATE,
         2,
         n,
@@ -81,7 +82,7 @@ fn m2_gapless_impulse_boundary_adjacent() {
         Waveform::Impulse,
     )));
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(2 * n);
+    let _ = engine.render_for_frames(2 * n);
     let cap = engine.capture();
 
     let frames: Vec<f32> = cap.chunks_exact(2).map(|c| c[0]).collect();
@@ -104,16 +105,16 @@ fn m2_gapless_repeated_transitions_a_b_a_b() {
     // 真实使用模式：每条曲目临近结束时预装载下一条（一次一个 next）。
     let n = 12_000u64;
     let (mut engine, mut poster) = engine_48k();
-    engine.load_track(Box::new(ramp_track(0, n)));
+    let _ = engine.load_track(Box::new(ramp_track(0, n)));
     poster.post(AudioCommand::Play).unwrap();
 
     for k in 1..=5u64 {
         engine.preload_next(Box::new(ramp_track(k, n)));
         // 播完当前曲目（进入下一轨）
-        engine.render_for_frames(n);
+        let _ = engine.render_for_frames(n);
         engine.clear_capture();
     }
-    engine.render_for_frames(n);
+    let _ = engine.render_for_frames(n);
     engine.clear_capture();
 
     // 重新渲染整个六轨序列做逐帧校验（第二轮引擎状态一致即可）：
@@ -132,11 +133,11 @@ fn m2_gapless_generation_integrity() {
     // 自然过渡不 bump generation（无缝语义）；无 underrun；无静音插入
     let n = 16_000u64;
     let (mut engine, mut poster) = engine_48k();
-    engine.load_track(Box::new(ramp_track(0, n)));
+    let _ = engine.load_track(Box::new(ramp_track(0, n)));
     let gen_before = engine.generation();
     engine.preload_next(Box::new(ramp_track(1, n)));
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(2 * n);
+    let _ = engine.render_for_frames(2 * n);
 
     assert_eq!(
         engine.generation().get(),
@@ -161,9 +162,9 @@ fn m2_gapless_no_preload_still_reaches_eof() {
     // （M1 设计 D：位置含静音帧，输出只允许静音、不得残留数据）
     let n = 8_000u64;
     let (mut engine, mut poster) = engine_48k();
-    engine.load_track(Box::new(ramp_track(0, n)));
+    let _ = engine.load_track(Box::new(ramp_track(0, n)));
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(4 * n);
+    let _ = engine.render_for_frames(4 * n);
     let frames: Vec<f32> = engine.capture().chunks_exact(2).map(|c| c[0]).collect();
     assert!(
         frames[..n as usize].iter().any(|s| *s != 0.0),

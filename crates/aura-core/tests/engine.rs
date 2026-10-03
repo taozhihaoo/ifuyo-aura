@@ -44,7 +44,7 @@ fn deterministic_pipeline_identical_output() {
         poster
             .post(AudioCommand::SetVolume { volume: 0.8 })
             .unwrap();
-        engine.render_for_frames(CHUNK as u64 * 40);
+        let _ = engine.render_for_frames(CHUNK as u64 * 40);
         engine.capture().to_vec()
     };
     let a = run();
@@ -58,7 +58,7 @@ fn deterministic_pipeline_identical_output() {
 #[test]
 fn stopped_renders_silence_and_position_stays() {
     let (mut engine, _poster) = engine_with(Waveform::Ramp, u64::from(RATE) * 2);
-    engine.render_for_frames(CHUNK as u64 * 4);
+    let _ = engine.render_for_frames(CHUNK as u64 * 4);
     assert!(
         engine.capture().iter().all(|s| *s == 0.0),
         "Stopped 必须输出静音"
@@ -79,7 +79,7 @@ fn play_pause_stop_state_machine() {
 
     // Play：位置前进、内容非静音
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(CHUNK as u64 * 4);
+    let _ = engine.render_for_frames(CHUNK as u64 * 4);
     assert_eq!(engine.state(), PlaybackState::Playing);
     assert_eq!(engine.position_frames(), (CHUNK * 4) as u64);
     assert!(engine.capture().iter().any(|s| s.abs() > 0.1));
@@ -87,7 +87,7 @@ fn play_pause_stop_state_machine() {
     // Pause：位置冻结、静音（先清掉 Play 阶段的捕获）
     poster.post(AudioCommand::Pause).unwrap();
     engine.clear_capture();
-    engine.render_for_frames(CHUNK as u64 * 4);
+    let _ = engine.render_for_frames(CHUNK as u64 * 4);
     assert_eq!(engine.state(), PlaybackState::Paused);
     assert_eq!(
         engine.position_frames(),
@@ -99,13 +99,13 @@ fn play_pause_stop_state_machine() {
     // Resume：从暂停处继续
     poster.post(AudioCommand::Play).unwrap();
     engine.clear_capture();
-    engine.render_for_frames(CHUNK as u64 * 4);
+    let _ = engine.render_for_frames(CHUNK as u64 * 4);
     assert_eq!(engine.position_frames(), (CHUNK * 8) as u64);
 
     // Stop：位置归零（先清掉 Resume 阶段的捕获）
     poster.post(AudioCommand::Stop).unwrap();
     engine.clear_capture();
-    engine.render_for_frames(CHUNK as u64 * 2);
+    let _ = engine.render_for_frames(CHUNK as u64 * 2);
     assert_eq!(engine.state(), PlaybackState::Stopped);
     assert_eq!(engine.position_frames(), 0, "Stop 后位置归零（D-023）");
     assert!(engine.capture().iter().all(|s| *s == 0.0));
@@ -120,7 +120,7 @@ fn seek_provenance_no_stale_generation() {
     engine.set_limiter_enabled(false);
 
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(1_000);
+    let _ = engine.render_for_frames(1_000);
     // gen1：ramp 0..999
     assert_eq!(
         &engine.capture()[..CHUNK],
@@ -137,7 +137,7 @@ fn seek_provenance_no_stale_generation() {
     // seek 到 20000：新 generation；旧数据永不输出
     poster.post(AudioCommand::Seek { frame: 20_000 }).unwrap();
     engine.clear_capture();
-    engine.render_for_frames(3_000);
+    let _ = engine.render_for_frames(3_000);
     let cap = engine.capture();
     assert_eq!(cap.len(), 3_000 * 2);
     // 不变量（§21–22 核心要求）：
@@ -176,7 +176,7 @@ fn underrun_outputs_silence_and_counts() {
     // 480 帧的小音轨：耗尽后必然 underrun
     let (mut engine, mut poster) = engine_with(Waveform::Ramp, 480);
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(4_800);
+    let _ = engine.render_for_frames(4_800);
     assert!(engine.underruns() >= 1, "耗尽后必须计 underrun");
     // ramp 只覆盖前 480 帧（数据耗尽处起为静音）
     let cap = engine.capture();
@@ -195,7 +195,7 @@ fn volume_smoothing_no_jump_and_repeatable() {
         let (mut engine, mut poster) = engine_with(Waveform::Dc(1.0), u64::from(RATE) * 4);
         poster_fn(&mut poster);
         poster.post(AudioCommand::Play).unwrap();
-        engine.render_for_frames(CHUNK as u64 * 12);
+        let _ = engine.render_for_frames(CHUNK as u64 * 12);
         engine.capture().to_vec()
     };
 
@@ -235,7 +235,7 @@ fn invalid_commands_are_counted_not_panicking() {
         .unwrap(); // 非有限 → 非法
     poster.post(AudioCommand::Play).unwrap();
     poster.post(AudioCommand::Play).unwrap(); // 重复 Play → 安全 no-op
-    engine.render_for_frames(CHUNK as u64);
+    let _ = engine.render_for_frames(CHUNK as u64);
     assert!(engine.invalid_commands() >= 3, "非法命令必须被计数"); /* NaN + -1.0 + Inf */
     assert_eq!(engine.invalid_commands(), 3);
     assert_eq!(engine.state(), PlaybackState::Playing);
@@ -264,7 +264,7 @@ fn resampled_pipeline_mono_44k_to_stereo_48k() {
         .unwrap();
     engine.reserve_capture(48_000 * 2);
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(24_000);
+    let _ = engine.render_for_frames(24_000);
     let cap = engine.capture();
     assert_eq!(cap.len(), 24_000 * 2);
     assert!(
@@ -296,7 +296,7 @@ fn resampled_pipeline_mono_44k_to_stereo_48k() {
 fn non_finite_pcm_is_sanitized() {
     let (mut engine, mut poster) = engine_with(Waveform::NonFinite, u64::from(RATE));
     poster.post(AudioCommand::Play).unwrap();
-    engine.render_for_frames(CHUNK as u64 * 2);
+    let _ = engine.render_for_frames(CHUNK as u64 * 2);
     assert!(
         engine.capture().iter().all(|s| s.is_finite()),
         "输出不得包含 NaN/Inf（§37：确定性替换为 0）"
