@@ -50,10 +50,16 @@ impl Env {
     }
 
     /// 扫描收尾（模拟整轮扫描后未见路径停用）。
+    /// seen 与存储路径同形：canonicalize（与 scanner 走 canonical root 一致）。
     fn sweep(&mut self, seen: &[PathBuf], now_ms: i64) -> u64 {
         let seen: Vec<String> = seen
             .iter()
-            .map(|p| p.to_string_lossy().into_owned())
+            .map(|p| {
+                std::fs::canonicalize(p)
+                    .unwrap_or_else(|_| p.to_path_buf())
+                    .to_string_lossy()
+                    .into_owned()
+            })
             .collect();
         let tx = self.db.transaction().unwrap();
         let n = repo::mark_missing(&tx, self.root_id, &seen, now_ms).unwrap();
