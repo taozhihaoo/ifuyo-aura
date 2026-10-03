@@ -19,6 +19,7 @@
 use std::sync::atomic::Ordering;
 
 use crate::audio::buffer::{ring_buffer, ConsumerHandle, ProducerHandle};
+use crate::audio::crossfade::crossfade_frames;
 use crate::decoder::pcm::map_channels_into;
 use crate::decoder::Decoder;
 use crate::engine::command::AudioCommandQueue;
@@ -28,11 +29,23 @@ use crate::output::SharedOutputState;
 use crate::resampler::Resampler;
 use crate::track::TrackFrameRange;
 
-use crate::types::{AudioCommand, Channels, Generation, PlaybackState, SampleRate, Volume};
+use crate::types::{
+    AudioCommand, AudioFormat, Channels, Generation, PlaybackState, SampleRate, Volume,
+};
 
 /// 解码填充的目标块（帧）。
 /// gapless 预解码窗口默认值：3 秒 × 48kHz（M2 §6）。
 pub const DEFAULT_PRELOAD_WINDOW_FRAMES: u64 = 3 * 48_000;
+
+/// 曲目过渡状态（M2 §47）：Normal = gapless 单管线；Crossfading = 双管线混叠。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransitionState {
+    Normal,
+    Crossfading { total_frames: u64, done_frames: u64 },
+}
+
+/// crossfade 默认时长（秒）：0 = gapless 优先（D-028）。
+pub const CROSSFADE_ENGINE_DEFAULT_SECONDS: f64 = 0.0;
 const FILL_CHUNK_FRAMES: usize = 1024;
 
 /// 音频播放引擎（单线程确定性核心）。
@@ -52,6 +65,7 @@ pub struct Engine {
     next_decoder: Option<Box<dyn Decoder>>,
     resampler: Option<Resampler>,
     decode_scratch: crate::decoder::pcm::PcmBuffer,
+    decode_scratch_b: crate::decoder::pcm::PcmBuffer,
     mapped_scratch: Vec<f32>,
     resample_in: Vec<f32>,
     /// 已解码待推送块（部分推送时保留余量，D-014 修复）。
@@ -68,6 +82,14 @@ pub struct Engine {
 
     /// gapless 预解码窗口（帧）。
     preload_window_frames: u64,
+    /// crossfade 长度（输出帧）；0 = 关闭（gapless 优先）。
+    crossfade_frames: u64,
+    /// 曲目过渡状态。
+    transition: TransitionState,
+    /// crossfade 中 B 管线的映射输出。
+    mapped_b: Vec<f32>,
+    /// B 管线已解码帧数（crossfade 记账）。
+    next_track_decoded: u64,
     /// 曲目边界（全局渲染帧号；起始虚拟 0 不含）。
     track_boundaries: Vec<u64>,
     /// 每条已播放音轨的帧记账。
@@ -109,6 +131,7 @@ impl Engine {
             next_decoder: None,
             resampler: None,
             decode_scratch: crate::decoder::pcm::PcmBuffer::new(),
+            decode_scratch_b: crate::decoder::pcm::PcmBuffer::new(),
             mapped_scratch: Vec::new(),
             resample_in: Vec::new(),
             pending_block: Vec::new(),
@@ -117,6 +140,10 @@ impl Engine {
             current_track_decoded: 0,
             track_start_frame: 0,
             current_source_frames: 0,
+            crossfade_frames: 0,
+            transition: TransitionState::Normal,
+            mapped_b: Vec::new(),
+            next_track_decoded: 0,
             preload_window_frames: DEFAULT_PRELOAD_WINDOW_FRAMES,
             track_boundaries: Vec::new(),
             track_frame_ranges: Vec::new(),
@@ -155,9 +182,13 @@ impl Engine {
     }
 
     /// 装载音轨（新 generation）。状态回到 Stopped，位置归零。
-    pub fn load_track(&mut self, mut decoder: Box<dyn Decoder>) -> Result<(), AudioError> {
+    pub fn load_track(&mut self, decoder: Box<dyn Decoder>) -> Result<(), AudioError> {
         self.pending_block.clear();
         self.pending_pos = 0;
+        self.transition = TransitionState::Normal;
+        self.next_decoder = None;
+        self.mapped_b.clear();
+        self.next_track_decoded = 0;
         self.activate_decoder(decoder)?;
         self.producer.bump_generation();
         self.apply_stop();
@@ -165,13 +196,14 @@ impl Engine {
     }
 
     /// 激活解码器为当前管线（重采样/缓冲按源格式重建），不动 generation/位置/状态。
-    fn activate_decoder(&mut self, mut decoder: Box<dyn Decoder>) -> Result<(), AudioError> {
+    fn activate_decoder(&mut self, decoder: Box<dyn Decoder>) -> Result<(), AudioError> {
         let src_format = decoder.format();
         let src_rate = SampleRate::new(src_format.sample_rate.get())?;
         self.resampler = Resampler::new(src_rate, self.sample_rate, self.channels)?;
         // 解码缓冲按源格式预分配一次
         self.decode_scratch
             .reserve_frames(src_format, FILL_CHUNK_FRAMES * 4);
+        let mut decoder = decoder;
         decoder.seek_to_frame(0)?;
         self.current_source_frames = decoder.duration_frames().unwrap_or(0);
         self.current_track_decoded = 0;
@@ -210,6 +242,28 @@ impl Engine {
     #[must_use]
     pub fn track_boundaries(&self) -> &[u64] {
         &self.track_boundaries
+    }
+
+    /// 设置 crossfade 时长（秒；0 = 关闭 → gapless 优先）。
+    pub fn set_crossfade_seconds(&mut self, seconds: f64) {
+        self.crossfade_frames = crossfade_frames(seconds, self.sample_rate);
+    }
+
+    #[must_use]
+    pub const fn crossfade_frames(&self) -> u64 {
+        self.crossfade_frames
+    }
+
+    #[must_use]
+    pub const fn transition(&self) -> TransitionState {
+        self.transition
+    }
+
+    /// 取消进行中的 transition（seek/stop/load 时调用，§49–51）。
+    fn cancel_transition(&mut self) {
+        self.transition = TransitionState::Normal;
+        self.mapped_b.clear();
+        self.next_track_decoded = 0;
     }
 
     /// TrackFrameRange 记账（M2 §8）：每条已播放音轨的有效帧范围。
@@ -255,9 +309,13 @@ impl Engine {
                     self.invalid_commands += 1;
                     return;
                 }
-                // seek 使 pending 旧代样本失效（§49：transition 全部取消）
+                // seek 使 pending 旧代样本失效；transition 取消、next 失效（§49）
                 self.pending_block.clear();
                 self.pending_pos = 0;
+                self.transition = TransitionState::Normal;
+                self.next_decoder = None;
+                self.mapped_b.clear();
+                self.next_track_decoded = 0;
                 self.eof = false;
                 self.producer.bump_generation();
                 self.output
@@ -278,6 +336,10 @@ impl Engine {
     fn apply_stop(&mut self) {
         self.pending_block.clear();
         self.pending_pos = 0;
+        self.transition = TransitionState::Normal;
+        self.next_decoder = None;
+        self.mapped_b.clear();
+        self.next_track_decoded = 0;
         self.state = PlaybackState::Stopped;
         self.output.shared().position.store(0, Ordering::Release);
         self.producer.bump_generation();
@@ -334,6 +396,26 @@ impl Engine {
                 break;
             }
 
+            // 0.5) crossfade 进入检查（M2 §15 情况 B：cf > 0 且有 next）
+            if self.crossfade_frames > 0
+                && self.transition == TransitionState::Normal
+                && self.next_decoder.is_some()
+            {
+                let remaining = self
+                    .current_source_frames
+                    .saturating_sub(self.current_track_decoded);
+                // 格式一致性（bypass 双管线前提）：不一致则 gapless 回退（D-033）
+                let same_format = self.next_decoder.as_ref().is_some_and(|d| {
+                    d.format() == AudioFormat::new(self.sample_rate, self.channels)
+                }) && self.resampler.is_none();
+                if remaining <= self.crossfade_frames && same_format {
+                    self.transition = TransitionState::Crossfading {
+                        total_frames: remaining.min(self.crossfade_frames),
+                        done_frames: 0,
+                    };
+                }
+            }
+
             // 1) 解码一批（源格式）
             self.decode_scratch.clear();
             let decoded_frames = {
@@ -350,25 +432,90 @@ impl Engine {
                 self.current_track_decoded += n;
                 n
             };
+            // 1b) Crossfading：B 管线同步解码 + 等功率混入 mapped_scratch
+            if let TransitionState::Crossfading {
+                total_frames: cf_total,
+                done_frames: cf_done,
+            } = self.transition
+            {
+                self.decode_scratch_b.clear();
+                let mut b_dec = 0u64;
+                while b_dec < decoded_frames {
+                    let Some(b_decoder) = self.next_decoder.as_mut() else {
+                        break; // B 耗尽：A 侧继续（B 视为静音）
+                    };
+                    match b_decoder.decode_next(&mut self.decode_scratch_b) {
+                        Ok(n) if n > 0 => {
+                            b_dec += n;
+                            self.next_track_decoded += n;
+                        }
+                        _ => break,
+                    }
+                }
+                let src_channels = self
+                    .next_decoder
+                    .as_ref()
+                    .expect("crossfade requires next")
+                    .format()
+                    .channels;
+                let b_ok = map_channels_into(
+                    self.decode_scratch_b.data(),
+                    src_channels,
+                    self.channels,
+                    &mut self.mapped_b,
+                )
+                .is_ok();
+                let ch = usize::from(self.channels.get());
+                for i in 0..decoded_frames as usize {
+                    let t = ((cf_done + i as u64) as f32 / cf_total as f32).clamp(0.0, 1.0);
+                    let (ga, gb) = crate::audio::crossfade::equal_power_gains(t);
+                    for c in 0..ch {
+                        let idx = i * ch + c;
+                        let b = if b_ok && idx < self.mapped_b.len() {
+                            self.mapped_b[idx]
+                        } else {
+                            0.0
+                        };
+                        self.mapped_scratch[idx] = self.mapped_scratch[idx] * ga + b * gb;
+                    }
+                }
+                let new_done = (cf_done + decoded_frames).min(cf_total);
+                self.transition = TransitionState::Crossfading {
+                    total_frames: cf_total,
+                    done_frames: new_done,
+                };
+            }
+
             if decoded_frames == 0 {
-                // 当前曲目自然结束（Natural End，§48）。记账（渲染帧空间）。
+                // 当前曲目完成（自然结束或 crossfade 尾部）。记账（渲染帧空间）。
+                let (overlap, b_seed) = match self.transition {
+                    TransitionState::Crossfading { done_frames, .. } => {
+                        (done_frames, self.next_track_decoded)
+                    }
+                    _ => (0, 0),
+                };
                 self.track_frame_ranges.push(TrackFrameRange {
                     source_frames: self.current_source_frames,
                     valid_frames: self.current_track_decoded,
                     rendered_frames: self.current_track_decoded,
                 });
 
-                // gapless 无缝切换：预装载的下一曲目接管管线
+                // 下一曲目接管管线：gapless（无缝）或 crossfade（B 已提前 overlap）
                 if let Some(next) = self.next_decoder.take() {
-                    let boundary = self.track_start_frame + self.current_track_decoded;
-                    self.track_boundaries.push(boundary);
-                    self.track_start_frame = boundary;
-                    self.current_track_decoded = 0;
+                    let a_end = self.track_start_frame + self.current_track_decoded;
+                    let b_start = a_end.saturating_sub(overlap);
+                    self.track_boundaries.push(b_start);
+                    self.track_start_frame = b_start;
+                    self.current_track_decoded = b_seed;
+                    self.current_source_frames = next.duration_frames().unwrap_or(0);
                     let src_format = next.format();
                     self.decode_scratch
                         .reserve_frames(src_format, FILL_CHUNK_FRAMES * 4);
-                    // 不 bump generation、不清缓冲、位置连续 → 样本级 gapless
+                    // 不 bump generation、不清缓冲、位置连续
                     self.decoder = Some(next);
+                    self.transition = TransitionState::Normal;
+                    self.mapped_b.clear();
+                    self.next_track_decoded = 0;
                     self.eof = false;
                     continue;
                 }
