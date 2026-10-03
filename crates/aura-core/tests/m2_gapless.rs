@@ -26,6 +26,7 @@ fn ramp_track(track: u64, frames: u64) -> SyntheticDecoder {
 fn m2_gapless_total_frames_and_continuity() {
     let n = 24_000u64; // 每轨 0.5s，两轨
     let (mut engine, mut poster) = engine_48k();
+    engine.set_limiter_enabled(false); // D-034：ramp 溯源需线性直通
     engine.load_track(Box::new(ramp_track(0, n)));
     engine.preload_next(Box::new(ramp_track(1, n)));
     poster.post(AudioCommand::Play).unwrap();
