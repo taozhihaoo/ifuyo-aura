@@ -371,3 +371,29 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   margin: 0;
   font-size: 0.95rem;
 }
+
+/* ---- 全局 notice（§187/§189）---- */
+.notice-bar {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(20, 24, 34, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  max-width: min(560px, 80vw);
+  z-index: 60;
+}
+
+/* ---- map stats（§285）---- */
+.map-stats {
+  display: flex;
+  gap: 1.5rem;
+  list-style: none;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.8);
+}

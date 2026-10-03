@@ -15,6 +15,7 @@ import { AuroraCanvas } from './visual/AuroraCanvas';
 import { SettingsPanel } from './features/settings/SettingsPanel';
 import { QueueDrawer } from './features/queue/QueueDrawer';
 import { isMiniPlayer, MiniPlayer, useMiniPlayerOpener } from './windows/MiniPlayer';
+import { translate } from './i18n';
 
 export default function App() {
   const isMini = isMiniPlayer();
@@ -23,6 +24,8 @@ export default function App() {
   const view = useUiStore((s) => s.view);
   const setView = useUiStore((s) => s.setView);
   const setPaletteOpen = useUiStore((s) => s.setPaletteOpen);
+  const notice = useUiStore((s) => s.notice);
+  const setNotice = useUiStore((s) => s.setNotice);
 
   // 启动优先级（§155）：shell → settings → player snapshot → library。
   useEffect(() => {
@@ -122,6 +125,14 @@ export default function App() {
       <CommandPalette />
       <SettingsPanel />
       <QueueDrawer />
+      {notice && (
+        <div className="notice-bar" role="alert">
+          <span>{translate(useSettingsStore.getState().locale, notice)}</span>
+          <button className="icon-btn" onClick={() => setNotice(null)} aria-label={t('common.ok')}>
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

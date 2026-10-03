@@ -12,12 +12,15 @@ interface UiState {
   settingsOpen: boolean;
   miniPlayerOpen: boolean;
   sidebarCollapsed: boolean;
+  /** 全局用户反馈（i18n key，§187/§189；null = 无）。 */
+  notice: string | null;
   setView: (v: ViewId) => void;
   setPaletteOpen: (open: boolean) => void;
   setQueueOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setMiniPlayerOpen: (open: boolean) => void;
   toggleSidebar: () => void;
+  setNotice: (key: string | null) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -27,12 +30,14 @@ export const useUiStore = create<UiState>((set) => ({
   settingsOpen: false,
   miniPlayerOpen: false,
   sidebarCollapsed: false,
+  notice: null,
   setView: (view) => set({ view }),
   setPaletteOpen: (commandPaletteOpen) => set({ commandPaletteOpen }),
   setQueueOpen: (queueOpen) => set({ queueOpen }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setMiniPlayerOpen: (miniPlayerOpen) => set({ miniPlayerOpen }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+  setNotice: (notice) => set({ notice }),
 }));
 
 /** domain state：播放（来自 Rust 快照，§8）。 */

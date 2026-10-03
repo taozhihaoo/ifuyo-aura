@@ -24,6 +24,8 @@ export const ipc = {
   setMica: (enabled: boolean, persist: boolean) => call<void>('set_mica', { enabled, persist }),
   setVolume: (volume: number) => call<void>('set_volume', { volume }),
   playTrack: (trackId: number) => call<void>('play_track', { trackId }),
+  // §275/§276：Open File/URL 统一经 M4 resolver（Rust 侧），frontend 不 fetch。
+  playInput: (input: string) => call<string>('play_input', { input }),
   setCrossfade: (seconds: number, persist: boolean) => call<void>('set_crossfade', { seconds, persist }),
   setLoudness: (enabled: boolean, persist: boolean) => call<void>('set_loudness', { enabled, persist }),
   setEqPreset: (preset: number, persist: boolean) => call<void>('set_eq_preset', { preset, persist }),
@@ -33,6 +35,7 @@ export const ipc = {
     call<TrackSummary[]>('library_search', { query, limit, offset }),
   scanFolder: (path: string) => call<void>('scan_folder', { path }),
   cancelScan: () => call<void>('cancel_scan'),
+  libraryStats: () => call<{ tracks: number; artists: number; albums: number }>('library_stats'),
   getSettings: () => call<AppSettings>('get_settings'),
   saveSettings: (settings: AppSettings) => call<void>('save_settings', { settings }),
   listenScanProgress: (cb: (p: ScanProgress) => void) =>

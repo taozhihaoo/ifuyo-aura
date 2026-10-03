@@ -6,6 +6,8 @@ import { useLibraryStore, useSettingsStore } from '../../state/stores';
 import { ipc } from '../../ipc/client';
 import type { ScanProgress, SortKey, TrackSummary } from '../../ipc/types';
 import { useTranslation } from '../../i18n/react';
+import { formatDuration } from '../../ui/format';
+import { playWithQueueContext } from '../queue/QueueDrawer';
 
 type LoadState =
   | { kind: 'loading' }
@@ -19,12 +21,6 @@ const SORTS: SortKey[] = ['title', 'artist', 'album', 'dateAdded', 'duration', '
 function sortLabelKey(k: SortKey): string {
   const cap = k.charAt(0).toUpperCase() + k.slice(1);
   return `library.sort${cap}`;
-}
-
-function fmt(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 export function LibraryPage() {
@@ -180,7 +176,10 @@ export function LibraryPage() {
                   key={track.id}
                   className="track-row"
                   style={{ position: 'absolute', top: row.start, height: 52 }}
-                  onDoubleClick={() => void ipc.playTrack(track.id).catch(() => undefined)}
+                  onDoubleClick={() => {
+                    playWithQueueContext(track, tracks);
+                    void ipc.playTrack(track.id).catch(() => undefined);
+                  }}
                 >
                   <span className="tr-artwork" aria-hidden>
                     {track.hasArtwork ? '▣' : '♪'}
@@ -189,7 +188,7 @@ export function LibraryPage() {
                   <span className="tr-artist">{track.artist ?? ''}</span>
                   <span className="tr-album">{track.album ?? ''}</span>
                   <span className="tr-duration">
-                    {track.durationSeconds === null ? '' : fmt(track.durationSeconds)}
+                    {formatDuration(track.durationSeconds) ?? ''}
                   </span>
                 </div>
               );

@@ -2,8 +2,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useUiStore, usePlayerStore, useSettingsStore } from '../../state/stores';
 import { ipc } from '../../ipc/client';
+import { errorToI18nKey } from '../../ipc/errors';
 import { buildCommands, matchCommand, type Command } from '../../commands/registry';
 import { useTranslation } from '../../i18n/react';
+import { playNext, playPrevious } from '../queue/QueueDrawer';
+
+// §274：与 M3 SUPPORTED_EXTENSIONS 同步（crates/aura-library/src/scanner/mod.rs）。
+const AUDIO_EXTENSIONS = ['flac', 'mp3', 'ogg', 'oga', 'wav', 'm4a', 'alac'];
+
+/** §276/§277：带 scheme 的输入（合法或非法）都交给 M4 resolver 判定。 */
+function looksLikeUri(q: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:\S+/i.test(q.trim());
+}
+
+async function runOpenInput(input: string, setNotice: (k: string | null) => void) {
+  try {
+    await ipc.playInput(input);
+  } catch (e) {
+    setNotice(errorToI18nKey(e));
+  }
+}
 
 export function CommandPalette() {
   const open = useUiStore((s) => s.commandPaletteOpen);
@@ -12,6 +30,7 @@ export function CommandPalette() {
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
   const setView = useUiStore((s) => s.setView);
   const setMiniPlayerOpen = useUiStore((s) => s.setMiniPlayerOpen);
+  const setNotice = useUiStore((s) => s.setNotice);
   const snapshot = usePlayerStore((s) => s.snapshot);
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
@@ -24,11 +43,34 @@ export function CommandPalette() {
       setView,
       play: () => void ipc.play().catch(() => undefined),
       pause: () => void ipc.pause().catch(() => undefined),
-      next: () => undefined, // M3 queue 集成后续补充
-      previous: () => undefined,
+      next: () => void playNext().catch((e) => setNotice(errorToI18nKey(e))),
+      previous: () => void playPrevious().catch((e) => setNotice(errorToI18nKey(e))),
       stop: () => void ipc.stop().catch(() => undefined),
-      openFolder: () => setView('library'),
-      openUrl: () => setView('library'),
+      openFolder: () => {
+        void import('@tauri-apps/plugin-dialog').then(({ open }) =>
+          open({ directory: true, multiple: false, title: t('library.addFolder') })
+            .then((path) => {
+              if (typeof path === 'string') {
+                setView('library');
+                void ipc.scanFolder(path).catch((e) => setNotice(errorToI18nKey(e)));
+              }
+            })
+            .catch(() => undefined),
+        );
+      },
+      openUrl: () => {
+        void import('@tauri-apps/plugin-dialog').then(({ open }) =>
+          open({
+            multiple: false,
+            title: t('library.openFile'),
+            filters: [{ name: 'Audio', extensions: AUDIO_EXTENSIONS }],
+          })
+            .then((path) => {
+              if (typeof path === 'string') void runOpenInput(path, setNotice);
+            })
+            .catch(() => undefined),
+        );
+      },
       toggleQueue: () => setQueueOpen(!useUiStore.getState().queueOpen),
       toggleEq: () => setSettingsOpen(true),
       toggleLoudness: () => {
@@ -49,9 +91,22 @@ export function CommandPalette() {
 
   const commands: Command[] = useMemo(
     () => buildCommands(ctx, (k) => t(k)),
-    [ctx, t],
+    [ctx],
   );
-  const filtered = commands.filter((c) => matchCommand(c, query));
+  // §276：输入形如 scheme:… 时给出动态「打开 URL/文件」命令（含非法
+  // scheme——一律交 M4 拒绝并经错误映射提示，§277）。
+  const synthetic: Command[] = looksLikeUri(query)
+    ? [
+        {
+          id: 'open.url',
+          title: `${t('palette.openUrl')} — ${query.trim()}`,
+          titleKey: 'palette.openUrl',
+          keywords: 'open url http https stream',
+          execute: () => void runOpenInput(query.trim(), setNotice),
+        },
+      ]
+    : [];
+  const filtered = [...synthetic, ...commands].filter((c) => matchCommand(c, query));
 
   // 打开：focus input + 记录恢复目标；关闭：恢复 focus（§102/§159）。
   useEffect(() => {
