@@ -50,3 +50,4 @@ credentials*.json
 
 # ---- 工具本地配置 ----
 .zcodeignore
+zz9_stream.bin

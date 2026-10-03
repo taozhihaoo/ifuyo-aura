@@ -143,6 +143,7 @@ version = "0.1.0"
 name = "aura-core"
 version = "0.1.0"
 dependencies = [
+ "aura-testkit",
  "cpal",
  "rtrb",
  "rubato",

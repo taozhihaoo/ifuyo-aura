@@ -59,6 +59,53 @@ ui/
 - CSS variables 只能从 tokens 生成（`scripts/generate-tokens.mjs`，读取 `brand.json` 并与 `tokens.ts` 校验一致）。
 - 业务代码禁止裸色值；lint 规则在本阶段仅预留结构，M6 落地。
 
+
+## Audio Core Architecture（M1）
+
+```text
+Decoder（symphonia FLAC / synthetic）
+  ↓ 交错 f32（源格式）
+Channel Map（mono→stereo / passthrough）
+  ↓
+Resampler（rubato sinc 256，采样率一致时旁路）
+  ↓
+SPSC Ring Buffer（rtrb，帧语义，generation-aware discard）
+  ↓ consumer
+OutputStage（回调路径唯一逻辑：弹出 → underrun 补静音 → PCM 净化 → 10ms 增益平滑 → 计数）
+  ↓
+NullOutput（CI 确定性渲染/捕获）或 CPAL 设备流（f32/i16）
+```
+
+### Thread Model
+
+```text
+Control Thread   ──post──►  Command Queue（rtrb SPSC，64 容量）
+Engine Thread    ──owns──►  Engine（decoder / resampler / producer / 状态机）
+Output Callback  ──owns──►  ConsumerHandle + OutputStage（或 NullOutput 确定性渲染）
+```
+
+M1 的 Engine 以同步确定性方式驱动（`render_for_frames` 显式推进）；真实线程接线（解码线程 + CPAL 回调）在后续里程碑引入，共享面仅原子量（SharedOutputState：position / underruns / target_gain）。
+
+### Generation Model
+
+load / seek 均 bump generation（u64，起 1）。producer bump 时记录缓冲内旧代帧数；consumer 检测代切换后精确丢弃这些帧（不波及新代数据）。旧代样本永不到达输出；并发残余最坏情况为单渲染块静音（D-019）。
+
+### Clock Model
+
+位置权威 = `consumed_frames / sample_rate`。暂停期间位置冻结；Stop 归零（D-023）；seek 直接设目标帧。测试经显式推进/确定性渲染，禁 wall-clock。
+
+### Callback Rules（铁律）
+
+回调路径（OutputStage::render + ring pop + capture）零分配、零锁、零 logging、零 syscall、零 panic——由计数分配器测试（tests/zero_alloc.rs）证明。错误回调仅递增原子计数。
+
+### Buffering Model
+
+ring buffer 容量按帧对齐（Engine 默认 buffer/8 = 渲染块）。overrun：producer 部分写入拒绝 + fill 背压（不覆盖不丢数据，D-022）。underrun：输出静音 + 计数 + 可恢复。
+
+### Error Model
+
+`AudioError` 枚举（InvalidFormat / DecodeError / UnsupportedFormat / ResampleError / OutputError / SeekError / InvalidCommand / InvalidParameter），Display 可诊断、无敏感数据、无 panic 路径。
+
 ## 构建与工程
 
 - Cargo workspace：7 个 aura crates + `src-tauri`（M0-3 起为正式 member，tauri 2.12）。

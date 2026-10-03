@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — M1: Audio Core (2026-10-03)
+
+- `aura-core` audio engine: decoder abstraction + real FLAC path (symphonia-bundle-flac), mono→stereo channel map, rubato sinc resampler (44.1k↔48k matrix tested), frame-based SPSC ring buffer with generation-aware stale-sample rejection, playback state machine (Stopped/Paused/Playing), frame-authoritative position, volume with 10ms per-sample gain smoothing, underrun silence+counter, `AudioError` model.
+- Deterministic testing base: NullOutput capture, `render_for_frames`, counting-allocator zero-allocation proof for the callback path (tests/zero_alloc.rs).
+- Real FLAC decode tests against a committed 21KB libsndfile-generated fixture (decode+seek, sample-exact).
+- CPAL real output adapter skeleton (default device, f32/i16, safe error callback).
+- `docs/PERF.md`: measured baselines (ring 5×10⁹ fps, FLAC decode 3668× RT, resample 285× RT, callback 5.1µs/1024-frame chunk) on Ryzen 7 7700 / rustc 1.99.0.
+
 ### Added — M0: Project Foundation (2026-10-03)
 
 - Rust toolchain pinned: stable `x86_64-pc-windows-msvc` (rustc 1.99.0), MSRV verified at **1.87** against the real dependency tree (`rust-toolchain.toml`, DECISIONS D-011).

@@ -5,7 +5,7 @@
 ```text
 Phase 0 = COMPLETE (2026-10-02)
 M0  = COMPLETE (2026-10-03)
-M1  = NOT STARTED   (Audio Engine)
+M1  = COMPLETE (2026-10-03)  (Audio Engine)
 M2  = NOT STARTED   (Playback Quality)
 M3  = NOT STARTED   (Music Library)
 M4  = NOT STARTED   (Sources)
@@ -23,6 +23,15 @@ M14 = NOT STARTED   (Final Release Audit)
 
 无任何伪造完成状态：除 Phase 0 与 M0 外全部 NOT STARTED。
 
+
+## M1 Completion（2026-10-03）
+
+- 结构：`aura-core` 分层（types/error/audio{buffer,gain,position}/decoder{mod,flac,pcm}/resampler/output{mod,null,device}/engine{command,player}）。
+- A 级 18 项全部实现（§0）：decoder abstraction + FLAC 真实路径、重采样（rubato）、SPSC ring buffer、NullOutput、播放时钟/位置/状态机、seek、generation 陈旧样本拒绝、音量 + 10ms 平滑、underrun 检测、错误模型、完整测试。
+- 测试：lib 25 + 集成（ring 13 / engine 9 / flac 2 / zero-alloc 1）= **50 通过**。
+- **§51 十项证明**：真实 FLAC 解码 ✓（libsndfile 夹具逐样本一致）；resampler ✓（4 组采样率矩阵 + 频率保持）；ring buffer ✓；NullOutput 确定性消费 ✓；Play/Pause/Stop ✓；seek ✓；**无 stale generation** ✓（ramp provenance：seek 后样本全部来自新代值域）；音量平滑 ✓（无相邻跳变 + 可重复）；underrun 静音+计数 ✓；**callback 零分配** ✓（计数分配器，度量窗口 0 次分配）。
+- 性能基线：见 docs/PERF.md（decode 3668×、resample 285×、回调 5.1µs/1024 帧块）。
+- 已知限制：真实设备收听验证待 M6（当前仅编译级 + 代码审阅）；escape 残差合成 FLAC 与 symphonia 0.6 demuxer 兼容性问题已绕过（改用 libsndfile 生成夹具）。
 ## M0 Completion（2026-10-03）
 
 Charter §51 M0 定义 8 项对照：
