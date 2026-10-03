@@ -48,13 +48,15 @@ impl Page {
     }
 }
 
-/// track 列投影（含实体 join；顺序对应 `map_track`）。
-const TRACK_SELECT: &str = "SELECT t.id, t.identity_key, t.title, \
+/// track 列投影（顺序对应 `map_track`）。
+pub(crate) const TRACK_COLUMNS: &str = "t.id, t.identity_key, t.title, \
     ar.name, al.title, aar.name, g.name, \
     t.year, t.track_number, t.disc_number, t.duration_frames, t.sample_rate, \
     t.channels, t.codec, t.container, t.artwork_id, t.file_size, \
-    t.date_added_ms, t.last_scanned_ms \
-    FROM tracks t \
+    t.date_added_ms, t.last_scanned_ms";
+
+/// 列投影所需的 join（`tracks t` + 实体表别名）。
+pub(crate) const TRACK_FROM: &str = "FROM tracks t \
     LEFT JOIN artists ar ON ar.id = t.artist_id \
     LEFT JOIN albums al ON al.id = t.album_id \
     LEFT JOIN artists aar ON aar.id = t.album_artist_id \
@@ -67,7 +69,7 @@ impl LibraryService {
     /// 查询失败时返回 [`crate::error::LibraryError::Database`]。
     pub fn list_tracks(&self, sort: SortKey, page: Page) -> Result<Vec<Track>> {
         let sql = format!(
-            "{TRACK_SELECT} WHERE t.is_active = 1 ORDER BY {}, t.id LIMIT ?1 OFFSET ?2",
+            "SELECT {TRACK_COLUMNS} {TRACK_FROM} WHERE t.is_active = 1 ORDER BY {}, t.id LIMIT ?1 OFFSET ?2",
             sort.sql_order()
         );
         let mut stmt = self.database().connection().prepare_cached(&sql)?;
@@ -84,7 +86,7 @@ impl LibraryService {
     /// # Errors
     /// 查询失败时返回 [`crate::error::LibraryError::Database`]。
     pub fn get_track(&self, id: TrackId) -> Result<Option<Track>> {
-        let sql = format!("{TRACK_SELECT} WHERE t.id = ?1");
+        let sql = format!("SELECT {TRACK_COLUMNS} {TRACK_FROM} WHERE t.id = ?1");
         let row = self
             .database()
             .connection()
@@ -356,7 +358,7 @@ impl IntegrityReport {
     }
 }
 
-fn map_track(r: &rusqlite::Row<'_>) -> rusqlite::Result<Track> {
+pub(crate) fn map_track(r: &rusqlite::Row<'_>) -> rusqlite::Result<Track> {
     Ok(Track {
         id: TrackId(r.get(0)?),
         identity_key: r.get(1)?,
