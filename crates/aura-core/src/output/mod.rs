@@ -84,6 +84,8 @@ pub struct OutputStage {
     eq_cascade: crate::dsp::EqCascade,
     local_eq: crate::dsp::EqCoeffs,
     last_eq_version: u32,
+    /// limiter 开关（生产默认开；测试 provenance 可关，D-034）。
+    limiter_enabled: bool,
 }
 
 impl OutputStage {
@@ -96,6 +98,7 @@ impl OutputStage {
             eq_cascade: crate::dsp::EqCascade::new(usize::from(channels.get())),
             local_eq: crate::dsp::EqCoeffs::passthrough(),
             last_eq_version: 0,
+            limiter_enabled: true,
         }
     }
 
@@ -109,6 +112,11 @@ impl OutputStage {
         self.eq_cascade = crate::dsp::EqCascade::new(channels);
         self.local_eq = crate::dsp::EqCoeffs::passthrough();
         self.last_eq_version = 0;
+    }
+
+    /// limiter 开关（仅测试 provenance 场景关闭；生产恒开，D-034）。
+    pub fn set_limiter_enabled(&mut self, enabled: bool) {
+        self.limiter_enabled = enabled;
     }
 
     /// 渲染至多 `out.len()` 个采样：从 ring buffer 弹出 → underrun 补静音 →
@@ -163,8 +171,10 @@ impl OutputStage {
             }
             self.eq_cascade.process(&self.local_eq, out);
         }
-        // Limiter（§44 末级，§21）
-        crate::dsp::limit_block(out);
+        // Limiter（§44 末级，§21；D-034：provenance 测试可关）
+        if self.limiter_enabled {
+            crate::dsp::limit_block(out);
+        }
         // 位置按输出实际消费的帧数推进（underrun 静音帧也是被消费的时间）
         shared.add_position(frames as u64);
         frames as u64

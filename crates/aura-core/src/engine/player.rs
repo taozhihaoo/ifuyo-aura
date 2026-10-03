@@ -308,6 +308,11 @@ impl Engine {
         self.preamp_gain
     }
 
+    /// limiter 开关（生产恒开；provenance 测试关闭，D-034）。
+    pub fn set_limiter_enabled(&mut self, enabled: bool) {
+        self.output.stage_mut().set_limiter_enabled(enabled);
+    }
+
     /// 发布 EQ 频段（系数在控制面计算，快照原子发布，§41–42）。
     pub fn set_eq_bands(&mut self, bands: &[crate::dsp::EqBand]) {
         let coeffs = crate::dsp::EqCoeffs::from_bands(bands, self.sample_rate.get() as f32);

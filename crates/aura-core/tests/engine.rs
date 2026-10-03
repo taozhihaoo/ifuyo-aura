@@ -116,6 +116,8 @@ fn seek_provenance_no_stale_generation() {
     // Fixture D ramp：sample[n] = n → 输出值直接暴露其来源帧（provenance 自证）
     let total = RATE as u64 * 3;
     let (mut engine, mut poster) = engine_with(Waveform::Ramp, total);
+    // provenance 用大值 ramp 精确溯源；limiter 会压缩 >-1dBFS 的值 → 关闭（D-034）
+    engine.set_limiter_enabled(false);
 
     poster.post(AudioCommand::Play).unwrap();
     engine.render_for_frames(1_000);
