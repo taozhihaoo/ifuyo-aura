@@ -15,6 +15,7 @@ pub mod engine;
 pub mod error;
 pub mod output;
 pub mod resampler;
+pub mod track;
 pub mod types;
 
 pub use audio::buffer::{ring_buffer, ConsumerHandle, ProducerHandle};

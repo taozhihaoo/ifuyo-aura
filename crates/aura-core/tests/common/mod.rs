@@ -12,13 +12,21 @@ use aura_core::{AudioFormat, Channels, SampleRate};
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Waveform {
     /// Fixture A/B：正弦（可调频率与幅度）。
-    Sine { freq_hz: f32, amplitude: f32 },
+    Sine {
+        freq_hz: f32,
+        amplitude: f32,
+    },
     /// Fixture C：impulse（首帧 1.0，其余 0）。
     Impulse,
     /// Fixture D：ramp，sample[n] = n as f32（绝对帧号，provenance 自证）。
     Ramp,
-    /// 直流电平（增益/爆音测试）。
+    // 直流电平（增益/爆音测试）。
     Dc(f32),
+    // Fixture D 扩展：从指定帧号开始的连续 ramp（sample[n] = start + n），
+    // 用于 gapless 拼接连续性验证（A 尾 + B 首组成全局连续 ramp）。
+    RampFrom(u64),
+    // 末帧 impulse（其余静音）：gapless 边界测试（M2 §10）。
+    ImpulseAtEnd,
     /// 非有限值注入（前 16 帧 NaN，接着 16 帧 Inf，其余 0.5）。
     NonFinite,
 }
@@ -69,6 +77,14 @@ impl SyntheticDecoder {
                 }
             }
             Waveform::Ramp => n as f32,
+            Waveform::RampFrom(start) => (start + n) as f32,
+            Waveform::ImpulseAtEnd => {
+                if n + 1 == self.total_frames {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
             Waveform::Dc(level) => level,
             Waveform::NonFinite => {
                 if n < 16 {
