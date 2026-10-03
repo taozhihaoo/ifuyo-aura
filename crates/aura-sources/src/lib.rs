@@ -6,6 +6,7 @@
 //! persistent cache（M5）/ UI / SQLite 直写。
 
 pub mod error;
+pub mod http;
 pub mod model;
 pub mod platform_block;
 pub mod url_policy;

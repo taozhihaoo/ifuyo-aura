@@ -98,6 +98,15 @@ impl From<std::io::Error> for SourceError {
 
 impl From<reqwest::Error> for SourceError {
     fn from(e: reqwest::Error) -> Self {
+        // 重定向策略拒绝时，reqwest 把我们的 SourceError 挂在 source 链上 ——
+        // 先还原精确类别，再用 kind 启发式兜底（is_redirect 也可能是策略拒绝）。
+        let mut src = std::error::Error::source(&e);
+        while let Some(s) = src {
+            if let Some(se) = s.downcast_ref::<SourceError>() {
+                return clone_kind(se);
+            }
+            src = s.source();
+        }
         if e.is_timeout() {
             return Self::Timeout;
         }
@@ -108,14 +117,6 @@ impl From<reqwest::Error> for SourceError {
             return Self::ParseError {
                 reason: short(&e.to_string()),
             };
-        }
-        // 重定向策略拒绝时，reqwest 把我们的 SourceError 挂在 source 链上 —— 还原类别。
-        let mut src = std::error::Error::source(&e);
-        while let Some(s) = src {
-            if let Some(se) = s.downcast_ref::<SourceError>() {
-                return clone_kind(se);
-            }
-            src = s.source();
         }
         Self::NetworkError {
             reason: short(&e.to_string()),
