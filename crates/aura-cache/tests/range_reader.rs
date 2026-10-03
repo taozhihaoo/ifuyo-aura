@@ -28,7 +28,6 @@ fn http_client() -> HttpClient {
     .unwrap()
 }
 
-
 fn manager_at(tag: &str) -> Arc<CacheManager> {
     let root = std::env::temp_dir().join(format!("aura-m5-reader-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);

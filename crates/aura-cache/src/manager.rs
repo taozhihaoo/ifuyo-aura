@@ -8,7 +8,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use aura_sources::model::CachePolicy;
 
@@ -130,6 +131,35 @@ impl Leases {
     }
 }
 
+/// in-flight fetch 注册表（§53/§95/§136）：FetchKey = (content_key, chunk_index)。
+/// 同 key 的并发拉取共享一次下载 —— 后到者等 Condvar 并读缓存。
+#[derive(Default)]
+struct Inflight {
+    map: Mutex<HashMap<(String, u64), Arc<(Mutex<u32>, Condvar)>>>,
+}
+
+impl Inflight {
+    /// 进入：返回 true = 本调用负责下载；false = 已有人在下载（等待方）。
+    fn enter(&self, ck: &str, idx: u64) -> (bool, Arc<(Mutex<u32>, Condvar)>) {
+        let mut map = self.map.lock().expect("inflight lock");
+        let key = (ck.to_string(), idx);
+        if let Some(slot) = map.get(&key) {
+            return (false, Arc::clone(slot));
+        }
+        let slot = Arc::new((Mutex::new(1), Condvar::new()));
+        map.insert(key, Arc::clone(&slot));
+        (true, slot)
+    }
+
+    /// 负责方完成：唤醒等待方并移除。
+    fn finish(&self, ck: &str, idx: u64) {
+        let mut map = self.map.lock().expect("inflight lock");
+        if let Some(slot) = map.remove(&(ck.to_string(), idx)) {
+            slot.1.notify_all();
+        }
+    }
+}
+
 /// 缓存管理器。线程安全（多 reader 共享）。
 pub struct CacheManager {
     config: CacheConfig,
@@ -141,6 +171,7 @@ pub struct CacheManager {
     session_bytes: AtomicU64,
     /// §62 access-time 聚合。
     pending_touches: Mutex<Vec<(String, u64, i64)>>,
+    inflight: Inflight,
     closed: AtomicBool,
 }
 
@@ -195,6 +226,7 @@ impl CacheManager {
             session: Mutex::new(SessionStore::default()),
             session_bytes: AtomicU64::new(0),
             pending_touches: Mutex::new(Vec::new()),
+            inflight: Inflight::default(),
             closed: AtomicBool::new(false),
         })
     }
@@ -410,6 +442,52 @@ impl CacheManager {
                 Some(bytes)
             }
         }
+    }
+
+    /// §53/§95/§136：dedup 拉取 —— 同 FetchKey 并发时只有一方下载。
+    /// `fetch` 只在负责方执行；等待方在完成后从缓存读取。
+    ///
+    /// # Errors
+    /// 负责方的 fetch 失败原样上抛（等待方随后自行重试读取/拉取）。
+    pub fn dedup_fetch(
+        &self,
+        content_key: &str,
+        chunk_index: u64,
+        fetch: impl FnOnce() -> Result<Vec<u8>>,
+    ) -> Result<Vec<u8>> {
+        let (leader, slot) = self.inflight.enter(content_key, chunk_index);
+        if leader {
+            let out = fetch();
+            self.inflight.finish(content_key, chunk_index);
+            out
+        } else {
+            // §95：等负责方完成（count==0 即完成；有界 30s 防失控）。
+            let (lock, cv) = &*slot;
+            let guard = lock.lock().expect("slot lock");
+            let deadline = std::time::Instant::now() + Duration::from_secs(30);
+            let mut guard = guard;
+            loop {
+                if *guard == 0 || std::time::Instant::now() > deadline {
+                    break;
+                }
+                let (g, _) = cv
+                    .wait_timeout(guard, Duration::from_millis(50))
+                    .expect("slot cv");
+                guard = g;
+            }
+            // 负责方的 fetch 闭包负责持久化（reader 路径如此）；
+            // 等待方从缓存读取。
+            self.get_chunk(CachePolicy::Allowed, content_key, chunk_index)
+                .ok_or_else(|| CacheError::Network {
+                    reason: "shared fetch did not produce chunk".into(),
+                })
+        }
+    }
+
+    /// in-flight 数（诊断/测试）。
+    #[must_use]
+    pub fn inflight_count(&self) -> usize {
+        self.inflight.map.lock().expect("inflight lock").len()
     }
 
     /// §58：pin（Allowed entry；pinned 不被 LRU 淘汰）。

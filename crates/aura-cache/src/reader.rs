@@ -15,6 +15,7 @@
 //!   in-flight 任务（同线程等待者复用结果；跨线程注册表 M5-g）。
 
 use std::io::{Read, Seek, SeekFrom};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -370,22 +371,141 @@ impl CachedRangeReader {
         if self.range_capable == Some(false) {
             return self.seq_fill_chunk(idx);
         }
-        let fetched: Result<Vec<u8>> = self.fetch_chunk_by_range(idx);
-        match fetched {
-            Ok(bytes) => {
-                self.range_capable = Some(true);
-                self.persist(idx, &bytes)?;
-                Ok(bytes)
+
+        // §53/§95/§136：经 manager 去重拉取。闭包用局部可变标志传回
+        // range-capability 变化（避免借用冲突）。
+        let mut became_non_range = false;
+        let manager = Arc::clone(&self.manager);
+        let ck_for_fetch = self.ck.clone();
+        let fetched = self.manager.dedup_fetch(&self.ck, idx, || {
+            match self.fetch_chunk_by_range(idx) {
+                Ok(b) => {
+                    // 等待方将读缓存 —— 负责方必须在临界区内持久化。
+                    let _ = manager.put_chunk(CachePolicy::Allowed, &ck_for_fetch, idx, &b, false);
+                    Ok(b)
+                }
+                Err(CacheError::RangeUnsupported) => {
+                    became_non_range = true;
+                    Err(CacheError::RangeUnsupported)
+                }
+                Err(e) => Err(e),
             }
-            Err(CacheError::RangeUnsupported) => {
-                // §35：确认 non-range → sequential fill。
-                self.range_capable = Some(false);
-                self.info.seekable = false;
-                self.start_sequential()?;
-                self.seq_fill_chunk(idx)
-            }
-            Err(e) => Err(e),
+        });
+        if became_non_range {
+            self.range_capable = Some(false);
+            self.info.seekable = false;
         }
+        let bytes = match fetched {
+            Ok(b) => b,
+            Err(CacheError::RangeUnsupported) => {
+                self.start_sequential()?;
+                return self.seq_fill_chunk(idx);
+            }
+            Err(e) => return Err(e),
+        };
+        self.persist(idx, &bytes)?;
+
+        // §49–§51：bounded prefetch —— 单线程拉取前方最多 2 个 chunk，
+        // epoch 不匹配（新 seek）即提前终止；任务上限 = ahead（§50）。
+        if self.range_capable == Some(true) {
+            let manager = Arc::clone(&self.manager);
+            let ck = self.ck.clone();
+            let http = self.http.clone();
+            let url = self.info.url.clone();
+            let total = self.info.content_length;
+            let next_idx = idx + 1;
+            let epoch_at_start = PREFETCH_EPOCH.load(Ordering::Relaxed);
+            let _ = std::thread::Builder::new()
+                .name("aura-cache-prefetch".into())
+                .spawn(move || {
+                    let mut fetched_ahead = 0u32;
+                    let mut i = next_idx;
+                    while fetched_ahead < 2 {
+                        if PREFETCH_EPOCH.load(Ordering::Relaxed) != epoch_at_start {
+                            return; // §51：新 seek → 终止
+                        }
+                        let Some(total_len) = total else { return };
+                        if i * CHUNK_SIZE as u64 >= total_len {
+                            return;
+                        }
+                        if manager.get_chunk(CachePolicy::Allowed, &ck, i).is_some() {
+                            i += 1;
+                            continue;
+                        }
+                        let s = i * CHUNK_SIZE as u64;
+                        let e = (s + CHUNK_SIZE as u64).min(total_len) - 1;
+                        let Ok(parsed) = url::Url::parse(&url) else {
+                            return;
+                        };
+                        let Ok(mut resp) = http.get_stream_with_headers(
+                            &parsed,
+                            &[("Range", format!("bytes={s}-{e}"))],
+                        ) else {
+                            return;
+                        };
+                        if resp.status().as_u16() == 206 {
+                            let mut buf = Vec::with_capacity(CHUNK_SIZE);
+                            let _ = std::io::Read::read_to_end(&mut resp, &mut buf);
+                            if buf.len() as u64 == e - s + 1 {
+                                let _ =
+                                    manager.put_chunk(CachePolicy::Allowed, &ck, i, &buf, false);
+                                fetched_ahead += 1;
+                            }
+                        }
+                        i += 1;
+                    }
+                });
+        }
+        Ok(bytes)
+    }
+
+    /// §49–§51：有界显式预取 —— 单线程拉取前方 `ahead` 个 chunk，
+    /// epoch 不匹配（新 seek）即提前终止；join 用于确定性测试。
+    #[must_use]
+    pub fn prefetch_ahead(&mut self, ahead: u32) -> PrefetchJoin {
+        let manager = Arc::clone(&self.manager);
+        let ck = self.ck.clone();
+        let http = self.http.clone();
+        let url = self.info.url.clone();
+        let total = self.info.content_length;
+        let start_idx = self.pos / CHUNK_SIZE as u64;
+        let handle = std::thread::Builder::new()
+            .name("aura-cache-prefetch-explicit".into())
+            .spawn(move || {
+                let mut fetched_ahead = 0u32;
+                let mut i = start_idx;
+                while fetched_ahead < ahead {
+                    let Some(total_len) = total else { return };
+                    if i * CHUNK_SIZE as u64 >= total_len {
+                        return;
+                    }
+                    if manager.get_chunk(CachePolicy::Allowed, &ck, i).is_some() {
+                        i += 1;
+                        continue;
+                    }
+                    let s = i * CHUNK_SIZE as u64;
+                    let e = (s + CHUNK_SIZE as u64).min(total_len) - 1;
+                    let Ok(parsed) = url::Url::parse(&url) else {
+                        return;
+                    };
+                    let Ok(mut resp) = http
+                        .get_stream_with_headers(&parsed, &[("Range", format!("bytes={s}-{e}"))])
+                    else {
+                        return;
+                    };
+                    if resp.status().as_u16() == 206 {
+                        let mut buf = Vec::with_capacity(CHUNK_SIZE);
+                        let _ = std::io::Read::read_to_end(&mut resp, &mut buf);
+                        if buf.len() as u64 == e - s + 1 {
+                            let _ = manager.put_chunk(CachePolicy::Allowed, &ck, i, &buf, false);
+                            fetched_ahead += 1;
+                        }
+                    }
+                    i += 1;
+                }
+            })
+            .ok();
+        PrefetchJoin { handle }
     }
 
     fn persist(&self, idx: u64, bytes: &[u8]) -> Result<()> {
@@ -521,6 +641,11 @@ impl Seek for CachedRangeReader {
                 "seek beyond buffered data on non-range source",
             ));
         }
+        // §51：seek 使旧 prefetch 终止。
+        PREFETCH_EPOCH.store(
+            PREFETCH_EPOCH.load(Ordering::Relaxed) + 1,
+            Ordering::Relaxed,
+        );
         self.pos = target;
         Ok(self.pos)
     }
@@ -547,6 +672,9 @@ fn read_bounded(
     }
     Ok(buf)
 }
+
+/// prefetch epoch（§51：seek 递增使旧预取终止）。
+static PREFETCH_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// `Content-Range: bytes start-end/total` 解析（§34）。
 #[must_use]
@@ -577,5 +705,19 @@ fn map_source_err(e: aura_sources::error::SourceError) -> CacheError {
         other => CacheError::Network {
             reason: other.to_string(),
         },
+    }
+}
+
+/// prefetch 线程句柄（join 用于确定性测试）。
+pub struct PrefetchJoin {
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl PrefetchJoin {
+    /// 等待预取线程结束（确定性测试；生产可不等待）。
+    pub fn join(&mut self) {
+        if let Some(h) = self.handle.take() {
+            let _ = h.join();
+        }
     }
 }
