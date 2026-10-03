@@ -280,13 +280,6 @@ impl Engine {
         self.transition
     }
 
-    /// 取消进行中的 transition（seek/stop/load 时调用，§49–51）。
-    fn cancel_transition(&mut self) {
-        self.transition = TransitionState::Normal;
-        self.mapped_b.clear();
-        self.next_track_decoded = 0;
-    }
-
     // ===== M2：响度 / preamp / EQ（控制面）=====
 
     /// 设置音轨响度元数据（控制面提供；M2 只消费，§2/§19）。
@@ -601,18 +594,17 @@ impl Engine {
                 )
                 .is_ok();
                 let ch = usize::from(self.channels.get());
-                for i in 0..decoded_frames as usize {
+                let mixable = (decoded_frames as usize * ch).min(self.mapped_scratch.len());
+                for idx in 0..mixable {
+                    let i = idx / ch;
                     let t = ((cf_done + i as u64) as f32 / cf_total as f32).clamp(0.0, 1.0);
                     let (ga, gb) = crate::audio::crossfade::equal_power_gains(t);
-                    for c in 0..ch {
-                        let idx = i * ch + c;
-                        let b = if b_ok && idx < self.mapped_b.len() {
-                            self.mapped_b[idx]
-                        } else {
-                            0.0
-                        };
-                        self.mapped_scratch[idx] = self.mapped_scratch[idx] * ga + b * gb;
-                    }
+                    let b = if b_ok && idx < self.mapped_b.len() {
+                        self.mapped_b[idx]
+                    } else {
+                        0.0
+                    };
+                    self.mapped_scratch[idx] = self.mapped_scratch[idx] * ga + b * gb;
                 }
                 let new_done = (cf_done + decoded_frames).min(cf_total);
                 self.transition = TransitionState::Crossfading {
