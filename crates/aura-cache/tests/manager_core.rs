@@ -6,10 +6,10 @@
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 
-use aura_cache::db::{CacheChunkRow, CacheDb, CacheEntryRow};
+use aura_cache::db::CacheDb;
 use aura_cache::error::CacheError;
 use aura_cache::keys::content_key;
-use aura_cache::manager::{CacheConfig, CacheManager, EntryDeclaration, IntegrityReport};
+use aura_cache::manager::{CacheConfig, CacheManager, EntryDeclaration};
 use aura_sources::model::CachePolicy;
 use aura_testkit::clock::VirtualClock;
 
