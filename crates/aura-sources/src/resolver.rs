@@ -132,6 +132,7 @@ fn stream_from_headers(url: &url::Url, p: &ResolvedHeaders) -> ResolvedStream {
         channels: None,
         seekable: p.seekable,
         stream_type: p.stream_type,
+        byte_size: p.byte_size,
     }
 }
 
@@ -149,6 +150,7 @@ mod direct_http {
         pub is_icy: bool,
         pub seekable: SeekCapability,
         pub stream_type: StreamType,
+        pub byte_size: Option<u64>,
     }
 
     /// 发起探测请求（消耗一次 GET；流由调用方继续消费或丢弃）。
@@ -202,6 +204,7 @@ mod direct_http {
             is_icy,
             seekable,
             stream_type,
+            byte_size: content_length,
         })
     }
 

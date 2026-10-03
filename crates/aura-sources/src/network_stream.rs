@@ -418,3 +418,13 @@ fn put_back(core: &StreamCore, source: ByteSource) {
     }
     // else: source 在此 drop → 连接关闭。
 }
+
+impl aura_core::decoder::AudioByteStream for NetworkAudioStream {
+    fn is_seekable(&self) -> bool {
+        self.core.seekable
+    }
+
+    fn byte_len(&self) -> Option<u64> {
+        self.core.content_length
+    }
+}

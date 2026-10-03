@@ -66,6 +66,8 @@ pub struct ResolvedStream {
     pub channels: Option<u16>,
     pub seekable: SeekCapability,
     pub stream_type: StreamType,
+    /// 字节长度（有限流有；live/未知 None）。Range seek 的前提。
+    pub byte_size: Option<u64>,
 }
 
 /// 轨级 metadata（§54）。

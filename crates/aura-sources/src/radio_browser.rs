@@ -375,6 +375,7 @@ impl RadioBrowserSource {
             channels: None,
             seekable: SeekCapability::NonSeekable,
             stream_type: StreamType::Live,
+            byte_size: None,
         };
         Some(Resolved {
             kind: SourceKind::RadioBrowser,

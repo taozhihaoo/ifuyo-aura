@@ -55,6 +55,7 @@ pub fn resolve(path: &Path) -> Result<Resolved> {
             channels: m.channels,
             seekable: SeekCapability::Seekable,
             stream_type: StreamType::Finite,
+            byte_size: std::fs::metadata(path).map(|m| m.len()).ok(),
         }],
         meta: SourceMetadata {
             track: TrackMeta {

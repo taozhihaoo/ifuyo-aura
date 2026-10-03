@@ -11,6 +11,7 @@ description = "ifuyo Aura"
 workspace = true
 
 [dependencies]
+aura-core = { version = "0.1.0", path = "../aura-core" }
 aura-library = { version = "0.1.0", path = "../aura-library" }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "json"] }
 serde = { version = "1", features = ["derive"] }
@@ -19,3 +20,4 @@ url = "2"
 
 [dev-dependencies]
 aura-testkit = { path = "../aura-testkit" }
+symphonia = "0.6.1"

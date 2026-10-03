@@ -9,6 +9,9 @@
 
 pub mod flac;
 pub mod pcm;
+pub mod streaming;
+
+pub use streaming::{AudioByteStream, StreamingDecoder};
 
 use crate::error::AudioError;
 use crate::types::AudioFormat;
