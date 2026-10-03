@@ -721,3 +721,14 @@ impl PrefetchJoin {
         }
     }
 }
+
+impl aura_core::decoder::AudioByteStream for CachedRangeReader {
+    fn is_seekable(&self) -> bool {
+        // §37：non-range 降级后不可 seek（不伪造）。
+        self.range_capable != Some(false) && self.info.seekable
+    }
+
+    fn byte_len(&self) -> Option<u64> {
+        self.info.content_length
+    }
+}

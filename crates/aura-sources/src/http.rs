@@ -22,8 +22,8 @@ use crate::url_policy::{validate_url, NetworkPolicy};
 pub mod byte_stream {
     use std::io::Read;
 
-    /// 可读、可发送、可取消（Drop 即断连）的网络字节源。
-    pub trait ByteStream: Read + Send {}
+    /// 可读、可发送、线程安全、可取消（Drop 即断连）的网络字节源。
+    pub trait ByteStream: Read + Send + Sync {}
 
     impl ByteStream for reqwest::blocking::Response {}
 }

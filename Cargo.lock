@@ -139,6 +139,7 @@ version = "0.1.0"
 name = "aura-cache"
 version = "0.1.0"
 dependencies = [
+ "aura-core",
  "aura-sources",
  "aura-testkit",
  "rusqlite",
