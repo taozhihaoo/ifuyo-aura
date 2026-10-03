@@ -52,6 +52,8 @@ pub struct AppSettings {
     pub eq_enabled: bool,
     #[serde(default = "default_eq_preset")]
     pub eq_preset: usize,
+    #[serde(default = "default_true")]
+    pub mica_enabled: bool,
 }
 
 fn default_language() -> String {
@@ -78,6 +80,7 @@ impl Default for AppSettings {
             crossfade_seconds: 0.0,
             eq_enabled: true,
             eq_preset: default_eq_preset(),
+            mica_enabled: true,
         }
     }
 }

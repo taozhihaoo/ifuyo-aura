@@ -34,6 +34,7 @@ export default function App() {
           crossfadeSeconds: s.crossfadeSeconds,
           eqEnabled: s.eqEnabled,
           eqPreset: s.eqPreset,
+          micaEnabled: s.micaEnabled,
         }),
       )
       .catch(() => undefined);

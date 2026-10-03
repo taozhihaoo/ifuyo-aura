@@ -49,6 +49,7 @@ export interface AppSettings {
   crossfadeSeconds: number;
   eqEnabled: boolean;
   eqPreset: number;
+  micaEnabled: boolean;
 }
 
 export type SortKey =

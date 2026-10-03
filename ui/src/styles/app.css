@@ -116,6 +116,8 @@
   color: var(--color-text-muted);
 }
 .artwork-placeholder { opacity: 0.5; }
+.artwork-img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-md); }
+.artwork-loading { width: 100%; height: 100%; }
 .np-info { text-align: center; max-width: 560px; }
 .np-title {
   font-size: var(--font-size-xl);

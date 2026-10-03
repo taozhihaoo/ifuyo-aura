@@ -1,8 +1,10 @@
-// Now Playing（§33–§45）：真实播放状态 + 位置插值（§14 低频快照 + rAF 补间）。
+// Now Playing（§33–§45）：真实播放状态 + 位置插值（§14 低频快照 + rAF 补间）
+// + 真实 artwork 四态（§35–§37，经 IPC data URL）。
 import { useEffect, useRef, useState } from 'react';
 import { usePlayerStore } from '../../state/stores';
 import { ipc } from '../../ipc/client';
 import { useTranslation } from '../../i18n/react';
+import { useArtwork } from '../../components/Artwork';
 
 function fmtTime(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '0:00';
@@ -23,7 +25,11 @@ export function NowPlayingPage() {
   // 快照到达：重置插值基准。
   useEffect(() => {
     if (!snapshot) return;
-    base.current = { at: performance.now(), pos: snapshot.positionSeconds, playing: snapshot.state === 'playing' };
+    base.current = {
+      at: performance.now(),
+      pos: snapshot.positionSeconds,
+      playing: snapshot.state === 'playing',
+    };
     setDisplayPos(snapshot.positionSeconds);
   }, [snapshot]);
 
@@ -48,10 +54,37 @@ export function NowPlayingPage() {
     ipc.seek(v).catch(() => undefined);
   };
 
+  // §35–§37：当前 track 的真实 artwork（path → id → data URL）。
+  const trackPath = snapshot?.trackPath ?? null;
+  const [trackId, setTrackId] = useState<number | null>(null);
+  useEffect(() => {
+    if (!trackPath) {
+      setTrackId(null);
+      return;
+    }
+    let alive = true;
+    void ipc
+      .trackIdByPath(trackPath)
+      .then((id) => {
+        if (alive) setTrackId(id);
+      })
+      .catch(() => {
+        if (alive) setTrackId(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [trackPath]);
+  const artwork = useArtwork(trackId);
+
   return (
     <section className="now-playing" aria-label={t('nav.nowPlaying')}>
       <div className="np-artwork" role="img" aria-label="artwork">
-        <div className="artwork-placeholder">♪</div>
+        {artwork.kind === 'loading' && <div className="artwork-loading skeleton" aria-busy />}
+        {artwork.kind === 'loaded' && <img className="artwork-img" src={artwork.dataUrl} alt="" />}
+        {(artwork.kind === 'missing' || artwork.kind === 'corrupt') && (
+          <div className="artwork-placeholder">♪</div>
+        )}
       </div>
       <div className="np-info">
         <h1 className="np-title">{snapshot?.title ?? t('np.noTrack')}</h1>

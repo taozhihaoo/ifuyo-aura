@@ -78,7 +78,7 @@ pub enum Control {
 
 /// 音频服务句柄。
 pub struct AudioHandle {
-    control: std::sync::mpsc::Sender<Control>,
+    control: Mutex<std::sync::mpsc::Sender<Control>>,
     snapshot: Arc<Mutex<PlayerSnapshot>>,
     position_frames: Arc<AtomicU64>,
     sample_rate: Arc<AtomicU64>,
@@ -201,7 +201,7 @@ impl AudioHandle {
             .map_err(|_| aura_core::AudioError::OutputError("driver spawn failed"))?;
 
         Ok(Self {
-            control: tx,
+            control: Mutex::new(tx),
             snapshot,
             position_frames: position,
             sample_rate: rate,
@@ -230,6 +230,8 @@ impl AudioHandle {
     /// 控制消息（Load/crossfade/eq…）。
     pub fn send(&self, msg: Control) -> Result<(), String> {
         self.control
+            .lock()
+            .expect("control lock")
             .send(msg)
             .map_err(|_| "audio driver stopped".into())
     }
@@ -237,6 +239,8 @@ impl AudioHandle {
     /// 实时命令（Play/Pause/Stop/Seek/SetVolume → 命令队列）。
     pub fn post(&self, cmd: AudioCommand) -> Result<(), String> {
         self.control
+            .lock()
+            .expect("control lock")
             .send(Control::Post(cmd))
             .map_err(|e| format!("command queue: {e}"))
     }
@@ -256,4 +260,19 @@ fn open_decoder(
     let duration = aura_core::decoder::Decoder::duration_frames(&decoder);
     let boxed: Box<dyn aura_core::decoder::Decoder> = Box::new(decoder);
     Ok((boxed, duration))
+}
+
+#[allow(dead_code)]
+const _: () = {
+    const fn assert_send_sync<T: Send + Sync>() {}
+    let _ = assert_send_sync::<AudioHandle>;
+};
+
+#[allow(dead_code)]
+fn _sync_probe() {
+    fn check<T: Send + Sync>() {}
+    check::<AudioHandle>();
+    check::<crate::library::LibraryState>();
+    check::<crate::library::TrackSummary>();
+    check::<PlayerSnapshot>();
 }

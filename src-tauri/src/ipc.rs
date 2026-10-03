@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State, Wry};
 
 use crate::audio::{AudioHandle, Control, PlayerSnapshot};
 use crate::library::{AppSettings, LibraryState, ScanProgressDto, TrackSummary};
@@ -34,11 +34,11 @@ fn from_err(code: &str, e: impl std::fmt::Display, recoverable: bool) -> AppErro
     AppError::new(code, e.to_string(), recoverable)
 }
 
-/// 应用共享状态。
+/// 应用共享状态（R = Tauri Runtime；生产 Wry / 冒烟 MockRuntime）。
 pub struct AppState {
     pub audio: Arc<AudioHandle>,
     pub library: Arc<LibraryState>,
-    pub app: AppHandle,
+    pub app: AppHandle<Wry>,
 }
 
 /// 应用基础信息（M0 契约保留）。
@@ -271,6 +271,87 @@ pub fn library_search(
     Ok(summarize(&state, hits))
 }
 
+/// §35/§36/§37：按 TrackId 读 M3 artwork → data URL（Tauri-safe 通道，
+/// 不把任意本地路径交给 webview）。`None` = 无封面（missing）。
+#[tauri::command]
+pub fn track_artwork(state: State<'_, AppState>, track_id: i64) -> CmdResult<Option<String>> {
+    let service = state
+        .library
+        .service
+        .lock()
+        .map_err(|e| from_err("LIBRARY_DB_UNAVAILABLE", e, true))?;
+    let track = service
+        .get_track(aura_library::types::TrackId(track_id))
+        .map_err(|e| from_err("LIBRARY_DB_UNAVAILABLE", e, true))?;
+    let Some(aid) = track.and_then(|t| t.artwork_id) else {
+        return Ok(None);
+    };
+    let art = service
+        .get_artwork(aid)
+        .map_err(|e| from_err("LIBRARY_DB_UNAVAILABLE", e, true))?;
+    let Some((mime, bytes)) = art else {
+        return Ok(None); // 引用悬空 = missing（§36）
+    };
+    use base64::Engine as _;
+    Ok(Some(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    )))
+}
+
+/// path → TrackId（Now Playing artwork 绑定用）。
+#[tauri::command]
+pub fn track_id_by_path(state: State<'_, AppState>, path: String) -> CmdResult<Option<i64>> {
+    let service = state
+        .library
+        .service
+        .lock()
+        .map_err(|e| from_err("LIBRARY_DB_UNAVAILABLE", e, true))?;
+    let id: Option<i64> = service
+        .database()
+        .connection()
+        .query_row(
+            "SELECT track_id FROM track_paths WHERE path = ?1 AND is_active = 1 LIMIT 1",
+            rusqlite::params![path],
+            |r| r.get(0),
+        )
+        .ok();
+    Ok(id)
+}
+
+/// §19/§78：Win11 Mica 材质开关（失败自动保持 solid fallback，§20）。
+#[tauri::command]
+pub fn set_mica(
+    app: AppHandle<Wry>,
+    state: State<'_, AppState>,
+    enabled: bool,
+    persist: bool,
+) -> CmdResult<()> {
+    #[cfg(target_os = "windows")]
+    {
+        let Some(win) = app.get_webview_window("main") else {
+            return Err(from_err("INTERNAL", "main window missing", false));
+        };
+        let result = if enabled {
+            window_vibrancy::apply_mica(&win, None).map_err(|e| e.to_string())
+        } else {
+            window_vibrancy::clear_mica(&win).map_err(|e| e.to_string())
+        };
+        if let Err(reason) = result {
+            // 非 Win11 / 合成器不支持：静默保持 solid fallback（§20）。
+            let _ = reason;
+        }
+    }
+    if persist {
+        let lib = &state.library;
+        let mut settings = lib.settings.lock().expect("settings");
+        settings.mica_enabled = enabled;
+        lib.save_settings(&settings)
+            .map_err(|e| from_err("SETTINGS_WRITE", e, true))?;
+    }
+    Ok(())
+}
+
 /// §93：播放管线路径解析。
 #[tauri::command]
 pub fn track_path(state: State<'_, AppState>, track_id: i64) -> CmdResult<String> {
@@ -282,7 +363,7 @@ pub fn track_path(state: State<'_, AppState>, track_id: i64) -> CmdResult<String
 
 /// §87/§88：Add Music Folder → 后台扫描 + scan-progress 事件。
 #[tauri::command]
-pub fn scan_folder(app: AppHandle, state: State<'_, AppState>, path: String) -> CmdResult<()> {
+pub fn scan_folder(app: AppHandle<Wry>, state: State<'_, AppState>, path: String) -> CmdResult<()> {
     if state
         .library
         .scanning

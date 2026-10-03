@@ -28,6 +28,7 @@ export function SettingsPanel() {
     crossfadeSeconds?: number;
     eqEnabled?: boolean;
     eqPreset?: number;
+    micaEnabled?: boolean;
   }) => {
     const merged = {
       version: 1,
@@ -38,6 +39,7 @@ export function SettingsPanel() {
       crossfadeSeconds: patch.crossfadeSeconds ?? s.crossfadeSeconds,
       eqEnabled: patch.eqEnabled ?? s.eqEnabled,
       eqPreset: patch.eqPreset ?? s.eqPreset,
+      micaEnabled: patch.micaEnabled ?? s.micaEnabled,
     };
     void ipc.saveSettings(merged).catch(() => undefined);
   };
@@ -84,6 +86,18 @@ export function SettingsPanel() {
               </option>
             ))}
           </select>
+        </label>
+
+        <label className="settings-row">
+          <span>{t('settings.mica')}</span>
+          <input
+            type="checkbox"
+            checked={s.micaEnabled}
+            onChange={(e) => {
+              s.setAll({ ...s, micaEnabled: e.target.checked });
+              void ipc.setMica(e.target.checked, true).catch(() => undefined);
+            }}
+          />
         </label>
 
         <label className="settings-row">

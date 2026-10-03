@@ -30,6 +30,23 @@ pub fn run() {
                 library: std::sync::Arc::new(library),
                 app: handle,
             });
+            // §19：Win11 Mica（设置开关，失败自动保持 solid fallback §20）。
+            #[cfg(target_os = "windows")]
+            {
+                use tauri::Manager as _;
+                let mica_enabled = app
+                    .state::<ipc::AppState>()
+                    .library
+                    .settings
+                    .lock()
+                    .expect("settings")
+                    .mica_enabled;
+                if mica_enabled {
+                    if let Some(win) = app.get_webview_window("main") {
+                        let _ = window_vibrancy::apply_mica(&win, None);
+                    }
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -52,7 +69,10 @@ pub fn run() {
             ipc::cancel_scan,
             ipc::get_settings,
             ipc::save_settings,
-        ])
+            ipc::track_artwork,
+            ipc::set_mica,
+            ipc::track_id_by_path,
+        ]) // probe-isolated
         .run(tauri::generate_context!())
         .expect("error while running ifuyo Aura");
 }

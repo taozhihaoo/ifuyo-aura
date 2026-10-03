@@ -72,6 +72,7 @@ export interface SettingsState {
   crossfadeSeconds: number;
   eqEnabled: boolean;
   eqPreset: number;
+  micaEnabled: boolean;
   loaded: boolean;
   setAll: (s: {
     locale: Locale;
@@ -81,6 +82,7 @@ export interface SettingsState {
     crossfadeSeconds: number;
     eqEnabled: boolean;
     eqPreset: number;
+    micaEnabled: boolean;
   }) => void;
   setLocale: (l: Locale) => void;
   setUiScale: (v: number) => void;
@@ -94,6 +96,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   crossfadeSeconds: 0,
   eqEnabled: true,
   eqPreset: 0,
+  micaEnabled: true,
   loaded: false,
   setAll: (s) => set({ ...s, loaded: true }),
   setLocale: (locale) => set({ locale }),
