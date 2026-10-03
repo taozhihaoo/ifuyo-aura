@@ -28,6 +28,14 @@ wildcards = "deny"
 [advisories]
 version = 2
 yanked = "warn"
+# 传递依赖「不再维护」类 advisory（非漏洞）：
+# - RUSTSEC-2024-0436 paste：经 lofty（M3 元数据）引入，上游未发修复版本
+# - RUSTSEC-2024-0370 proc-macro-error：经 derive 栈引入，上游不可达
+# 处置：跟随上游；升级路径在 DECISIONS.md 记录（2026-10-05 M6 门禁）。
+ignore = [
+  "RUSTSEC-2024-0436",
+  "RUSTSEC-2024-0370",
+]
 
 [sources]
 unknown-registry = "warn"

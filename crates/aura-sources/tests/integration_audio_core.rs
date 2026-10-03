@@ -101,13 +101,25 @@ fn direct_http_mp3_through_engine() {
     .unwrap();
     let _ = engine.load_track(Box::new(decoder));
     poster.post(AudioCommand::Play).unwrap();
+    // 负载加固：feeder 预填期间 render 可能瞬时 0 帧（≠曲终）。连续空渲染
+    // 有界等待（50×10ms），数据到达后继续；最终非静音断言不变。
     let mut rendered = 0u64;
+    let mut starved = 0u32;
     for _ in 0..400 {
         let n = engine.render_for_frames(4_800);
         rendered += n;
-        if engine.state() == PlaybackState::Stopped || n == 0 {
+        if engine.state() == PlaybackState::Stopped {
             break;
         }
+        if n == 0 {
+            starved += 1;
+            if starved > 50 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+            continue;
+        }
+        starved = 0;
     }
     assert!(rendered > 0, "网络 MP3 必须解码出 PCM: rendered={rendered}");
     let cap = engine.capture();

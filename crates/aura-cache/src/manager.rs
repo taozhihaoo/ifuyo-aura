@@ -155,10 +155,15 @@ impl Inflight {
         (true, slot)
     }
 
-    /// 负责方完成：唤醒等待方并移除。
+    /// 负责方完成：计数清零 + 唤醒等待方并移除。
+    /// （等待方以 `count==0` 为出边条件——只 notify 不清零会让等待方
+    /// 空转到 30s deadline，M6 门禁实测暴露。）
     fn finish(&self, ck: &str, idx: u64) {
         let mut map = self.map.lock().expect("inflight lock");
         if let Some(slot) = map.remove(&(ck.to_string(), idx)) {
+            if let Ok(mut count) = slot.0.lock() {
+                *count = 0;
+            }
             slot.1.notify_all();
         }
     }
