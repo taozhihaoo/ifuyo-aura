@@ -2,6 +2,9 @@
 //! 数据库路径由应用层决定（本 crate 不硬编码 %APPDATA%）。
 
 pub mod migrations;
+/// 低层仓库：事务内写路径。常规使用请走 service 层；
+/// 集成测试与迁移工具可直用。
+pub mod repo;
 pub mod schema;
 
 use std::path::Path;

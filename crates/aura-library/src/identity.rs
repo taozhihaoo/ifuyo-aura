@@ -36,6 +36,12 @@ pub fn fingerprint128(data: &[u8]) -> [u8; 16] {
         .expect("16 bytes")
 }
 
+/// 任意字节的指纹十六进制（小写；artwork 内容哈希等复用）。
+#[must_use]
+pub fn fingerprint_hex(data: &[u8]) -> String {
+    hex(&fingerprint128(data))
+}
+
 /// 采样：`size <= 2MiB` 读全文件；否则头 1MiB + 尾 1MiB（中部不采样，
 /// 性能与章程推荐的等价方案一致；碰撞与取舍见 D-037）。
 fn sample_file(path: &Path, size: u64) -> Result<Vec<u8>> {
@@ -73,12 +79,16 @@ fn read_at(file: &mut File, offset: u64, len: usize, buf: &mut Vec<u8>) -> Resul
 /// 身份键：`"v1:<size:016x>:<fp128 hex>"`（确定性；小写十六进制）。
 #[must_use]
 pub fn identity_key(size: u64, fp: &[u8; 16]) -> String {
-    let mut hex = String::with_capacity(32);
-    for b in fp {
+    format!("{IDENTITY_VERSION}:{size:016x}:{}", hex(fp))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    let mut hex = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
         hex.push(char::from_digit(u32::from(b >> 4), 16).unwrap_or('0'));
         hex.push(char::from_digit(u32::from(b & 0xf), 16).unwrap_or('0'));
     }
-    format!("{IDENTITY_VERSION}:{size:016x}:{hex}")
+    hex
 }
 
 /// 读取文件并计算内容身份。`audio_sig` 来自标签解析（见
