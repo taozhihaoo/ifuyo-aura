@@ -140,3 +140,42 @@ Stop：状态回 Stopped、**播放位置归零**、缓冲清空（generation bu
 ## D-026 零分配承诺边界（2026-10-03，M1）
 
 零分配承诺覆盖 **OutputStage::render 回调路径**（真实线程模型中即 audio callback：ring pop + 增益平滑 + 计数），由计数分配器测试证明。M1 单线程引擎中 decode/fill 属解码面，分配允许（真实线程模型中移入解码线程）；resampler 分块输出缓冲同理。真实线程接线（M6+）时保持此边界。
+## D-027 下一曲预解码窗口（2026-10-03，M2）
+
+窗口默认 3 秒（`DEFAULT_PRELOAD_WINDOW_FRAMES = 3 × 48_000` 帧口径），可经 `set_preload_window_frames` 配置。控制面在剩余帧数进入窗口时调用 `preload_next`；**同一时刻只允许一个 next**（重复调用覆盖前一个——测试与调用方契约）。
+
+## D-028 Gapless 实现（2026-10-03，M2）
+
+音轨切换在**同一管线内顺序解码**完成：当前轨 `decode_next` 返回 0 且有预装载 next 时，直接替换 decoder、重置每轨计数、**不 bump generation、不清 ring buffer、位置连续推进**。M1 的单管线天然无跨管线接缝，样本级无缝由连续解码保证。
+
+## D-029 Gapless 元数据处理（2026-10-03，M2）
+
+symphonia 0.6 的 FLAC gapless trim 在解码器构造时以 `AudioDecoderOptions { gapless: true }` 启用（M1 D-015 沿用）；有效帧数经 `TrackFrameRange` 记账（source_frames / valid_frames / rendered_frames）。**不自行猜测 trim 值**——synthetic 测试解码器天然无 padding。
+
+## D-030 Crossfade 曲线（2026-10-03，M2）
+
+等功率：`ga = cos(t·π/2)`、`gb = sin(t·π/2)`（t ∈ [0,1]），满足 ga²+gb²=1，单调无 overshoot。基于输出帧而非 wall-clock；`crossfade_frames = duration × sample_rate`（44.1/48/96kHz 均有测试）。
+
+## D-031 Gapless/Crossfade 策略（2026-10-03，M2）
+
+crossfade_frames == 0（引擎默认）→ 一律 gapless（情况 A/C）；cf > 0 且预装载了 next 且**双方格式一致**（resampler 旁路前提）→ crossfade（情况 B）；格式不一致 → 回退 gapless（D-033）；cf ≥ 曲目剩余长度 → 降级 overlap = remaining（不 panic，§16）。
+
+## D-032 Loudness 增益公式与峰值安全（2026-10-03，M2）
+
+`gain_db = −16 − integrated_lufs`；峰值安全上限 `max_gain = 10^(−1/20) / 10^(true_peak_db/20)`，实际增益取二者较小。元数据缺失或 enabled=false → gain = 1.0（不猜测，§25）。M2 只消费 `TrackLoudness`（synthetic fixture 测试），分析/持久化归 M3/M8。
+
+## D-033 Limiter（2026-10-03，M2）
+
+分段软限幅：|x| ≤ −1dBFS 直通；肩部 tanh 压缩，渐近 ≤ 1.0 dBFS；非有限输入 → 0。目标峰值 ≤ −1 dBFS 由 loudness ceiling 保证，limiter 为最后防线（对 EQ/preamp 组合过冲兜底，§45）。limiter 可开关：**生产恒开**，ramp provenance 测试关闭（D-034）。
+
+## D-034 EQ 实现与同步（2026-10-03，M2）
+
+RBJ cookbook biquad（Peak/LowShelf/HighShelf），10 频段固定中心频率，Direct Form I 级联按声道独立。预设为纯数据（6 个）。参数经 **EqBus 原子字发布**（50 × AtomicU32 + 偶奇序号撕裂检测）——回调 `load_into` 复制进本地 Copy 快照，无锁、无分配；序号奇数（写入中）时保留旧快照下块重试。EQ 系数计算在控制线程（`set_eq_bands`）。
+
+## D-035 零分配承诺边界修订（2026-10-03，M2）
+
+回调路径（`OutputStage::render`：pop → 净化 → 平滑 → loudness×preamp → EQ → limiter）零分配由计数分配器证明（m2_zero_alloc_v2.rs 独立二进制，避免并行测试计数干扰）。**解码面**（decode/fill/resampler 块处理/capture 诊断缓冲增长）允许分配，真实线程接线（M6+）后移入解码线程。为此 M2 将 resampler 改为 `process_chunk_into`（process_into_buffer + 复用输出缓冲）与 `map_channels_into`。
+
+## D-036 热插拔策略（2026-10-03，M2）
+
+设备状态机 `Connected / Removed`。断开：安全暂停（Playing→Paused）、保留曲目/位置/解码器；恢复：重建重采样与渲染缓冲（`set_output_format`，位置保留），**不自动播放**；默认设备变化走同一恢复路径；流错误仅计数（`device_errors`），不误触发曲目切换。检测本身归外部适配器（M10），回调内禁止设备枚举。

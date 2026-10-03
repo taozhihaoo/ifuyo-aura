@@ -31,3 +31,22 @@
 - 重采样 285×：M6+ 设备格式协商接入后如需更高档位（sinc_len 512）需复测。
 - FLAC 解码 3668×：单声道 48k 正弦夹具；多声道/高码率文件复测于 M3（真实库扫描）与 M6。
 - 本文件所有数字可由上述命令在本机复现。
+
+## M2 基线（release 构建，单线程；2026-10-03，commit M2-f）
+
+| 项目 | 结果 | 说明 |
+|---|---|---|
+| ring buffer 吞吐 | ≈ 5.00 × 10⁹ 帧/秒 | 与 M1 持平 |
+| FLAC 解码吞吐 | 3607× 实时 | 与 M1 持平 |
+| 重采样 44.1k→48k | 275.9× 实时 | into-buffer API 后，与 M1 持平 |
+| NullOutput 渲染（M1 基线路径） | 24×10⁶ 帧等效/秒（120ms/2.88M 帧） | 合成 ramp 源 |
+| **全 DSP 回调（M2 §63）** | **avg 44.6µs / p95 49.3µs / p99 54.6µs / worst 4.33ms**（1024 帧块） | crossfade 0.5s + loudness(+4dB) + Bass Boost EQ + limiter + volume 全开；48kHz 块预算 21.3ms → **预算占用 ≈ 0.21%** |
+| 1h 等效 soak | PASS（release，8.3s 真实耗时跑完 3600 轨 A/B 循环） | 无 panic/漂移/无效 PCM（§64–65） |
+| 设备恢复成本 | O(格式重建)：重采样器重建 + 渲染缓冲重分配（µs 级） | 无真实声卡时序测量，M10 补充 |
+
+### 复测命令
+
+```text
+cargo test -p aura-core --release --test perf_baseline -- --ignored --nocapture
+cargo test -p aura-core --release --test m2_integration_v1 -- --ignored --nocapture
+```

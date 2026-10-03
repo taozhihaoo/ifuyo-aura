@@ -6,7 +6,7 @@
 Phase 0 = COMPLETE (2026-10-02)
 M0  = COMPLETE (2026-10-03)
 M1  = COMPLETE (2026-10-03)  (Audio Engine)
-M2  = NOT STARTED   (Playback Quality)
+M2  = COMPLETE (2026-10-03)  (Playback Quality)
 M3  = NOT STARTED   (Music Library)
 M4  = NOT STARTED   (Sources)
 M5  = NOT STARTED   (Cache)
@@ -24,6 +24,15 @@ M14 = NOT STARTED   (Final Release Audit)
 无任何伪造完成状态：除 Phase 0 与 M0 外全部 NOT STARTED。
 
 
+
+## M2 Completion（2026-10-03）
+
+- A 级 16 项全部实现（§0）：样本级 gapless（同管线连续解码）、下一曲预解码（3s 窗口）、无缝拼接、crossfade 0–12s 等功率、gapless/crossfade 互斥策略、loudness 归一（−16 LUFS 目标）+ 峰值安全、设备变化检测/断开安全暂停/恢复可续/格式重配置/无 panic/可诊断 + 确定性测试。
+- B 级 4 项全部实现：10-band RBJ 参数 EQ（Peak/Shelf）、preamp ±12dB、6 预设（纯数据）、按设备记忆 EQ 的数据模型基座（EqBus 快照可按设备键扩展）。
+- 测试：workspace **108 通过**（M2 新增：gapless 5 + crossfade 5 + loudness/EQ/hotplug 9 + 集成/确定性/soak 5+1）。
+- §51 十项 M1 证明全部回归通过；零分配证明升级为全 DSP 链（stage 级，独立二进制）。
+- 性能：全 DSP 回调 avg 44.6µs / p95 49.3µs / p99 54.6µs（预算占用 0.21%）；1h 等效 soak PASS；见 docs/PERF.md。
+- 已知限制：真实声卡收听验证待 M6；symphonia gapless trim 的真实 MP3/Vorbis 夹具待 M3 真实文件接入后补充；设备检测的 Windows 事件适配器归 M10。
 ## M1 Completion（2026-10-03）
 
 - 结构：`aura-core` 分层（types/error/audio{buffer,gain,position}/decoder{mod,flac,pcm}/resampler/output{mod,null,device}/engine{command,player}）。

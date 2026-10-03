@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — M2: Playback Quality (2026-10-03)
+
+- Sample-level gapless playback: single-pipeline sequential decode with 3s next-track predecode window, `TrackFrameRange` accounting, no generation bump at natural track boundaries.
+- Crossfade 0–12s with equal-power curves (cos/sin), frame-based model, gapless-priority policy, degenerate-overlap downgrade; seek/stop/load cancel transitions.
+- Loudness normalization consuming `TrackLoudness` metadata (target −16 LUFS), true-peak-safe gain clamping, tanh soft limiter (last line of defense, ≤ 1.0 dBFS).
+- [B] 10-band RBJ parametric EQ (Peak/Shelf), preamp ±12dB, 6 pure-data presets, lock-free atomic snapshot bus (50×AtomicU32 + even/odd seq, tear detection).
+- Output device hotplug state machine: safe pause on removal, position preservation, format reconfiguration on restore, no auto-play, stream-error counting.
+- Zero-alloc proof upgraded: full DSP chain (volume+loudness+EQ+limiter) callback path, separate test binary to avoid parallel-counter interference; resampler moved to `process_chunk_into` (into-buffer, no per-chunk allocation).
+- Tests: 108 workspace green (was 70). PERF.md: full-DSP callback avg 44.6µs / p95 49.3µs / p99 54.6µs per 1024-frame chunk (0.21% of 21.3ms budget); 1h-equivalent soak PASS.
+
 ### Added — M1: Audio Core (2026-10-03)
 
 - `aura-core` audio engine: decoder abstraction + real FLAC path (symphonia-bundle-flac), mono→stereo channel map, rubato sinc resampler (44.1k↔48k matrix tested), frame-based SPSC ring buffer with generation-aware stale-sample rejection, playback state machine (Stopped/Paused/Playing), frame-authoritative position, volume with 10ms per-sample gain smoothing, underrun silence+counter, `AudioError` model.

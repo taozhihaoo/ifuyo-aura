@@ -196,16 +196,19 @@ mod tests {
             .unwrap()
             .expect("rates differ");
         let mut out = Vec::new();
+        let mut out_buf = Vec::new();
         let input_frames = input.len() / 2;
         let mut fed = 0usize;
         while fed + r.input_frames_next() <= input_frames {
             let chunk = &input[fed * 2..(fed + r.input_frames_next()) * 2];
-            out.extend_from_slice(&r.process_chunk(chunk).unwrap());
+            r.process_chunk_into(chunk, &mut out_buf).unwrap();
+            out.extend_from_slice(&out_buf);
             fed += r.input_frames_next();
         }
         if fed < input_frames {
             let tail = &input[fed * 2..];
-            out.extend_from_slice(&r.process_chunk_partial(tail).unwrap());
+            r.process_chunk_partial_into(tail, &mut out_buf).unwrap();
+            out.extend_from_slice(&out_buf);
         }
         (out, r.output_delay(), input_frames)
     }

@@ -76,6 +76,21 @@ OutputStage（回调路径唯一逻辑：弹出 → underrun 补静音 → PCM �
 NullOutput（CI 确定性渲染/捕获）或 CPAL 设备流（f32/i16）
 ```
 
+
+### Transition Engine（M2）
+
+```text
+Current Decoder ──► Current Pipeline ──► Audio Ring Buffer ──► OutputStage ──► Output
+Next Decoder    ──► (preload: 同管线顺序接管)
+```
+
+- **Gapless Model**：自然曲目结束（decode_next → 0）且有预装载 next → 同管线接管（不 bump generation、位置连续）。TrackFrameRange 记账每轨 source/valid/rendered 帧。
+- **Crossfade Model**：cf ∈ [0,12s]；cf=0 → gapless 优先；进入条件 = remaining ≤ cf 且格式一致；等功率 cos/sin 曲线按帧推进；degenerate（cf ≥ remaining）降级 overlap=remaining。
+- **Loudness Pipeline**：`TrackLoudness`（M3/M8 供给）→ gain = min(−16−LUFS, peak-safe ceiling) → 与 preamp 合并为 track_gain（静态）→ 与 user volume（动态平滑）相乘。
+- **Limiter**：tanh 软限幅，−1dBFS 直通阈值，渐近 1.0；DSP 顺序末级（§44）。
+- **EQ Architecture**：RBJ biquad ×10 频段，Direct Form I 级联；EqBus 原子字快照（无锁），回调本地 Copy 副本。
+- **Output Device Lifecycle / Hotplug Recovery**：Connected/Removed 两态；断开 → 安全暂停（位置/曲目保留）；恢复 → 格式重建（重采样器/渲染缓冲/EQ 级联），不自动播放；流错误仅计数；检测归外部适配器（M10）。
+
 ### Thread Model
 
 ```text

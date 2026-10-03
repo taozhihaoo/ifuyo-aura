@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 pub const TARGET_LUFS: f64 = -16.0;
 
 /// 限幅安全上限：−1.0 dBFS（M2 §21，D-031）。
-pub const LIMITER_CEILING: f32 = 0.891_2509; // 10^(-1/20)
+pub const LIMITER_CEILING: f32 = 0.891_250_9; // 10^(-1/20)
 
 /// 软限幅肩部宽度（线性）：ceiling → 1.0 之间为 tanh 软区域。
 const LIMITER_KNEE: f32 = 1.0 - LIMITER_CEILING;
@@ -233,9 +233,7 @@ impl EqCascade {
     }
 
     pub fn reset(&mut self) {
-        for s in &mut self.states {
-            *s = [0.0; 4];
-        }
+        self.states.fill([0.0; 4]);
     }
 
     /// 对交错 PCM 应用 10-band 级联（按声道独立处理）。

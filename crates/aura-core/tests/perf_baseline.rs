@@ -73,10 +73,10 @@ fn perf_baselines() {
         let seconds_of_input = 60.0; // 等效 60 秒输入音频
         let in_frames_total = (44_100.0 * seconds_of_input) as usize;
         let t = Instant::now();
+        let mut out_buf = Vec::new();
         let mut done = 0usize;
         while done < in_frames_total {
-            let out = r.process_chunk(&input).unwrap();
-            let _ = out;
+            r.process_chunk_into(&input, &mut out_buf).unwrap();
             done += r.input_frames_next();
         }
         let el = t.elapsed();
@@ -119,4 +119,60 @@ fn perf_baselines() {
             el / (frames_total / 1024) as u32
         );
     }
+}
+
+const RATE: u32 = 48_000;
+const RATE64: u64 = 48_000;
+
+#[test]
+#[ignore]
+fn perf_m2_full_dsp_callback() {
+    // M2 §63：全 DSP callback benchmark（avg / p95 / p99 / worst）
+    use aura_core::{AudioCommand, TrackLoudness};
+    let (mut engine, mut poster) = Engine::new(
+        SampleRate::new(RATE).unwrap(),
+        Channels::new(2).unwrap(),
+        16_384,
+    )
+    .unwrap();
+    engine.set_crossfade_seconds(0.5);
+    engine.set_track_loudness(
+        TrackLoudness {
+            integrated_lufs: -20.0,
+            true_peak_db: -60.0,
+            loudness_available: true,
+        },
+        true,
+    );
+    engine.set_eq_preset(&aura_core::dsp::EQ_PRESETS[1]);
+    engine.load_track(Box::new(SyntheticDecoder::new(
+        RATE,
+        2,
+        RATE64 * 100,
+        512,
+        Waveform::Sine {
+            freq_hz: 440.0,
+            amplitude: 0.6,
+        },
+    )));
+    poster.post(AudioCommand::Play).unwrap();
+    poster
+        .post(AudioCommand::SetVolume { volume: 0.8 })
+        .unwrap();
+    // 预热
+    engine.render_for_frames(8192);
+    let chunks = 5000usize;
+    let mut times = Vec::with_capacity(chunks);
+    for _ in 0..chunks {
+        let t = std::time::Instant::now();
+        engine.render_for_frames(1024);
+        times.push(t.elapsed());
+    }
+    times.sort();
+    let avg = times.iter().sum::<std::time::Duration>() / chunks as u32;
+    let p95 = times[chunks * 95 / 100];
+    let p99 = times[chunks * 99 / 100];
+    let worst = times[chunks - 1];
+    println!("=== M2 full DSP callback (1024-frame chunks, 48kHz) ===");
+    println!("avg={avg:?} p95={p95:?} p99={p99:?} worst={worst:?}");
 }
