@@ -179,3 +179,51 @@ RBJ cookbook biquad（Peak/LowShelf/HighShelf），10 频段固定中心频率�
 ## D-036 热插拔策略（2026-10-03，M2）
 
 设备状态机 `Connected / Removed`。断开：安全暂停（Playing→Paused）、保留曲目/位置/解码器；恢复：重建重采样与渲染缓冲（`set_output_format`，位置保留），**不自动播放**；默认设备变化走同一恢复路径；流错误仅计数（`device_errors`），不误触发曲目切换。检测本身归外部适配器（M10），回调内禁止设备枚举。
+
+## D-037 内容身份算法（2026-10-04，M3）
+
+`identity_key = "v1:<size:016x>:<sip128hex>"`：文件大小 + 首/尾 1MiB 采样的 SipHash-2-4 128 位指纹（`siphasher` crate，MIT/Apache-2.0，零传递依赖；charter §9 推荐方案的直接实现）。采样定义：size ≤ 2MiB 全量，否则头 1MiB + 尾 1MiB（中部不采样）。取舍：中部突变在 >2MiB 文件上不可见（可接受——真实音频替换几乎必然改变长度/头部元数据）；吞吐 ≈ 1.4 GB/s（scalar SipHash），增量扫描使重复采样不再发生（PERF M3）。键版本前缀 `v1` 保留指纹算法演进空间。
+
+## D-038 身份解析：标签改写 vs 音频替换（2026-10-04，M3）
+
+内容指纹在标签重写后必然变化（ID3/Vorbis 注释在头部/尾部采样窗口内），而 §10 要求"仅标签变更 TrackId 不变"。解析规则：同路径新内容时比对 `audio_sig = codec/sample_rate/channels/duration_frames` —— 未变 → 标签改写，保留 TrackId 刷新 metadata；变化 → 音频替换，新 track，旧 track 无活跃路径后停用（统计保留 §47）。边界：音频替换且时长/采样率/声道恰好全部不变（极端罕见）会被判为标签改写——接受并记录；不做逐帧解码比对（扫描性能不可接受）。
+
+## D-039 移动+改标签同时发生的孤儿重关联（2026-10-04，M3）
+
+新路径 + 新指纹（两个窗口都变）时：先查"已停用且 audio_sig 与搜索标题（search_text）匹配"的 track，命中则重关联（TrackId 与统计保留）；否则新建。ORDER BY id LIMIT 1 保证确定性。
+
+## D-040 封面选择策略（2026-10-04，M3）
+
+多封面时 `CoverFront` 优先，否则声明顺序第一个。MIME 以字节签名判定（JPEG FF D8 FF / PNG 魔数），不信任标签声明；非 JPEG/PNG 或 >8MB 跳过（§31/§66：artwork 失败 ≠ track 失败）。
+
+## D-041 reparse point / symlink 策略（2026-10-04，M3）
+
+不跟随任何 symlink/junction/reparse point（目录不递归，文件跳过并记 `ReparseSkipped`）。`DirEntry::file_type()` 用 readdir 数据不触发最终组件 follow。不做 cycle detection/canonical 白名单（跟随即复杂化，收益低）。root 边界由「canonicalize root + 不跟随 reparse」共同保证（§13/§14）。
+
+## D-042 FTS 分词：CJK 单字+滑窗二元组（2026-10-04，M3）
+
+rusqlite bundled 无法注册自定义 FTS5 tokenizer，采用预分词：索引侧每字段产出「小写英文词 + CJK 单字 + 相邻二元组」，空格连接，FTS5 用内建 unicode61 切分；查询侧同样分词后逐词 `"tok"*`（引号失效化全部 FTS 语法，§65）。单字 CJK 查询 = 前缀匹配 token 起始（§34）。陷阱修复：NFKD 会把浊音假名（ド→ト+浊点）分解丢浊点，CJK 段整体绕过 NFKD（normalize::search_text）。滑窗（非跳窗）二元组保证「光乐」等跨词内子串可命中。
+
+## D-043 watcher debounce 窗口 500ms（2026-10-04，M3）
+
+`EventCoalescer` 时间窗 500ms（窗口起点或最后事件后 500ms 即 flush，先到者）。合并优先级 Removed > Renamed > Changed（终态覆盖）。watcher 线程只写内存结构，DB 写只发生在应用层发起的扫描（§44/§45）；窗口实测以真实事件测试验证（§73 有界轮询）。
+
+## D-044 分页：limit/offset（2026-10-04，M3）
+
+offset 分页（非 cursor）：实现简单、排序键任意可换、10k 行 page 500 实测 122ms 满足交互级；M6 虚拟列表若实测不足再评估 cursor（sort key+id 复合游标）。
+
+## D-045 filter 求值在 Rust 侧（2026-10-04，M3）
+
+M3 无分析数据（BPM/Key/Energy 属 M8），`filter_tracks` 全量拉活跃集在 Rust 求值后分页。10k 行 <200ms 可接受；M8 落库后把可下推谓词翻译为 SQL（analysis 字段 JOIN track_analysis）。
+
+## D-046 搜索排序：bm25 权重 + id 决胜（2026-10-04，M3）
+
+`ORDER BY bm25(fts, 0, 8, 6, 4, 4, 2, 1), track_id`。§36 的 title>artist>album 优先级经列权重表达；实测发现微小语料（N≤个位数）IDF 为负会反转直觉排序——§36 明确允许 fallback「FTS rank + deterministic secondary ordering」，采用之；真实语料（百行以上）title 权重主导恢复。
+
+## D-047 队列 Clear 的 undo = 显式 no-op（2026-10-04，M3）
+
+命令日志粒度不足以恢复 Clear（需全队列快照）。M3：undo 弹出日志项并返回 `Clear`，不做恢复；M6 UI 如需完整 undo，加队列快照表再升级。Append/Insert/Remove/Move 全部可逆（Remove 在日志 payload 记录被删 track_id）。
+
+## D-048 M3 依赖引入（2026-10-04，M3）
+
+`lofty 0.22`（标签，MSRV 1.85）、`rusqlite 0.40 + bundled`（SQLite，bundled 自带 FTS5）、`notify 8.2`（watcher，CC0）、`image =0.25.9`（MSRV 1.85；**固定等号版本**——0.25.10 MSRV 1.88 超出工作区 1.87）、`siphasher 1.0`（SipHash-2-4-128）、`unicode-normalization 0.1`（NFC/NFKD）。全部许可在 deny 白名单；image/jpeg+png 最小 feature（无 webp/avif/gif）。

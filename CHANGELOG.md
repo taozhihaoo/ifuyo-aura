@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — M3: Music Library / Metadata / SQLite / Search / Artwork (2026-10-04)
+
+- `aura-library` crate: local directory scanner (iterative, cancellable, per-file error tolerant, no-reparse-follow policy, root boundary via canonicalize), extension filter (.flac/.mp3/.ogg/.oga/.wav/.m4a/.alac) with content-probe rejection of fake audio.
+- Content identity: size + head/tail 1MiB SipHash-2-4-128 fingerprint; rename/move keep TrackId, tag-only edits keep TrackId via audio-signature resolution, audio replacement creates a new identity; orphan re-link covers move+edit; stats survive deletion (D-037..D-039).
+- SQLite (rusqlite bundled, WAL): schema v1 (tracks/track_paths/artists/albums/genres/artworks/playback_stats/library_roots + track_analysis placeholder + playlists/smart_playlists/queue models), transactional `user_version` migrations with fresh/upgrade/rerun/failure-rollback/reopen/WAL/corruption tests.
+- FTS5 search: pre-tokenized CJK single+sliding-bigram indexing (voiced-kana NFKD trap fixed), quoted-prefix query builder (injection-proof), bm25 weighted ranking with deterministic tie-break; filter expression AST + parser (`field:value`, `>`, `<`, `min-max`, analysis fields => MissingData, no panic).
+- Artwork: embedded extraction (front-cover first, byte-signature MIME sniff, 8MB guard), content-hash dedup, 64/256 thumbnails via deterministic box-filter, atomic tmp+rename writes, decode memory limits (hostile-PNG tested), corrupt-cache invalidate/rebuild.
+- Incremental scan: size+mtime skip (40x faster rescan), idempotent triple-scan, per-file transaction commits, cancellation at entry boundary, structured ScanResult/ScanProgress; LibraryService with injected clock.
+- Watcher: notify adapter → deterministic coalescer (500ms window, Removed>Renamed>Changed fold, injected clock) → rescan candidates; no DB writes in watcher path; real-watcher integration tests with bounded condition wait.
+- Query API: list/get/search/filter/artwork/artists/albums, 6 sort keys with NULLS LAST + id tie-break, limit/offset pagination, playback stats record/read, `integrity_check` diagnostics.
+- [B] playlist models: manual playlists (stable ordering, position compaction, cascade delete), smart playlists (executable query storage, no fabricated analysis), queue + command log with undo (Clear undo explicitly a no-op).
+- Tests: 110 aura-library tests (was 1). PERF.md M3 baselines (release): scan 1000 @ 3484 files/s, incremental rescan 25ms, 10k-row search avg 1.1ms, identity hash 1.49ms/5MB, thumbnail 2.46ms.
+
 ### Added — M2: Playback Quality (2026-10-03)
 
 - Sample-level gapless playback: single-pipeline sequential decode with 3s next-track predecode window, `TrackFrameRange` accounting, no generation bump at natural track boundaries.

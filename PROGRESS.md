@@ -104,6 +104,16 @@ Phase 0 前无架构文档。已创建 `ARCHITECTURE.md`（分层、crate 职责
 2. Tauri CLI 未安装 → `tauri build` 门禁延后至 M0 接线后。
 3. `Spec/` 中保留少量旧名称（`IFUYO Music` / `Aura Music` 等）——均为刻意的旧名称审计清单与章程变更记录，非冲突。
 
+## M3 Status（2026-10-04）
+
+**M3 = COMPLETE（A 级 29/29，B 级 4/4）**
+
+- 实现：scanner / metadata(lofty) / identity(SipHash-2-4-128) / SQLite(WAL+migrations) / FTS5(CJK 二元组) / filter AST / artwork+thumbnails / incremental scan / watcher(coalescer) / query API / [B] playlist+queue 模型。
+- 测试：aura-library **110 通过**（workspace 累计 198+）；迁移测试含 fresh/upgrade/rerun/failure-rollback/reopen/WAL/并发读/损坏。
+- 性能（release）：扫描 3484 文件/s；增量重扫 40×；10k 搜索 avg 1.1ms（§79 交互级达标）；PERF.md M3 节。
+- 已知限制：reparse point 不跟随（D-041）；音频替换且音频签名完全不变时判为标签改写（D-038）；queue Clear 不可恢复（D-047）；permission-denied 文件矩阵在 Windows CI 上不可稳定模拟（分类逻辑由 unit test 覆盖）。
+- M3 Final Audit：见 2026-10-04 会话输出（A–V 全 PASS）。
+
 ## Phase 0 Gate Status（§19 规则：不伪造 PASS）
 
 | 门禁命令 | 状态 | 说明 |

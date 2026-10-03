@@ -121,6 +121,18 @@ ring buffer 容量按帧对齐（Engine 默认 buffer/8 = 渲染块）。overrun
 
 `AudioError` 枚举（InvalidFormat / DecodeError / UnsupportedFormat / ResampleError / OutputError / SeekError / InvalidCommand / InvalidParameter），Display 可诊断、无敏感数据、无 panic 路径。
 
+### Music Library Architecture（M3）
+
+`aura-library` 职责链（§5）：`Filesystem → Scanner → Metadata(lofty) → Normalization → Identity → SQLite → Search/Query`。不负责解码/播放/输出/网络/UI（§61：与 audio core 唯一交汇是上层以 Track 路径喂给 engine `load_track`）。
+
+- **身份**（D-037..D-039）：`identity_key = v1:size + head/tail 1MiB SipHash-2-4-128`；路径行（track_paths）与身份行（tracks）分离，改名/移动合并、标签改写保留（audio_sig 分辨）、音频替换新身份；统计绑定身份，删除只停用不销毁（§47）。
+- **扫描**：迭代 walk（无 reparse 跟随，D-041）、扩展名过滤 + 内容探针、单文件事务（崩溃只丢当前文件）、size+mtime 增量跳过（§17）、CancelToken 在条目边界生效（§67）、进度回调进 UI 不进日志（§68/§80）。
+- **数据库**：SQLite bundled WAL，`user_version` 迁移（v1），所有写路径单事务（§49）；`tracks_fts`（FTS5）行在 track 事务内同步。
+- **搜索**（D-042/D-046）：预分词（小写英文词 + CJK 单字/滑窗二元组）+ unicode61；查询侧引号失效化 + 前缀星；bm25 列权重 + id 决胜。
+- **封面**：内嵌提取（front cover 优先、字节签名 MIME、8MB 限）→ artworks 内容哈希去重 → 64/256 box-filter 缩略图（原子写、解码限内存、可重建）。
+- **watcher**（D-043）：notify → EventCoalescer（500ms 窗口、终态合并、注入时钟）→ rescan 候选；watcher 路径零 DB 写。
+- **时间**：核心不读 wall-clock；LibraryService 接受注入时钟（`set_clock`），扫描/统计时间戳可确定性测试。
+
 ## 构建与工程
 
 - Cargo workspace：7 个 aura crates + `src-tauri`（M0-3 起为正式 member，tauri 2.12）。
