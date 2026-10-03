@@ -9,3 +9,11 @@ description = "ifuyo Aura"
 
 [lints]
 workspace = true
+
+[dependencies]
+image = { version = "=0.25.9", default-features = false, features = ["jpeg", "png"] }
+lofty = "0.22"
+notify = "8.2.0"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+siphasher = "1"
+unicode-normalization = "0.1"
