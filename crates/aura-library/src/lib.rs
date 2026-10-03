@@ -5,6 +5,7 @@
 //! `Filesystem → Scanner → Metadata → Normalization → Identity → SQLite → Search`
 //! 不负责 audio decoding / playback / output / network / UI / Dreamscape。
 
+pub mod db;
 pub mod error;
 pub mod identity;
 pub mod normalize;
