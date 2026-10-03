@@ -6,9 +6,9 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use image::codecs::png::PngEncoder;
-use image::{ExtendedColorType, ImageEncoder, ImageFormat, ImageReader, Limits};
+use image::{ExtendedColorType, ImageEncoder, ImageReader, Limits};
 
-use crate::error::{ErrorCategory, LibraryError, Result};
+use crate::error::{LibraryError, Result};
 
 /// 缓存尺寸（§29；UI 需要时可调整）。
 pub const THUMB_SIZES: &[u32] = &[64, 256];
@@ -223,7 +223,7 @@ mod tests {
         });
         let mut buf = Cursor::new(Vec::new());
         image::DynamicImage::ImageRgba8(img)
-            .write_to(&mut buf, ImageFormat::Jpeg)
+            .write_to(&mut buf, image::ImageFormat::Jpeg)
             .unwrap();
         buf.into_inner()
     }
