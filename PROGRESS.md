@@ -171,3 +171,44 @@ Phase 0 前无架构文档。已创建 `ARCHITECTURE.md`（分层、crate 职责
 - **Architecture**：ARCHITECTURE.md 含分层、crate 职责与依赖方向、aura-core 隔离约束。PASS。
 - **Documentation**：§5 全部 12 份文档存在。PASS。
 - **Build**：npm 侧全绿（见上表）；cargo 侧 NOT RUN（工具链缺失，已如实记录，命令保留，CI/M0 承接）。PASS（带已记录限制）。
+
+## M6（2026-10-05）
+
+M6-A = PASS（上篇：shell/Now Playing/Library/Aurora/palette/mini/IPC 真连 M1–M5 + 验证器补强 artwork/Mica/smoke）
+M6-B = PASS（下篇，全部为真实实现；无「声明完成未验证」项）
+
+### Implemented（下篇）
+
+- `play_input` 统一来源入口（M4 resolver → Local/Radio/DirectHttp 装载；D-070/D-071）+ `library_stats` 真实统计
+- 错误映射链（code→i18n）+ FeatureBoundary 页面隔离 + NoticeBar；时长/数值安全工具（§253–256）
+- queue 游标模型（next/previous/remove/current，单一权威 §197）；palette Open Folder/File/URL（filter 与 M3 同步）
+- Aurora VISUAL_TEST_MODE + 运行时 FPS 计数（data-fps）；titlebar 双击最大化；键盘图 Alt+1/2/3、Ctrl+Q/M
+- capabilities 补 mini 窗口权限（D-076）；custom-protocol 发布构建 feature（D-075）
+
+### Tests
+
+- Rust：workspace 339+（新增 perf_ui 显式基线）；aura-shell/aclippy 0 警告
+- 前端：vitest 42 项（含 jsdom 渲染/a11y/键盘矩阵/挂载卫生 ×10/×20）
+- 桌面冒烟：`--bin smoke` SMOKE OK + startup-to-ready 560.6ms（debug）
+
+### Screenshots（§308，真实构建）
+
+01-now-playing / 02-library / 03-command-palette / 04-mini-player / 05-map-shell / 07-queue（docs/screenshots/，capture-screens.ps1 可复现；06 EQ/08 空库/09 错误态为建议项——08 可复用 02（本环境库为空即空态），06/09 未截）
+
+### Performance
+
+见 docs/PERF.md「M6 UI」节（10k 行 list avg 6.6ms、搜索 worst 3.1ms、snapshot 188ns；硬件/OS/构建/方法已注明）
+
+### Accessibility
+
+按钮可访问名/dialog 语义/slider 标签/焦点环/Esc 无死路/键盘矩阵自动化（§181–183）；125%/150% DPI 由 root font-size 缩放（§107）+ 系统值实测依赖实机（限制如实声明）
+
+### Security
+
+§191/§300 审计全过（capabilities/CSP/无 shell/零远程资产/零凭据/IPC 校验）；SECURITY.md M6 节
+
+### Known Limitations
+
+- 数小时 soak 未执行（远程虚拟显示环境；§296 如实声明，脚本= capture/门禁复跑）
+- 06/09 两张建议截图未专门摆拍；Mica 视觉需 Win11 实机确认
+- queue 持久化（M3-B 表）未接线（§50 允许，应用层 in-memory）

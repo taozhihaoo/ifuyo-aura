@@ -167,6 +167,17 @@ ring buffer 容量按帧对齐（Engine 默认 buffer/8 = 渲染块）。overrun
 - **命令架构**（§99）：`Command { id, title, keywords, shortcut, execute }` 注册表 + 子序列模糊匹配；Ctrl+K/Space/Ctrl+F/Esc 全局快捷键（输入态不拦截 Space §103）。
 - **Aurora**（§56–§75）：单一 WebGL canvas；GLSL fbm 流场（品牌 palette 派生）；playing 30fps / idle 8fps / reduced-motion 2fps 节流；稳定 per-track seed（非 M7 seed）；WebGL 失败 → CSS 渐变 fallback；分辨率 cap + resize debounce（§134–136）。
 - **多窗口**（§157）：mini player 为同 dist `?view=mini` WebviewWindow，共享单一应用层/音频引擎；关闭 = 隐藏不停止（§113）。
+### Desktop UI Architecture（M6 下篇）
+
+- **来源入口统一**（§275/§276/§194）：Open File / Open URL 一律经 `play_input` IPC → M4 `resolve_input`（scheme 白名单→凭据拒绝→封锁表→私网策略→探测）→ 按 kind 装载：Local→`open_decoder`；InternetRadio→`radio::open_resolved().into_parts()`（NetworkAudioStream 即 AudioByteStream，live/non-seekable）；DirectHttp→`NetworkAudioStream`（容量按形态/码率 D-051）→StreamingDecoder。前端零 fetch（§195 无浏览器音频）。
+- **错误打开即回传**（D-071）：decoder 在 IPC 命令线程打开，`Control::LoadDecoder` 只携带就绪 decoder；驱动线程无吞错路径。
+- **错误映射链**（§189/D-073）：`AppError.code` → `ipc/errors.ts` 静态表 → i18n（zh/en）；`FeatureBoundary` 页面级隔离（§227–229），单页挂掉不白屏，重试仅重挂载本 feature。
+- **queue 单一权威**（§197/D-072）：模块单例游标模型（`playWithQueueContext`/`playNext`/`playPrevious`/`removeAt`），边界返回 false（§257）。
+- **数值安全**（§253–§256）：`ui/format.ts` 统一 `formatDuration`（非法→null，调用方展示 Live/Unknown）+ `clampNumber`/`safeProgress`。
+- **测试模式**（§179/§180/D-074）：`?visualTest` → Aurora 固定 seed/time/telemetry 单帧。
+- **测试栈**（§181–§183）：vitest + jsdom + @testing-library（渲染/a11y/键盘矩阵/挂载卫生 42 项）；桌面冒烟 `--bin smoke`（真实 Wry 装配 + 启动计时）。
+- **键盘图**（D-078）：Ctrl+K/Esc/Space/Ctrl+F/Alt+1/2/3/Ctrl+Q/Ctrl+M；Esc 全局可退出任一浮层（§183 无死路）。
+
 ## 构建与工程
 
 - Cargo workspace：7 个 aura crates + `src-tauri`（M0-3 起为正式 member，tauri 2.12）。

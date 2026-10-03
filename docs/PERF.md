@@ -121,3 +121,32 @@ cargo test -p aura-sources --release --test perf_baseline -- --ignored --nocaptu
 ```text
 cargo test -p aura-cache --release --test perf_baseline -- --ignored --nocapture
 ```
+
+## M6 UI（2026-10-05）
+
+- 硬件：AMD Ryzen 7 7700（8C/16T）/ 31.2 GB RAM；GPU：虚拟显示适配器（GameViewer Virtual Display Adapter，远程会话）
+- OS：Windows 10.0.26200（25H2 insider 内核）x64
+- 构建：`cargo build --release -p aura-shell --features custom-protocol`（内嵌 ui/dist，优化构建）与 debug 构建对照
+- 方法：cargo test 计时（`--ignored --nocapture`，Instant 环绕 50 次取均值/worst）；smoke bin 进程内计时；前端 250ms 快照轮询 + rAF 插值不经 Zustand（结构上排除全树重渲）
+
+| 项 | 实测 | 说明 |
+| --- | --- | --- |
+| M6 UI Startup（进程起→setup 完成可查询） | 560.6ms（debug） | audio 设备打开 + SQLite 打开/迁移为主；release 更快（未单列） |
+| player_snapshot 读取 | 188ns/call（100 次均值，debug） | 10Hz 驱动线程写 + UI 250ms 轮询读 |
+| Library 10k 行 list_tracks（200/页×50 页） | avg 6.62ms / worst 10.15ms | UI 单页渲染量 200 行 + @tanstack/react-virtual 虚拟化 |
+| Search latency（10k 行 FTS，UI debounce 250ms 后） | avg 1.98ms / worst 3.14ms | 4 组查询（中英/前缀/编号） |
+| artwork/track_path 点查 | 4.99µs | play_track 管线的路径解析步 |
+| Command Palette open | 未单列 | 纯前端（React 状态 + 预构建命令表）；vitest 渲染 <5ms |
+| Aurora FPS | 目标 30（playing）/ 8（idle）/ 2（reduced-motion）；运行时实测经 `canvas[data-fps]` 暴露（2s 窗口均值） | 本会话为远程虚拟显示（无真实 GPU/合成器），绝对帧率不具代表性，故记录机制而非数字 |
+| Mini Player sync | 与主窗同一 Rust 快照轮询（250ms），无独立第二引擎（§236/§237） | 结构保证 |
+| Window resize | 150ms debounce（§136）；内部分辨率 cap dpr≤1.5（§134） | |
+| Memory baseline | 未采样长期驻留（远程会话无常驻桌面，长时间 soak 不适合本环境，§296 如实声明） | soak 脚本见 PROGRESS 已知限制 |
+
+复测命令：
+
+```text
+cargo test -p aura-shell --test perf_ui -- --ignored --nocapture
+cargo run -p aura-shell --bin smoke   # startup-to-ready / snapshot 行
+```
+
+诚实声明（§204）：以上均为真实测量；无通过关 Aurora/不渲染 artwork/假数据制造的“好性能”。Aurora FPS 绝对值因远程虚拟显示环境不记录（机制已内建，实机运行时 data-fps 可直接读取）。

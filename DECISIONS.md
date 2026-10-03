@@ -311,3 +311,39 @@ Now Playing 封面经 `track_artwork(track_id)` 命令读取 M3 artworks 表字�
 ## D-069 冒烟测试的 runtime 混链限制（2026-10-05，M6）
 
 同一测试二进制同时链接 `tauri::test`（MockRuntime）与 Wry 时在 Windows 触发 STATUS_ENTRYPOINT_NOT_FOUND（DLL 入口点冲突）。处置：① 无窗口 mock IPC 冒烟仅保留**无 State 依赖**的 `app_info` 分发测试；② 真实窗口冒烟独立为 `--bin smoke`（仅链 Wry）：构建与 lib.rs 相同装配的应用 → run_iteration×3 触发 setup → 注入 State 调用 `player_snapshot`/`app_info` 命令函数 → 断言快照合法 → cleanup。`any_thread()` 允许事件循环/构建跑在非主线程。泛型命令（`fn cmd<R: Runtime>(State<'_, AppState<R>>)`) 在 `generate_handler!` 宏路径产生 E0283 —— 命令固定绑定 Wry（生产唯一 runtime）。
+
+## D-070 Open URL 私网策略（2026-10-05，M6-B）
+
+壳层唯一 HttpClient 以 `allow_private` 构建：用户在 Command Palette 显式输入 URL 即为 M4 §17 意义的“一次性确认”（自建/局域网服务是合法场景）。scheme 白名单、凭据拒绝、平台封锁表、重定向上限全部照常生效（§278 不因 UI 入口降级）。默认拒绝路径仍由 `deny_private()` 覆盖非用户输入场景。
+
+## D-071 decoder 在命令线程打开（2026-10-05，M6-B）
+
+`Control::Load` → `Control::LoadDecoder`：文件/网络流的 decoder 打开（含探测）移至 IPC 命令线程执行，失败以结构化 AppError（UNSUPPORTED_SOURCE 等）回传 UI；驱动线程只装载已就绪 decoder。旧路径驱动线程吞错（`continue`）违反 §184/§187，已消除。
+
+## D-072 queue 单一权威 + 游标（2026-10-05，M6-B）
+
+应用层 in-memory queue（§48 允许）扩充为游标模型：`playWithQueueContext(track, context)` 以双击曲目为当前项、可见列表为上下文整体替换；`playNext/playPrevious` 沿游标行走并在边界返回 false（§257 执行前检查）；`removeAt` 维护游标一致性。palette/main/mini 均引用同一模块单例（§197）。
+
+## D-073 错误映射链（2026-10-05，M6-B）
+
+Rust `AppError.code` → `ui/src/ipc/errors.ts` 静态表 → i18n key（zh/en）。组件禁止 `switch(error.message)`（§189）；未知 code 回退 `error.internal`。新增错误码必须同步映射表（errors.test.ts 以「全部已知码双语可译」断言锁定）。
+
+## D-074 VISUAL_TEST_MODE（2026-10-05，M6-B）
+
+URL 带 `?visualTest` 时 Aurora 进入确定性模式：seed 固定 `visualSeed('visual-test')`、time 固定 42s、telemetry 固定 playing/50%，渲染单帧后停止 rAF（§179/§180）。正常路径 drawFrame 与循环共享同一函数。
+
+## D-075 custom-protocol feature（2026-10-05，M6-B）
+
+裸 `cargo build --release` 的 Tauri 应用仍加载 devUrl（generate_context! 仅在 custom-protocol feature 下内嵌 frontendDist）。src-tauri 增加标准模板 feature 透传 `custom-protocol = ["tauri/custom-protocol"]`；发布/截图构建命令为 `cargo build --release -p aura-shell --features custom-protocol`（与 `tauri build` 等价的前半段）。另：ui/dist 变化不触发 cargo 重编译——发布前必须 touch 源文件或 clean（已两次踩坑）。
+
+## D-076 mini 窗口权限与标题（2026-10-05，M6-B）
+
+mini 窗口（label `mini`）经 JS `new WebviewWindow()` 创建，需 capabilities：`core:webview:allow-create-webview-window` + `core:webview:allow-get-all-webviews`（getByLabel）+ `core:window:allow-show`，并将 `mini` 加入 capability windows 列表。窗口标题实际为 tauri.conf 产品名（"ifuyo Aura"），自动化按尺寸（≈340×110）识别。§191：create-webview-window 仅允许应用代码以固定 URL `index.html?view=mini` 创建，无任意导航。
+
+## D-077 IME 与快捷键（2026-10-05，M6-B）
+
+中文 IME 组合态会拦截 palette 文本输入的字母键与 Enter（截图管线实测）。自动化/键盘路径不依赖 palette 输入：mini 用 Ctrl+M、queue 用 Ctrl+Q 直达（§260 记录）。产品结论：palette 对 IME 用户可正常输入中文（组合态提交后过滤），但自动化测试使用快捷键。
+
+## D-078 键盘导航图（2026-10-05，M6-B）
+
+Ctrl+K palette；Esc 逐层退出（palette→queue/settings）；Space 播放/暂停（输入态让出 §258）；Ctrl+F 聚焦库搜索；Alt+1/2/3 主导航；Ctrl+Q queue；Ctrl+M mini。全部为应用级 keydown（window 捕获），不与 OS 全局热键冲突（仅在窗口聚焦时生效）。

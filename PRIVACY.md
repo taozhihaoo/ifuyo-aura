@@ -57,3 +57,10 @@ Subsonic 等服务的凭据只能存入 **Windows Credential Manager**，不进�
 - 来源失败不上传诊断；不静默切换第三方服务（§49）。
 - 网络来源的 metadata 不自动写入本地音乐库数据库（§92）。
 - 本阶段没有遥测（与其他章节一致，零例外）。
+
+## M6 确认（§242）
+
+- M6（含下篇）未新增遥测/分析/云数据/远程日志：UI 无 `fetch`/XHR/beacon（grep 零命中），新增 IPC 命令（play_input/library_stats）均为本地操作。
+- 用户主动联网行为不变：direct URL / Radio Browser 仍走 M4 策略（§278 未降级）；Open URL 输入即确认私网（D-070，仅影响用户显式输入的地址）。
+- localStorage/sessionStorage：零使用（纯 UI 偏好亦由 Rust 侧 settings JSON 持久化，§200）。凭据类数据不落任何前端存储（§201）。
+- `VisualTelemetry`（Aurora 渲染输入：isPlaying/progress/volume）为进程内数据结构，不离开进程，与"遥测"无关。

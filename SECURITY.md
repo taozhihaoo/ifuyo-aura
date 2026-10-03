@@ -79,3 +79,31 @@ Subsonic 等服务凭据只能存入 Windows Credential Manager；不明文写�
 
 ### Logging
 - URL 日志脱敏：仅 scheme://host/path，query 与 userinfo 剥离（`redact_url`，§96）。
+
+## M6 Desktop Shell（§191/§241）
+
+### Tauri Capabilities
+- 最小集：`core:default` + `core:window:{minimize,toggle-maximize,close,start-dragging,show}` + `core:webview:{allow-create-webview-window,allow-get-all-webviews}` + `dialog:default`（D-066/D-076）。
+- **无** shell / fs / updater / http 通配权限；无任意导航。create-webview-window 仅应用代码以固定 URL（`index.html?view=mini`）调用。
+- 适用窗口：`main` + `mini`。
+
+### CSP
+`default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src ipc: http://ipc.localhost`。artwork 经 `data:` URL（IPC base64 通道，非文件路径，D-067）。零远程 CDN/字体（§25 审计零命中）。
+
+### Asset Loading
+全部资源内嵌（custom-protocol 构建，D-075）；无 remote URL 资源、无 remote font。
+
+### IPC Validation
+命令参数强类型（DTO 镜像 + serde 反序列化失败即拒）；本地路径仅用于 M3 库内查询（`track_id_by_path` 精确匹配已入库路径）；封面不传路径（D-067）；Open URL 走 M4 校验链（§193/§278），前端无 fetch。
+
+### External Links
+UI 无外链渲染；无 `shell`/open 能力——应用内无法打开浏览器/执行程序。
+
+### Filesystem Access
+Rust 侧校验（§192）：文件播放经 M4 Local Source 存在性检查 + decoder probing；扫描目录来自原生 dialog（目录粒度，§272 不预扫系统目录）；无 fs 通配。
+
+### Production DevTools
+devtools 未显式启用（tauri v2 默认 release 关闭）；无调试日志输出（grep 零命中 console./dbg!/println! 于 ui/src 与 src-tauri/src 非测试代码）。
+
+### Credential / Secret Audit（§300 实测）
+`api_key|apikey|password|client_secret|Authorization|Cookie|BEGIN PRIVATE KEY` 全仓扫描（src/crates/ui/src/src-tauri）：仅命中凭据**拒绝逻辑**与对应测试（url_policy）；无 `.env`；无硬编码密钥。VisualTelemetry 为进程内渲染数据，非网络遥测（命名历史原因，PRIVACY.md 有说明）。
