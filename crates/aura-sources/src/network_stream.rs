@@ -43,7 +43,9 @@ pub fn buffer_capacity(stream_type: crate::model::StreamType, bitrate_bps: Optio
     }
 }
 
-type ResponseSlot = Arc<Mutex<Option<reqwest::blocking::Response>>>;
+/// feeder 借用的字节源（Response 或其上的 IcyReader 等组合层）。
+pub type ByteSource = Box<dyn Read + Send>;
+type ResponseSlot = Arc<Mutex<Option<ByteSource>>>;
 
 struct StreamCore {
     state: Mutex<StreamState>,
@@ -85,6 +87,28 @@ impl NetworkAudioStream {
         content_length: Option<u64>,
         idle_timeout: Duration,
     ) -> Self {
+        Self::start_reader(
+            http,
+            url,
+            Box::new(response),
+            capacity,
+            seekable,
+            content_length,
+            idle_timeout,
+        )
+    }
+
+    /// 从任意字节源构建（如 ICY 剥离层包裹的响应）。
+    #[must_use]
+    pub fn start_reader(
+        http: &HttpClient,
+        url: url::Url,
+        reader: ByteSource,
+        capacity: usize,
+        seekable: bool,
+        content_length: Option<u64>,
+        idle_timeout: Duration,
+    ) -> Self {
         let core = Arc::new(StreamCore {
             state: Mutex::new(StreamState {
                 buffer: VecDeque::new(),
@@ -94,7 +118,7 @@ impl NetworkAudioStream {
                 consumed: 0,
             }),
             cv: Condvar::new(),
-            slot: Arc::new(Mutex::new(Some(response))),
+            slot: Arc::new(Mutex::new(Some(reader))),
             cancel: AtomicBool::new(false),
             generation: AtomicU64::new(1),
             idle_timeout,
@@ -175,7 +199,7 @@ impl NetworkAudioStream {
         self.core.cancel.store(false, Ordering::Relaxed);
         let new_gen = self.core.generation.load(Ordering::Relaxed) + 1;
         self.core.generation.store(new_gen, Ordering::Relaxed);
-        *self.core.slot.lock().expect("slot lock") = Some(resp);
+        *self.core.slot.lock().expect("slot lock") = Some(Box::new(resp));
         spawn_feeder(Arc::clone(&self.core), new_gen);
         Ok(())
     }
@@ -321,7 +345,7 @@ fn feeder_loop(core: &Arc<StreamCore>, generation: u64) {
             return;
         }
         // 分段借用：take → read 一块 → 放回（D-052 协议）。
-        let mut response = loop {
+        let mut source = loop {
             if core.cancel.load(Ordering::Relaxed)
                 || core.generation.load(Ordering::Relaxed) != generation
             {
@@ -342,16 +366,16 @@ fn feeder_loop(core: &Arc<StreamCore>, generation: u64) {
             core.capacity.saturating_sub(st.buffer.len())
         };
         if space == 0 {
-            put_back(core, response);
+            put_back(core, source);
             core.cv.notify_all();
             std::thread::sleep(Duration::from_millis(2));
             continue;
         }
 
         let want = scratch.len().min(space);
-        let read = response.read(&mut scratch[..want]);
+        let read = source.read(&mut scratch[..want]);
         // 无论结果如何，先把所有权放回（取消方此后总能取到）。
-        put_back(core, response);
+        put_back(core, source);
         // 换代/取消检查必须在写入缓冲之前：旧代 feeder 的数据不得污染
         // 新代已清空的缓冲（range seek 正确性）。
         if core.cancel.load(Ordering::Relaxed)
@@ -386,11 +410,11 @@ fn feeder_loop(core: &Arc<StreamCore>, generation: u64) {
 
 /// 所有权放回。若取消方已把 slot 清空并放弃，这里的 drop 即关闭 socket
 /// （符合取消语义）；否则恢复可借状态。
-fn put_back(core: &StreamCore, response: reqwest::blocking::Response) {
+fn put_back(core: &StreamCore, source: ByteSource) {
     if let Ok(mut slot) = core.slot.lock() {
         if slot.is_none() && !core.cancel.load(Ordering::Relaxed) {
-            *slot = Some(response);
+            *slot = Some(source);
         }
     }
-    // else: response 在此 drop → 连接关闭。
+    // else: source 在此 drop → 连接关闭。
 }

@@ -7,6 +7,9 @@
 
 use std::io::Read;
 
+/// 元数据到达回调（feeder 线程调用；§35 事件通道的注入点）。
+pub type MetaCallback = Box<dyn FnMut(&IcyMeta) + Send>;
+
 use crate::model::StreamMetadataEvent;
 
 /// metadata 块上限（§33）：长度字节协议上限 255 → 255×16 = 4080；
@@ -101,6 +104,7 @@ pub struct IcyReader<R: Read> {
     pub last_meta: Option<IcyMeta>,
     /// 解析失败/跳过的 metadata 块计数（诊断）。
     pub malformed_meta_count: u64,
+    pub on_meta: Option<MetaCallback>,
     eof: bool,
 }
 
@@ -114,6 +118,7 @@ impl<R: Read> IcyReader<R> {
             audio_left: metaint,
             last_meta: None,
             malformed_meta_count: 0,
+            on_meta: None,
             eof: false,
         }
     }
@@ -158,7 +163,12 @@ impl<R: Read> IcyReader<R> {
             Err(e) => return Err(e),
         }
         match parse_icy_metadata(&buf) {
-            Some(m) => self.last_meta = Some(m),
+            Some(m) => {
+                if let Some(cb) = self.on_meta.as_mut() {
+                    cb(&m);
+                }
+                self.last_meta = Some(m);
+            }
             None => self.malformed_meta_count += 1,
         }
         Ok(())

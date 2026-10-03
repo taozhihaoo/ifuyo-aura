@@ -83,6 +83,7 @@ pub struct FakeHttp {
     pub addr: SocketAddr,
     shutdown: Arc<AtomicBool>,
     requests: Arc<Mutex<Vec<String>>>,
+    raw_heads: Arc<Mutex<Vec<String>>>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -93,10 +94,12 @@ impl FakeHttp {
         let addr = listener.local_addr().expect("local_addr");
         let shutdown = Arc::new(AtomicBool::new(false));
         let requests: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let raw_heads: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let routes: Arc<Vec<Route>> = Arc::new(routes);
         let shutdown2 = Arc::clone(&shutdown);
         let requests2 = Arc::clone(&requests);
+        let heads2 = Arc::clone(&raw_heads);
         let thread = std::thread::spawn(move || {
             listener.set_nonblocking(true).ok();
             while !shutdown2.load(Ordering::Relaxed) {
@@ -104,8 +107,9 @@ impl FakeHttp {
                     Ok((stream, _)) => {
                         let routes = Arc::clone(&routes);
                         let requests = Arc::clone(&requests2);
+                        let heads = Arc::clone(&heads2);
                         std::thread::spawn(move || {
-                            handle_conn(stream, &routes, &requests);
+                            handle_conn(stream, &routes, &requests, &heads);
                         });
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -120,8 +124,15 @@ impl FakeHttp {
             addr,
             shutdown,
             requests,
+            raw_heads,
             thread: Some(thread),
         }
+    }
+
+    /// 收到的原始请求头块（S31 断言请求头用）。
+    #[must_use]
+    pub fn raw_request_heads(&self) -> Vec<String> {
+        self.raw_heads.lock().expect("heads lock").clone()
     }
 
     /// 指定 path 的完整 URL。
@@ -155,7 +166,12 @@ impl Drop for FakeHttp {
     }
 }
 
-fn handle_conn(mut stream: TcpStream, routes: &[Route], requests: &Mutex<Vec<String>>) {
+fn handle_conn(
+    mut stream: TcpStream,
+    routes: &[Route],
+    requests: &Mutex<Vec<String>>,
+    heads: &Mutex<Vec<String>>,
+) {
     stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
     // 读请求头（简化：读到 CRLFCRLF）。
     let mut buf = Vec::with_capacity(1024);
@@ -173,6 +189,10 @@ fn handle_conn(mut stream: TcpStream, routes: &[Route], requests: &Mutex<Vec<Str
         }
     }
     let text = String::from_utf8_lossy(&buf);
+    heads
+        .lock()
+        .expect("heads lock")
+        .push(text.clone().into_owned());
     let range_header = text
         .lines()
         .find(|l| l.to_ascii_lowercase().starts_with("range:"))
