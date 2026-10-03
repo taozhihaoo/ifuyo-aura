@@ -10,4 +10,5 @@ pub mod error;
 pub mod identity;
 pub mod metadata;
 pub mod normalize;
+pub mod scanner;
 pub mod types;
