@@ -22,6 +22,7 @@ fn fail(msg: &str) -> ! {
 }
 
 fn main() {
+    let t_start = std::time::Instant::now();
     let tmp = std::env::temp_dir().join(format!("aura-m6-smoke-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     let tmp_ref = tmp.clone();
@@ -75,6 +76,9 @@ fn main() {
         }
     }
 
+    // §203：启动基线（进程起 → setup 完成可查询）。
+    println!("startup to ready: {:?}", t_start.elapsed());
+
     // player_snapshot 命令函数（与 UI invoke 走同一函数体）。
     let snap = match ipc::player_snapshot(handle.state::<AppState>()) {
         Ok(s) => s,
@@ -107,6 +111,13 @@ fn main() {
     if entries != 0 {
         fail(&format!("library not empty: {entries}"));
     }
+
+    // 快照延迟（驱动线程 10Hz 上的读取成本）。
+    let t0 = std::time::Instant::now();
+    for _ in 0..100 {
+        let _ = ipc::player_snapshot(handle.state::<AppState>()).unwrap();
+    }
+    println!("player_snapshot x100: {:?}/call", t0.elapsed() / 100);
 
     app.cleanup_before_exit();
     println!("SMOKE OK");

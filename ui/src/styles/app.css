@@ -19,7 +19,8 @@
 .app-main {
   flex: 1;
   min-width: 0;
-  overflow: auto;
+  /* §297：页面自管内部滚动（library 列表/queue），主容器不产生滚动条。 */
+  overflow: hidden;
 }
 
 /* ---- Title bar（§16/§17）---- */

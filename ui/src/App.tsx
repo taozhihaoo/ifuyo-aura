@@ -78,6 +78,26 @@ export default function App() {
         if (snap?.state === 'playing') ipc.pause().catch(() => undefined);
         else ipc.play().catch(() => undefined);
       }
+      // §260：Alt+1/2/3 主导航（记录于 DECISIONS D-078）。
+      if (e.altKey && ['1', '2', '3'].includes(e.key)) {
+        e.preventDefault();
+        const views = ['now-playing', 'library', 'map'] as const;
+        const target = views[Number(e.key) - 1];
+        if (target) setView(target);
+        return;
+      }
+      // Ctrl+Q：queue 抽屉；Ctrl+M：mini 窗口（记录于 DECISIONS D-078；
+      // mini 开启避免经 palette 输入——中文 IME 会拦截字母输入，§260）。
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'q') {
+        e.preventDefault();
+        useUiStore.getState().setQueueOpen(!useUiStore.getState().queueOpen);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        useUiStore.getState().setMiniPlayerOpen(!useUiStore.getState().miniPlayerOpen);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         setView('library');

@@ -242,11 +242,20 @@ export function AuroraCanvas() {
       };
     }
 
+    // §132/§298：运行时 FPS 实测（2s 窗口 → data-fps 属性；无日志噪声）。
+    let frames = 0;
+    let fpsWindow = startTime;
     const loop = (now: number) => {
       if (disposed) return;
       const tel = telemetryRef.current;
       const fps = targetFps(tel.isPlaying, reducedMotion);
       const interval = 1000 / fps;
+      frames += 1;
+      if (now - fpsWindow >= 2000) {
+        canvas.dataset.fps = String(Math.round((frames * 1000) / (now - fpsWindow)));
+        frames = 0;
+        fpsWindow = now;
+      }
       if (now - lastFrame >= interval) {
         lastFrame = now;
         drawFrame((now - startTime) / 1000, tel, reducedMotion);

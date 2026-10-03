@@ -26,6 +26,10 @@ tauri-plugin-dialog = "2"
 base64 = "0.22"
 window-vibrancy = "0.5"
 
+[features]
+# 生产构建内嵌 ui/dist（tauri CLI 等价行为）；裸 cargo build 默认 devUrl。
+custom-protocol = ["tauri/custom-protocol"]
+
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
 

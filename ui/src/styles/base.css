@@ -10,6 +10,8 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  /* §297：文档级不滚动（内部区域各自滚动），消除整页幽灵滚动条。 */
+  overflow: hidden;
 }
 
 body {
