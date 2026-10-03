@@ -299,3 +299,15 @@ UI 实时命令（Play/Pause/Stop/Seek/SetVolume）经 AudioCommandQueue（rtrb�
 ## D-066 Tauri 插件与权限（2026-10-05，M6）
 
 capabilities 最小集：core:default + core:window:{minimize,toggle-maximize,close,start-dragging} + dialog:default（Add Music Folder）。tauri-plugin-dialog（前端 @tauri-apps/plugin-dialog + Rust tauri-plugin-dialog）。无 shell/updater/fs 通配权限（§22/§23）。CSP 维持全自托管。
+
+## D-067 artwork UI 通道（2026-10-05，M6 补强）
+
+Now Playing 封面经 `track_artwork(track_id)` 命令读取 M3 artworks 表字节 → base64 data URL 注入 `<img>`（§37：任意本地路径不进 webview URL）。四态：loading（请求中）/ loaded（`<img>` onload）/ missing（无 artwork_id 或悬空引用）/ corrupt（解码失败）。前端 `Artwork` 组件 + `useArtwork(trackId)` hook；TrackId 经 `track_id_by_path(path)` 解析。
+
+## D-068 Win11 Mica 接入（2026-10-05，M6 补强）
+
+`window-vibrancy 0.5` `apply_mica/clear_mica` 于启动（settings.mica_enabled，默认 true）与 `set_mica` 命令时应用；apply 失败（非 Win11/合成器关闭）静默保持 solid 背景（§20 fallback）。settings.mica_enabled 持久化。
+
+## D-069 冒烟测试的 runtime 混链限制（2026-10-05，M6）
+
+同一测试二进制同时链接 `tauri::test`（MockRuntime）与 Wry 时在 Windows 触发 STATUS_ENTRYPOINT_NOT_FOUND（DLL 入口点冲突）。处置：① 无窗口 mock IPC 冒烟仅保留**无 State 依赖**的 `app_info` 分发测试；② 真实窗口冒烟独立为 `--bin smoke`（仅链 Wry）：构建与 lib.rs 相同装配的应用 → run_iteration×3 触发 setup → 注入 State 调用 `player_snapshot`/`app_info` 命令函数 → 断言快照合法 → cleanup。`any_thread()` 允许事件循环/构建跑在非主线程。泛型命令（`fn cmd<R: Runtime>(State<'_, AppState<R>>)`) 在 `generate_handler!` 宏路径产生 E0283 —— 命令固定绑定 Wry（生产唯一 runtime）。
