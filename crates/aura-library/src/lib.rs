@@ -8,5 +8,6 @@
 pub mod db;
 pub mod error;
 pub mod identity;
+pub mod metadata;
 pub mod normalize;
 pub mod types;
