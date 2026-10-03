@@ -3,6 +3,7 @@
 //! 索引行在 track 写事务内同步（§49）；查询全部参数化，用户输入经
 //! tokenizer 加引号失效化（§65）。
 
+pub mod filter;
 pub mod tokenizer;
 
 use rusqlite::{params, Connection, Transaction};
