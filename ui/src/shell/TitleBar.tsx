@@ -6,6 +6,13 @@ import { useTranslation } from '../i18n/react';
 
 const win = getCurrentWindow();
 
+/** §263：双击 drag region → 最大化/还原（Windows 预期；交互元素不触发）。 */
+function onDragRegionDoubleClick(e: React.MouseEvent) {
+  const target = e.target as HTMLElement;
+  if (!target.hasAttribute('data-tauri-drag-region')) return;
+  void getCurrentWindow().toggleMaximize();
+}
+
 export function TitleBar() {
   const { t } = useTranslation(useSettingsStore((s) => s.locale));
   const view = useUiStore((s) => s.view);
@@ -14,7 +21,7 @@ export function TitleBar() {
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
 
   return (
-    <header className="titlebar" data-tauri-drag-region>
+    <header className="titlebar" data-tauri-drag-region onDoubleClick={onDragRegionDoubleClick}>
       <div className="titlebar-brand" data-tauri-drag-region>
         ifuyo <span className="brand-accent">Aura</span>
       </div>

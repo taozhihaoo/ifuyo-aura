@@ -1,6 +1,8 @@
 // App shell（§6/§7/§16/§31）：titlebar + navigation + pages + hosts。
 // 高频视觉走 Aurora/位置插值（§10/§14），不经 Zustand 全树渲染。
 import { useEffect } from 'react';
+import { FeatureBoundary } from './components/ErrorBoundary';
+import { useTranslation } from './i18n/react';
 import { useUiStore, usePlayerStore, useSettingsStore } from './state/stores';
 import { ipc } from './ipc/client';
 import { TitleBar } from './shell/TitleBar';
@@ -16,6 +18,7 @@ import { isMiniPlayer, MiniPlayer, useMiniPlayerOpener } from './windows/MiniPla
 
 export default function App() {
   const isMini = isMiniPlayer();
+  const { t } = useTranslation();
   useMiniPlayerOpener();
   const view = useUiStore((s) => s.view);
   const setView = useUiStore((s) => s.setView);
@@ -98,9 +101,21 @@ export default function App() {
       <div className="app-body">
         <Sidebar />
         <main className="app-main" role="main">
-          {view === 'now-playing' && <NowPlayingPage />}
-          {view === 'library' && <LibraryPage />}
-          {view === 'map' && <MapPage />}
+          {view === 'now-playing' && (
+            <FeatureBoundary name="now-playing" message={t('error.boundaryNowPlaying')} retryLabel={t('common.retry')}>
+              <NowPlayingPage />
+            </FeatureBoundary>
+          )}
+          {view === 'library' && (
+            <FeatureBoundary name="library" message={t('error.boundaryLibrary')} retryLabel={t('common.retry')}>
+              <LibraryPage />
+            </FeatureBoundary>
+          )}
+          {view === 'map' && (
+            <FeatureBoundary name="map" message={t('error.boundaryMap')} retryLabel={t('common.retry')}>
+              <MapPage />
+            </FeatureBoundary>
+          )}
         </main>
         <AuroraCanvas />
       </div>

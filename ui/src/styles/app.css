@@ -356,3 +356,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   .sidebar { display: none; }
   .np-artwork { width: 180px; height: 180px; }
 }
+
+/* ---- feature 错误边界（§229）---- */
+.feature-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 50vh;
+  color: rgba(255, 255, 255, 0.72);
+}
+.feature-error p {
+  margin: 0;
+  font-size: 0.95rem;
+}

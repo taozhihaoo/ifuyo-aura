@@ -5,12 +5,10 @@ import { usePlayerStore } from '../../state/stores';
 import { ipc } from '../../ipc/client';
 import { useTranslation } from '../../i18n/react';
 import { useArtwork } from '../../components/Artwork';
+import { formatDuration, safeProgress, clampNumber } from '../../ui/format';
 
-function fmtTime(sec: number): string {
-  if (!Number.isFinite(sec) || sec < 0) return '0:00';
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
+function fmtTime(sec: number | null | undefined): string {
+  return formatDuration(sec) ?? '0:00';
 }
 
 export function NowPlayingPage() {
@@ -104,6 +102,9 @@ export function NowPlayingPage() {
           aria-label={t('controls.seek')}
         />
         <span className="time">{duration === null ? t('np.unknownDuration') : fmtTime(duration)}</span>
+        <span className="visually-hidden" aria-live="polite">
+          {`${Math.round(safeProgress(displayPos, duration) * 100)}%`}
+        </span>
       </div>
       <div className="np-controls" role="group" aria-label={t('controls.play')}>
         <button className="ctl-btn" aria-label={t('controls.previous')}>⏮</button>
@@ -125,8 +126,8 @@ export function NowPlayingPage() {
             min={0}
             max={1}
             step={0.01}
-            defaultValue={snapshot?.volume ?? 1}
-            onChange={(e) => ipc.setVolume(Number(e.target.value)).catch(() => undefined)}
+            defaultValue={clampNumber(snapshot?.volume ?? 1, 0, 1)}
+            onChange={(e) => ipc.setVolume(clampNumber(Number(e.target.value), 0, 1)).catch(() => undefined)}
             aria-label={t('controls.volume')}
           />
         </label>
