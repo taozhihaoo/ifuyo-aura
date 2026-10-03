@@ -67,8 +67,7 @@ pub fn resolve_input(
 
     // 3. 网络探测。
     let probe = direct_http::probe(http, &url)?;
-    let mut streams = Vec::with_capacity(1);
-    streams.push(stream_from_headers(&url, &probe));
+    let streams = vec![stream_from_headers(&url, &probe)];
     let (kind, cache, stream_type) = if probe.is_icy {
         (
             SourceKind::InternetRadio,

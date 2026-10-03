@@ -104,7 +104,7 @@ fn resolver_blocks_platform_zero_request() {
     let spy = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let spy2 = Arc::clone(&spy);
     let mut cfg = allow_private(HttpConfig::default());
-    cfg.dns_override = Some(Arc::new(move |h| {
+    cfg.dns_override = Some(Arc::new(move |_h| {
         spy2.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Ok(vec!["127.0.0.1".parse().unwrap()])
     }));
