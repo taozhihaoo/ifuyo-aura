@@ -7,5 +7,7 @@
 //! 边界（§2/§91）：cache 不知道 WASAPI/CPAL/EQ/UI；持久化写入全部经过
 //! 统一策略门（`CacheWriteGuard` 语义）；数据库与 M3 library 完全隔离（§15/§28）。
 
+pub mod db;
 pub mod error;
 pub mod keys;
+pub mod store;

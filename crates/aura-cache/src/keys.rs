@@ -92,8 +92,9 @@ pub fn chunk_rel_path(content_key: &str, chunk_index: u64) -> Result<String> {
         });
     }
     Ok(format!(
-        "chunks/{}/{:08}.bin",
+        "chunks/{}/{}/{:08}.bin",
         &content_key[..2],
+        content_key,
         chunk_index
     ))
 }
@@ -180,7 +181,7 @@ mod tests {
     fn chunk_path_shape_and_validation() {
         let ck = content_key("https://example.com/a.mp3").unwrap();
         let p = chunk_rel_path(&ck, 42).unwrap();
-        assert_eq!(p, format!("chunks/{}/00000042.bin", &ck[..2]));
+        assert_eq!(p, format!("chunks/{}/{}/00000042.bin", &ck[..2], ck));
         assert!(chunk_rel_path("../../etc/passwd", 0).is_err());
         assert!(chunk_rel_path("ZONK", 0).is_err());
         assert!(chunk_rel_path(&ck, u64::MAX).is_ok());

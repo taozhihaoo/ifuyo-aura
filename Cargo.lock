@@ -140,6 +140,7 @@ name = "aura-cache"
 version = "0.1.0"
 dependencies = [
  "aura-sources",
+ "aura-testkit",
  "rusqlite",
  "sha2",
  "siphasher",
