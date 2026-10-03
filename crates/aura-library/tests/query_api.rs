@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use aura_library::query::{IntegrityReport, Page, SortKey};
+use aura_library::query::{Page, SortKey};
 use aura_library::search::filter::{evaluate, parse_filter, FilterContext, FilterOutcome};
 use aura_library::service::LibraryService;
 use aura_library::types::CancelToken;
@@ -157,7 +157,7 @@ fn search_artists_albums_aggregates() {
     // alpha/beta/song token 的轨。排序 = bm25 + id 决胜（§36 fallback，
     // D-046：微小语料 IDF 为负时严格 title-first 不可靠，确定性即可）。
     let hits = svc.search_tracks("alpha song", Page::new(10, 0)).unwrap();
-    assert!(hits.len() >= 1);
+    assert!(!hits.is_empty());
     let titles: Vec<Option<String>> = hits.iter().map(|t| t.title.clone()).collect();
     assert!(titles.contains(&Some("Alpha Song".into())), "{titles:?}");
     // 同库同查询：顺序恒定（§37）。

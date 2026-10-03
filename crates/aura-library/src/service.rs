@@ -66,7 +66,7 @@ impl LibraryService {
 
     /// 写事务入口（crate 内查询扩展使用）。
     pub(crate) fn db_tx(&mut self) -> Result<rusqlite::Transaction<'_>> {
-        Ok(self.db.transaction()?)
+        self.db.transaction()
     }
 
     /// 添加 library root（§14：canonicalize 后落库）。
