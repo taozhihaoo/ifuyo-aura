@@ -7,6 +7,7 @@
 
 pub mod error;
 pub mod http;
+pub mod icy;
 pub mod model;
 pub mod platform_block;
 pub mod url_policy;

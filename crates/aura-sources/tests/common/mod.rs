@@ -172,6 +172,8 @@ fn handle_conn(mut stream: TcpStream, routes: &[Route], requests: &Mutex<Vec<Str
             0,
             false,
         );
+        let _ = stream.flush();
+        let _ = stream.shutdown(std::net::Shutdown::Write);
         return;
     };
 
@@ -202,6 +204,18 @@ fn handle_conn(mut stream: TcpStream, routes: &[Route], requests: &Mutex<Vec<Str
         route.malformed,
     );
     let _ = stream.flush();
+    // 干净关闭：半关写端 + 排空读端，避免客户端连接池复用已关 socket 时
+    // 收到 RST（全量并行测试下的偶发 NetworkError 竞态来源）。
+    let _ = stream.shutdown(std::net::Shutdown::Write);
+    stream
+        .set_read_timeout(Some(Duration::from_millis(50)))
+        .ok();
+    let mut drain = [0u8; 256];
+    while let Ok(n) = stream.read(&mut drain) {
+        if n == 0 {
+            break;
+        }
+    }
 }
 
 fn write_response(

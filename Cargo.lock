@@ -177,6 +177,7 @@ dependencies = [
 name = "aura-sources"
 version = "0.1.0"
 dependencies = [
+ "aura-testkit",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
