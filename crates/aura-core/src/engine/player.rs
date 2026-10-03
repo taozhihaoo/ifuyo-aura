@@ -60,6 +60,8 @@ pub struct Engine {
 
     producer: ProducerHandle,
     consumer: ConsumerHandle,
+    /// M6（D-064）：消费端已移交给外部真实输出。
+    consumer_detached: bool,
 
     commands: rtrb::Consumer<AudioCommand>,
     invalid_commands: u64,
@@ -145,6 +147,7 @@ impl Engine {
             producer,
             consumer,
             commands: cmd_consumer,
+            consumer_detached: false,
             invalid_commands: 0,
             decoder: None,
             next_decoder: None,
@@ -753,6 +756,54 @@ impl Engine {
             rendered += take as u64;
         }
         rendered
+    }
+
+    /// M6（D-064）：把消费端移交给外部真实输出（CPAL 回调内的 OutputStage）。
+    /// 此后 [`Engine::render_for_frames`] 不再可用（ring 的排空由外部回调承担）；
+    /// 驱动线程仅调用 [`Engine::fill_and_process`]（ring 生产侧 + 命令处理）。
+    /// 返回外部输出所需的 (consumer, shared, eq_bus) 克隆。
+    ///
+    /// # Errors
+    /// 重复调用（消费者已被移交）时返回 [`AudioError::OutputError`]。
+    pub fn detach_consumer_for_external_output(
+        &mut self,
+    ) -> Result<
+        (
+            crate::audio::buffer::ConsumerHandle,
+            crate::output::SharedOutputState,
+            Arc<crate::dsp::EqBus>,
+        ),
+        AudioError,
+    > {
+        if self.consumer_detached {
+            return Err(AudioError::OutputError("consumer already detached"));
+        }
+        self.consumer_detached = true;
+        let consumer = std::mem::replace(
+            &mut self.consumer,
+            // 占位 consumer：永不可读（detach 后 render_for_frames 禁用）。
+            Self::detached_placeholder_consumer(),
+        );
+        Ok((consumer, self.shared.clone(), Arc::clone(&self.eq_bus)))
+    }
+
+    fn detached_placeholder_consumer() -> crate::audio::buffer::ConsumerHandle {
+        // 一个空 ring 的 consumer：读永远得 0，任何误用只会静默无输出。
+        let (_p, c) = crate::audio::buffer::ring_buffer(
+            crate::types::Channels::new(2).expect("2 channels"),
+            8,
+        )
+        .expect("placeholder ring");
+        c
+    }
+
+    /// M6：驱动线程调用 —— 处理命令 + 播放态下填充 ring（生产侧）。
+    /// 消费排空由外部真实输出承担（detach 后）。
+    pub fn fill_and_process(&mut self) {
+        self.process_commands();
+        if self.state == crate::types::PlaybackState::Playing {
+            self.fill();
+        }
     }
 
     /// 捕获访问。

@@ -176,10 +176,15 @@ dependencies = [
 name = "aura-shell"
 version = "0.1.0"
 dependencies = [
+ "aura-core",
+ "aura-library",
+ "aura-sources",
+ "rusqlite",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "url",
 ]
 
 [[package]]
