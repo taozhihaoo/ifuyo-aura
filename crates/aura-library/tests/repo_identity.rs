@@ -68,15 +68,6 @@ impl Env {
             .unwrap()
     }
 
-    fn track_ids(&self) -> Vec<i64> {
-        let mut stmt = self
-            .db
-            .connection()
-            .prepare("SELECT id FROM tracks ORDER BY id")
-            .unwrap();
-        let rows = stmt.query_map([], |r| r.get(0)).unwrap();
-        rows.map(|r| r.unwrap()).collect()
-    }
 }
 impl Drop for Env {
     fn drop(&mut self) {
@@ -144,7 +135,7 @@ fn rename_keeps_track_id() {
     let b = env.root.join("new_name.flac");
     fs::rename(&a, &b).unwrap();
     let second = env.import(&b, 3000);
-    env.sweep(&[b.clone()], 3000);
+    env.sweep(&[b], 3000);
 
     assert_eq!(first.track_id, second.track_id, "改名保身份");
     assert!(!second.created);
