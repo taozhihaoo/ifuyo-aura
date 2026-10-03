@@ -181,7 +181,15 @@ fn radio_resolution_capabilities() {
     // open_resolved 入口。
     let mut rs = radio::open_resolved(&c, &resolved).unwrap();
     let mut buf = [0u8; 64];
-    assert!(rs.read(&mut buf).unwrap_or(0) > 0);
+    let mut got = 0;
+    while got == 0 {
+        let n = rs.read(&mut buf).unwrap();
+        if n == 0 {
+            break;
+        }
+        got += n;
+    }
+    assert!(got > 0);
 }
 
 /// §110：live 流 EOF —— 读端返回 0（流结束），由上层决定后续。
@@ -230,7 +238,14 @@ fn radio_cancel_prompt() {
     let url = c.validate(&srv.url("/live")).unwrap();
     let mut rs = radio::open(&c, &url, None).unwrap();
     let mut buf = [0u8; 256];
-    rs.read(&mut buf).unwrap();
+    let mut got = 0;
+    while got == 0 {
+        let n = rs.read(&mut buf).unwrap();
+        if n == 0 {
+            break;
+        }
+        got += n;
+    }
     rs.cancel();
     assert!(rs.is_cancelled());
     let started = std::time::Instant::now();
