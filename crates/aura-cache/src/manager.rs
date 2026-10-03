@@ -135,8 +135,12 @@ impl Leases {
 /// 同 key 的并发拉取共享一次下载 —— 后到者等 Condvar 并读缓存。
 #[derive(Default)]
 struct Inflight {
-    map: Mutex<HashMap<(String, u64), Arc<(Mutex<u32>, Condvar)>>>,
+    map: InflightMap,
 }
+
+/// 共享等待槽。
+type InflightSlot = Arc<(Mutex<u32>, Condvar)>;
+type InflightMap = Mutex<HashMap<(String, u64), InflightSlot>>;
 
 impl Inflight {
     /// 进入：返回 true = 本调用负责下载；false = 已有人在下载（等待方）。
