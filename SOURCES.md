@@ -9,7 +9,7 @@ ifuyo Aura 的音频来源分级与实现状态。政策依据见 [CONTENT_POLIC
 | 来源 | 缓存策略 | 状态 |
 |---|---|---|
 | 本地音乐文件 / 用户选择目录 | Allowed | ✅ M3（M4 Source 化） |
-| 合法 HTTP/HTTPS 直链音频 | SessionOnly（无持久缓存） | ✅ M4 |
+| 合法 HTTP/HTTPS 直链音频 | SessionOnly 默认；Allowed 时持久缓存（M5） | ✅ M4+M5 |
 | 网络电台（ICY） | Forbidden（≤30s 内存滚动） | ✅ M4 |
 | Radio Browser | 目录 metadata ≠ 音频许可 | ✅ M4 |
 | Dreamscape（内置生成） | 无网络 | M7 |

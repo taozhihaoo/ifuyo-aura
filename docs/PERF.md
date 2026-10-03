@@ -95,3 +95,29 @@ cargo test -p aura-library --release --test perf_baseline -- --ignored --nocaptu
 ```text
 cargo test -p aura-sources --release --test perf_baseline -- --ignored --nocapture
 ```
+
+## M5 基线（release 构建；2026-10-04，M5-i）
+
+环境：同 M4（Windows 11 x64、rustc 1.99.0、SQLite bundled WAL）。
+
+| 项目 | 结果 | 说明 |
+|---|---|---|
+| 256KiB chunk 写 + DB 记录 | **244 MB/s**（100 块 107.6ms） | tmp 写 + rename + hash + 事务记录全链路 |
+| 256KiB chunk 读 | **1423 MB/s**（100 块 18.4ms） | 文件读 + 大小校验 |
+| SHA-256 校验 | **2429 MB/s** | integrity/写入路径 |
+| SQLite chunk lookup | **6.68 µs/次**（10k 次 66.8ms） | 主键查询 |
+| LRU 扫描 | 13.4ms/100 次（600 行表） | 排序查询 |
+| cache reopen | 9.2ms | WAL 打开 + 迁移检查 |
+| integrity 扫描（150 chunk + 450 missing） | 120ms | hash 全量校验 + 修复 |
+
+### §90 目标核对
+
+- cache hit 明显快于重新下载 ✓（读 1423 MB/s vs 回环 HTTP fetch ~5.5ms/请求起）
+- DB lookup 6.7µs、verification/eviction 均不在 audio callback 路径（结构上：cache 层在 decode 之前的 producer 侧，§91）
+- 实测记录，无伪造（§130 不以关 integrity/降 hash 换性能）
+
+### 复测命令
+
+```text
+cargo test -p aura-cache --release --test perf_baseline -- --ignored --nocapture
+```

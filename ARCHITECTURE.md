@@ -144,6 +144,19 @@ ring buffer 容量按帧对齐（Engine 默认 buffer/8 = 渲染块）。overrun
 - **Radio Browser 流程**：`/json/servers` 发现 → 选择器（生产随机/测试注入）→ fallback ≤3 → search（name/country/language/codec）→ `url_resolved` 优先（记录字段）→ click 默认 OFF。
 - **Source → Audio Core 边界**（§55/§58）：`AudioByteStream` trait（core 定义，sources 实现）→ `MediaSource` 适配 → `StreamingDecoder`（symphonia probe）→ M1 Decoder → Resampler → Buffer。core 不认识 reqwest，sources 不碰 CPAL。
 - **取消与错误传播**（§22/§59）：`SourceError` 全链路可诊断、不 panic、不泄漏凭据；`Cancelled` 语义端到端。
+### Cache Architecture（M5）
+
+`aura-cache` 职责链（§2）：`Source → Network Stream → Cache Layer → Decoder → Audio Core`。cache 不知道 WASAPI/CPAL/EQ/UI；与 library DB 完全隔离（独立文件 + 结构性无路径知识，§28）。
+
+- **CachePolicy 硬门禁**（§3–§7）：`put_chunk` 是唯一持久写入口 —— Forbidden 拒绝（零写盘）、SessionOnly 有界内存（32MiB）、Allowed 才落盘；live 流双保险拒绝（§75）。
+- **Chunk Storage**（D-056/057）：256KiB 固定分块；`chunks/<ck[0..2]>/<ck>/<idx>.bin` 固定深度映射；tmp 写 → 校验 → 原子 rename → SHA-256 → DB 事务；FaultFS 注入 write/truncate/rename 故障（§65）。
+- **Cache Index**：独立 SQLite（WAL、`user_version` 迁移、5s busy timeout）；entries/chunks/pins 三表；access-time 内存聚合批量落库（§62）。
+- **Range Reader**（§29–§37）：`CachedRangeReader`（Read+Seek+AudioByteStream）cache-first；miss → 206 按块拉取（Content-Range 逐项校验）；200 → non-range + bounded sequential fill；seek 限已填充区间；离线 miss → Network 错误不伪装 EOS（§80）。
+- **Revalidation**（§40–§43/§84）：open 时 If-None-Match；Fresh/Validated/Stale/Unknown 显式状态；内容变更作废全 key chunks。
+- **Retry/Dedup**（§45–§48/§53/§95/§136）：3 次指数退避（仅可恢复错误）；in-flight 注册表按 FetchKey 去重（leader 在临界区持久化，waiter 读缓存）。
+- **Prefetch**（§49–§51）：读取触发 + 显式两种；epoch 计数器 seek 即取消。
+- **LRU/Pin**（§55–§61）：容量只计有效 chunk bytes（默认 2GiB 可配）；LRU 淘汰跳过 pinned 与 in-flight lease；全 pinned → `CacheFullPinned`。
+- **Crash Recovery**（§27/§66–§69）：DB 损坏 → 备份 + 重建；orphan/missing/corrupt → `verify_cache` 报告并修复；FaultFS 全场景测试。
 ## 构建与工程
 
 - Cargo workspace：7 个 aura crates + `src-tauri`（M0-3 起为正式 member，tauri 2.12）。

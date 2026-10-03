@@ -255,3 +255,35 @@ reqwest blocking 无 per-read timeout。协议：`Response` 唯一宿主是共�
 ## D-055 symphonia mp3 特性（2026-10-04，M4）
 
 symphonia 元 crate 默认特性**不含 mp3**（只有 flac/ogg/vorbis/wav/adpcm/mkv/pcm）。Charter §14 支持矩阵含 MP3 且网络电台以 MP3 为主 → aura-core 显式 `features = ["mp3"]`（symphonia-bundle-mp3，MPL-2.0 纯 Rust；§74 只禁止 AAC/FDK 类）。probe 解码器（StreamingDecoder）覆盖网络场景未知容器；FLAC 仍走 M1 具体类型路径（D-015 不变）。
+
+## D-056 content key 与 URL 规范化（2026-10-04，M5）
+
+`content_key = hex(SipHash-2-4-128(normalized_url))`（专用密钥，与 M4 内容身份密钥分离防跨域碰撞解释）。规范化：scheme/host 小写、默认端口剔除、fragment 剔除；**path+query 原样保留**（§12：合法直链依赖 query；不同 token = 不同内容）。index 只存 url_hash + redacted URL（host/path，无 query）——signed URL 的 token 不入库不进日志（§13/§85）。chunk 路径 = `chunks/<ck[0..2]>/<ck>/<idx:08>.bin` 固定深度映射，content key 必须 32 位小写 hex（§116/§118：用户字符串永不入路径）。
+
+## D-057 chunk 记账与原子写顺序（2026-10-04，M5）
+
+`CHUNK_SIZE = 256 KiB` 全模块唯一。写入顺序：tmp 写（cache 根内 `tmp/`，确定性文件名）→ 写后大小校验（FaultFS Truncation 在此被抓住）→ 原子 rename → 写后 SHA-256 校验 → DB 事务记录。崩溃窗口分析：tmp 残留（integrity/清理 tmp 回收，§133）；rename 后 DB 前 → orphan 文件（integrity 报告后删除 D-060）。`stored_size` 恒等于 `size`（原子写保证），不设冗余列。
+
+## D-058 DB 损坏恢复（2026-10-04，M5）
+
+cache.db 打不开 → `cache.db.corrupt-<ts>` 备份（连同 -wal/-shm）→ 重建空索引（§27 安全降级）。不尝试从文件系统重建索引（文件无 url/validator 元数据，重建会引入不可校验数据）；chunks 保留为 orphan，integrity pass 按策略清理。结构隔离保证（§28）：aura-cache 不知道 library DB 路径，无法误删。
+
+## D-059 读路径不付 hash 成本（2026-10-04，M5）
+
+chunk 读只校验存在 + 大小；SHA-256 校验发生在写入后、integrity pass、崩溃恢复扫描三处。理由（§90/§91）：读路径在 decode 之前的 producer 侧，逐读 hash 会把 2.4GB/s 的额外 CPU 推进音频供给链；损坏数据靠写入时校验 + 周期 integrity 拦截，符合 §44「单 chunk 单独可验证」。
+
+## D-060 orphan 策略（2026-10-04，M5）
+
+orphan chunk（文件在 DB 无行）与非法目录名：integrity pass 报告后**删除**。理由：全部 M5 缓存内容可由源重新获取（Allowed 直链），保留幽灵文件只占磁盘；不 quarantine（无诊断 UI 消费）。
+
+## D-061 revalidation 策略（2026-10-04，M5）
+
+open 时一次条件验证（If-None-Match 优先，无 ETag 才用 If-Modified-Since §41）。304 → Validated（缓存继续）；200 → 内容变更 → 作废该 key 全部 chunks（§43 绝无半新半旧）+ 更新 validator；404/410/网络失败 → Stale（§83：离线可用，状态显式）。不做 TTL 周期验证（M5 播放场景一次验证足够；后续如需 TTL 记录新决策）。非 Range 服务器（200 on Range）→ 标记 non-range + sequential fill（§35/§36 有界），seek 只允许已填充区间（§37）。
+
+## D-062 retry/backoff/prefetch 参数（2026-10-04，M5）
+
+retry 3 次，仅 timeout/连接类/5xx；指数退避 base 200ms、cap 1.6s、jitter 注入（测试恒 0，§48/§106）。prefetch：读取触发式（obtain 后单线程拉取前方 2 chunk）+ 显式 `prefetch_ahead(n)`；epoch 计数器 seek 即递增使旧预取终止（§50 任务上限 = ahead 常数；§51 seek 取消）。
+
+## D-063 磁盘满/只读 cache（2026-10-04，M5）
+
+写失败（DiskFull/PermissionDenied）→ 错误上抛，不损坏已有 chunks、不动 pinned（§124）；已缓存内容可继续读（§126 只读 cache 允许读）。Allowed 目录不可写的 graceful 降级（§125：转 SessionOnly）由应用层捕获 PermissionDenied 后降级实现 —— cache 层提供错误分类，不静默重试。

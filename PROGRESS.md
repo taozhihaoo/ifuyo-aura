@@ -104,6 +104,16 @@ Phase 0 前无架构文档。已创建 `ARCHITECTURE.md`（分层、crate 职责
 2. Tauri CLI 未安装 → `tauri build` 门禁延后至 M0 接线后。
 3. `Spec/` 中保留少量旧名称（`IFUYO Music` / `Aura Music` 等）——均为刻意的旧名称审计清单与章程变更记录，非冲突。
 
+## M5 Status（2026-10-04）
+
+**M5-A = PASS（A 级 41/41）　M5-B = NOT COMPLETED（智能 prefetch/coalescing/部分离线/diagnostics/clear/priority 留待后续）**
+
+- 实现：aura-cache（keys/URL 规范化、256KiB 原子分块存储、SQLite WAL 索引、CachedRangeReader（Range 拉取 + sequential fill 降级 + revalidation + retry/backoff + 离线可用）、LRU/pin/容量 2GiB、fetch dedup、bounded prefetch、integrity/recovery、FaultFS 全场景）。
+- 测试：aura-cache **52 通过**（store 10 / manager 10 / range 9 / concurrency 7 / integration 4 / keys+error 5 / FaultFS 4 / testkit 17）；workspace 累计 ~345。
+- 性能：PERF.md M5 节（chunk 读 1423 MB/s、写+DB 244 MB/s、SHA-256 2429 MB/s、lookup 6.7µs）。
+- 已知限制：部分离线播放为 B 级未实现（miss → 错误，不误报）；TTL 周期 revalidation 未做（open 时一次）；orphan 直接删除不 quarantine；SessionOnly→Allowed 升级不静默迁移（§73 有测试）。
+- M5 Final Audit：见 2026-10-04 会话输出。
+
 ## M4 Status（2026-10-04）
 
 **M4-A = PASS（A 级 33/33）　M4-B = NOT COMPLETED（RSS/HLS/WMF AAC 留待后续）**

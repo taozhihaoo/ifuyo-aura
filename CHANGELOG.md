@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — M5: Persistent Network Cache / Range Reader / LRU / Pin / Recovery (2026-10-04)
+
+- `aura-cache` crate: CachePolicy hard gate (Forbidden zero-write structural guarantee, SessionOnly bounded 32MiB memory, Allowed persistent), content keys via normalized-URL SipHash-2-4-128 (query-preserving, fixed-depth path mapping, secret redaction).
+- 256KiB chunk storage: temp-write → verify → atomic rename → SHA-256 → transactional DB record; FaultFS injection (write/truncate/rename) tests; crash-window analysis (orphan cleanup via integrity pass).
+- SQLite cache index: independent of library DB (isolation tested), WAL, entries/chunks/pins schema v1, batched access-time updates (S62), LRU ordering with deterministic tie-break.
+- CachedRangeReader: cache-first Read+Seek; per-chunk Range fetch with Content-Range validation; 200→non-range degradation to bounded sequential fill; seek limited to filled range; offline cached reads + Network error on miss (no fake EOS); conditional revalidation (If-None-Match/LM, 304=Validated, content-change invalidates, offline=Stale); 3-attempt exponential backoff with injectable jitter/sleeper.
+- Fetch deduplication: in-flight registry keyed (content_key, chunk_index); leader persists in critical section; waiter reads cache. Bounded prefetch (2 chunks ahead) + explicit prefetch_ahead with seek-epoch cancellation.
+- LRU eviction: capacity counts valid chunk bytes only (default 2GiB, configurable); skips pinned + in-flight leases; CacheFullPinned when all pinned; pin survives restart.
+- aura-core ByteStream abstraction (Send+Sync) via aura-sources (S122 — aura-cache free of reqwest types).
+- Tests: 52 aura-cache tests (workspace ≈345) incl. FaultFS recovery matrix, crash scenarios, concurrency, soak (60 seek+evict+refetch iterations). PERF.md M5: chunk read 1423 MB/s, write+db 244 MB/s, SHA-256 2429 MB/s, lookup 6.7µs.
+
 ### Added — M4: Source System / Local / Direct HTTP / Internet Radio / ICY / Radio Browser (2026-10-04)
 
 - `aura-sources` crate: unified Source model (SourceKind/CachePolicy/Resolved/ResolvedLicense/Attribution/StreamMetadataEvent/SourceState), `resolve_input` with §13 ordering (local → URL validation → blocklist-before-any-request → network probe), Local Source reusing aura-library metadata.

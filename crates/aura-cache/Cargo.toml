@@ -20,4 +20,4 @@ siphasher = "1"
 url = "2"
 
 [dev-dependencies]
-aura-core = { path = "../aura-core" }
+aura-core = { version = "0.1.0", path = "../aura-core" }
