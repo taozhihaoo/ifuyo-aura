@@ -121,6 +121,13 @@ impl Decoder for FlacDecoder {
                     self.eof = true;
                     return Ok(returned);
                 }
+                // symphonia 以 IoError(UnexpectedEof) 报告流结束
+                Err(symphonia::core::errors::Error::IoError(ref e))
+                    if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+                {
+                    self.eof = true;
+                    return Ok(returned);
+                }
                 Err(_) => return Err(AudioError::DecodeError("next packet failed")),
             };
 

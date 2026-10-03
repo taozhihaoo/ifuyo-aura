@@ -15,5 +15,9 @@ cpal = "0.18.2"     # 音频输出（Windows WASAPI shared）
 rubato = "5.0.1"    # 重采样
 rtrb = "0.4.0"      # lock-free SPSC ring buffer
 
+[dev-dependencies]
+symphonia = "0.6.1"
+aura-testkit = { path = "../aura-testkit" }
+
 [lints]
 workspace = true
