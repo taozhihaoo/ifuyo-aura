@@ -148,7 +148,10 @@ pub fn upsert_track(
     modified_ms: i64,
     now_ms: i64,
 ) -> crate::error::Result<ImportOutcome> {
-    let path_str = path.to_string_lossy().into_owned();
+    // 路径规范化存储：canonicalize 消除 `\\?\` 前缀差异与大小写/分隔符歧义；
+    // 失败（文件被并发删除）时退回原路径字符串。
+    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let path_str = canonical.to_string_lossy().into_owned();
     let m = &parsed.metadata;
 
     let title = m.title.clone();

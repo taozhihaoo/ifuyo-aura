@@ -13,4 +13,5 @@ pub mod metadata;
 pub mod normalize;
 pub mod scanner;
 pub mod search;
+pub mod service;
 pub mod types;
