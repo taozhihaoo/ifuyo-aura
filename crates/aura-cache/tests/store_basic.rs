@@ -165,7 +165,7 @@ fn faultfs_truncation_detected() {
     let ck = content_key("https://example.com/t.mp3").unwrap();
 
     fault.arm(aura_testkit::faultfs::Fault::Truncate { keep_bytes: 10 });
-    let e = store.write_chunk(&ck, 0, &vec![9u8; 100]).unwrap_err();
+    let e = store.write_chunk(&ck, 0, &[9u8; 100]).unwrap_err();
     assert!(matches!(e, aura_cache::error::CacheError::Corrupt { .. }));
     let _ = std::fs::remove_dir_all(&root);
 }

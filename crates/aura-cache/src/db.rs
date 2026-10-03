@@ -355,10 +355,10 @@ impl CacheDb {
 
     /// DB 完整性快照（诊断）。
     pub fn quick_check(&self) -> Result<String> {
-        Ok(self
+        self
             .conn
             .query_row("PRAGMA quick_check", [], |r| r.get(0))
-            .map_err(CacheError::from)?)
+            .map_err(CacheError::from)
     }
 }
 
