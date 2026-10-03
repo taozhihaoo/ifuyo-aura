@@ -8,6 +8,8 @@
 pub mod error;
 pub mod http;
 pub mod icy;
+pub mod local;
 pub mod model;
 pub mod platform_block;
+pub mod resolver;
 pub mod url_policy;
