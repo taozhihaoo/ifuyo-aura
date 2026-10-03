@@ -186,10 +186,11 @@ pub fn set_eq_preset(state: State<'_, AppState>, preset: usize, persist: bool) -
 
 fn summarize(state: &AppState, tracks: Vec<aura_library::types::Track>) -> Vec<TrackSummary> {
     let service = state.library.service.lock().ok();
+    let service_guard = service.as_ref();
     tracks
         .into_iter()
-        .filter_map(|t| {
-            let path: Option<String> = service.as_ref().and_then(|s| {
+        .map(|t| {
+            let path: Option<String> = service_guard.and_then(|s| {
                 s.database()
                     .connection()
                     .query_row(
@@ -199,7 +200,7 @@ fn summarize(state: &AppState, tracks: Vec<aura_library::types::Track>) -> Vec<T
                     )
                     .ok()
             });
-            Some(TrackSummary {
+            TrackSummary {
                 id: t.id.0,
                 title: t.title,
                 artist: t.artist,
@@ -211,7 +212,7 @@ fn summarize(state: &AppState, tracks: Vec<aura_library::types::Track>) -> Vec<T
                 year: t.year,
                 path: path.unwrap_or_default(),
                 has_artwork: t.artwork_id.is_some(),
-            })
+            }
         })
         .collect()
 }
