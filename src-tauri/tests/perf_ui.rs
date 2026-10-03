@@ -82,7 +82,10 @@ fn ui_queries_10k_rows() {
         worst = worst.max(d);
         total += d;
     }
-    println!("list_tracks 200/page x50: avg {:?}, worst {worst:?}", total / 50);
+    println!(
+        "list_tracks 200/page x50: avg {:?}, worst {worst:?}",
+        total / 50
+    );
 
     // §78：搜索（UI debounce 后单次）。
     let mut stotal = std::time::Duration::ZERO;
