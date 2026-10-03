@@ -50,3 +50,28 @@
 cargo test -p aura-core --release --test perf_baseline -- --ignored --nocapture
 cargo test -p aura-core --release --test m2_integration_v1 -- --ignored --nocapture
 ```
+
+## M3 基线（release 构建；2026-10-03，M3-n）
+
+机器/环境：Windows 11 x64（10.0.26200）、rustc 1.99.0、SQLite bundled（WAL，synchronous=NORMAL）、fixture 为 1.3KB 合成 FLAC（8kHz mono 0.25s，标签各异）。
+
+| 项目 | 结果 | 说明 |
+|---|---|---|
+| 初始扫描（1000 文件） | **287ms（3484 文件/s）**，imported=1000 | walk + lofty 标签 + head/tail 1MiB 身份 + FTS 索引 + 事务提交，全链路 |
+| 增量重扫（1000 文件） | **25.4ms**（skipped=1000） | size+mtime 未变 → 零解析零写库（§17），≈40× 加速 |
+| 10k 行批量导入（含 FTS） | 11,778 rows/s（849ms） | 单事务 upsert_track 全路径 |
+| 10k 库搜索延迟 | **avg 1.11ms / worst 2.13ms** | FTS5 bm25 加权 + 前缀查询（§79 交互级 ✓） |
+| 10k 库 list_tracks 分页 | 122ms / 10k 行（500/页） | 实体 join + 排序 |
+| metadata 提取 | 39.8 µs/文件 | parse_file（lofty + 规范化） |
+| 内容身份（5MB 文件） | 1.49 ms/文件 | size + head/tail 1MiB SipHash-2-4-128 采样 |
+| 缩略图 512→256 | 2.46 ms/张 | 解码（受限）+ box-filter + PNG 编码 |
+
+### 解读
+
+- §79 目标核对：10,000 首库可正常查询 ✓（搜索 avg 1.1ms）；10k 文件扫描可接受 ✓（微小夹具 2.9s；真实库瓶颈是身份采样 1.49ms/5MB，增量扫描后不再发生）。
+- 身份采样吞吐 ≈ 1.4 GB/s（SipHash scalar）；若未来真实库首扫成为痛点，可评估并行化（扫描在后台线程，不阻塞 UI）。
+- 全部数字可复现：
+
+```text
+cargo test -p aura-library --release --test perf_baseline -- --ignored --nocapture
+```
