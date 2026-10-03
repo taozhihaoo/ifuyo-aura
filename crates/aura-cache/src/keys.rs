@@ -14,7 +14,7 @@
 //!
 //! chunk key = `(content_key, chunk_index)`（§14）。
 
-use siphasher::sip128::{Hasher128, SipHasher24};
+use siphasher::sip128::SipHasher24;
 
 use crate::error::{CacheError, Result};
 
@@ -85,7 +85,6 @@ pub fn is_valid_content_key(key: &str) -> bool {
 
 /// chunk 相对路径（§14/§116）：固定深度、固定宽度、无用户字符串。
 /// `chunks/<ck[0..2]>/<ck>/00000042.bin`
-#[must_use]
 pub fn chunk_rel_path(content_key: &str, chunk_index: u64) -> Result<String> {
     if !is_valid_content_key(content_key) {
         return Err(CacheError::InvalidKey {
@@ -100,7 +99,6 @@ pub fn chunk_rel_path(content_key: &str, chunk_index: u64) -> Result<String> {
 }
 
 /// 条目元数据目录相对路径。
-#[must_use]
 pub fn entry_rel_dir(content_key: &str) -> Result<String> {
     if !is_valid_content_key(content_key) {
         return Err(CacheError::InvalidKey {
