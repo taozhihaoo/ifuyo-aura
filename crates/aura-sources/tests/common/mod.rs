@@ -199,12 +199,17 @@ fn handle_conn(
         .and_then(|l| l.split_once(':'))
         .map(|(_, v)| v.trim().to_string());
     let request_line = text.lines().next().unwrap_or("");
-    let path = request_line
+    let path_full = request_line
         .split_whitespace()
         .nth(1)
         .unwrap_or("/")
         .to_string();
-    requests.lock().expect("requests lock").push(path.clone());
+    // 路由匹配剥掉 query string。
+    let path = path_full.split('?').next().unwrap_or("/").to_string();
+    requests
+        .lock()
+        .expect("requests lock")
+        .push(path_full.clone());
 
     let Some(route) = routes.iter().find(|r| r.path == path) else {
         let _ = write_response(

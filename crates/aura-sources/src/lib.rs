@@ -13,5 +13,6 @@ pub mod model;
 pub mod network_stream;
 pub mod platform_block;
 pub mod radio;
+pub mod radio_browser;
 pub mod resolver;
 pub mod url_policy;
