@@ -76,26 +76,40 @@ pub fn map_channels(
     src_channels: Channels,
     dst_channels: Channels,
 ) -> Result<Vec<f32>, AudioError> {
+    let mut out = Vec::new();
+    map_channels_into(src, src_channels, dst_channels, &mut out)?;
+    Ok(out)
+}
+
+/// [`map_channels`] 的零分配变体：写入调用方复用的 `dst`（容量跨调用保留）。
+pub fn map_channels_into(
+    src: &[f32],
+    src_channels: Channels,
+    dst_channels: Channels,
+    dst: &mut Vec<f32>,
+) -> Result<(), AudioError> {
     let sc = usize::from(src_channels.get());
     let dc = usize::from(dst_channels.get());
-    let src_frames = src.len() / sc;
     if !src.len().is_multiple_of(sc) {
         return Err(AudioError::InvalidFormat("interleaved pcm length mismatch"));
     }
+    dst.clear();
     match (sc, dc) {
-        (a, b) if a == b => Ok(src.to_vec()),
+        (a, b) if a == b => dst.extend_from_slice(src),
         (1, 2) => {
-            let mut out = Vec::with_capacity(src_frames * 2);
+            dst.reserve(src.len() * 2);
             for frame in src.chunks_exact(1) {
-                out.push(frame[0]);
-                out.push(frame[0]);
+                dst.push(frame[0]);
+                dst.push(frame[0]);
             }
-            Ok(out)
         }
-        _ => Err(AudioError::UnsupportedFormat(
-            "channel mapping unsupported in M1",
-        )),
+        _ => {
+            return Err(AudioError::UnsupportedFormat(
+                "channel mapping unsupported in M1",
+            ))
+        }
     }
+    Ok(())
 }
 
 #[cfg(test)]

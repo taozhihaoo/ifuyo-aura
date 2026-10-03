@@ -175,7 +175,7 @@ fn clear_via_generation_bump_discards_stale() {
 }
 
 #[test]
-fn multiple_generations_only_discard_once_per_change() {
+fn multiple_generations_precise_discard_then_read() {
     let (mut p, mut c) = ring_buffer(stereo(), 8 * 2).unwrap();
     let mut seen = c.read_generation();
     let mut out = vec![0.0f32; 8];
@@ -187,15 +187,14 @@ fn multiple_generations_only_discard_once_per_change() {
     // 第一代切换：bump 后旧代 2 帧被精确标记；新代数据可以紧随其后写入
     assert_eq!(p.bump_generation(), Generation::FIRST.next());
     assert_eq!(p.push_frames(&ramp(4, 100)), 2, "新代数据不受旧代影响");
-    // consumer 首次按代读取：只丢弃旧代 2 帧，返回 0（输出侧补静音）
+    // consumer 首次按代读取：精确丢弃旧代 2 帧，同一调用内直接读到新代数据
     assert_eq!(
         c.pop_frames_until_generation(&mut out, &mut seen),
-        0,
-        "第一代切换丢弃"
+        2,
+        "精确丢弃后同调用返回新代数据"
     );
-    assert_eq!(c.available_frames(), 2, "新代数据必须保留");
-    assert_eq!(c.pop_frames(&mut out), 2);
-    assert_eq!(&out[..4], ramp(4, 100), "第一代切换后新代数据原样");
+    assert_eq!(&out[..4], ramp(4, 100), "新代数据原样");
+    assert_eq!(c.available_frames(), 0, "旧代已精确清除");
 
     // 第二代切换：同上
     let g3 = p.bump_generation();
@@ -203,11 +202,9 @@ fn multiple_generations_only_discard_once_per_change() {
     assert_eq!(p.push_frames(&ramp(4, 200)), 2);
     assert_eq!(
         c.pop_frames_until_generation(&mut out, &mut seen),
-        0,
-        "第二代切换丢弃"
+        2,
+        "第二代切换精确丢弃"
     );
-    assert_eq!(c.available_frames(), 2);
-    assert_eq!(c.pop_frames(&mut out), 2);
     assert_eq!(&out[..4], ramp(4, 200), "第二代数据原样");
 
     // 未切换代时正常读取，不再丢弃

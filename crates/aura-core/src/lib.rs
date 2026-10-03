@@ -11,7 +11,9 @@
 
 pub mod audio;
 pub mod decoder;
+pub mod engine;
 pub mod error;
+pub mod output;
 pub mod resampler;
 pub mod types;
 
@@ -19,9 +21,13 @@ pub use audio::buffer::{ring_buffer, ConsumerHandle, ProducerHandle};
 pub use audio::gain::{GainSmoother, SMOOTHING_WINDOW_MS};
 pub use audio::position::PositionTracker;
 pub use decoder::flac::FlacDecoder;
-pub use decoder::pcm::{map_channels, PcmBuffer};
+pub use decoder::pcm::{map_channels, map_channels_into, PcmBuffer};
 pub use decoder::Decoder;
+pub use engine::command::{AudioCommandQueue, CommandQueueError};
+pub use engine::player::Engine;
 pub use error::AudioError;
+pub use output::null::NullOutput;
+pub use output::{AudioOutput, OutputStage, SharedOutputState};
 pub use resampler::Resampler;
 pub use types::{
     AudioCommand, AudioFormat, Channels, FrameCount, Generation, PlaybackState, SampleRate,

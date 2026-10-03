@@ -32,15 +32,16 @@ impl Resampler {
         // 256 阶 sinc + Blackman2 窗：质量/开销平衡点（M1 基线，性能调优属后续）
         let params = SincInterpolationParameters::new(256, WindowFunction::Blackman2);
         let chunk_size = 1024;
+        // 相对可调带宽 2.0：必须覆盖固定 ratio 本身（44.1k↔48k 的 ratio≈1.088）
         let inner = Async::new_sinc(
             ratio,
-            1.05,
+            2.0,
             &params,
             chunk_size,
             usize::from(channels.get()),
             FixedAsync::Input,
         )
-        .map_err(|e| AudioError::ResampleError("resampler construction failed"))?;
+        .map_err(|_e| AudioError::ResampleError("resampler construction failed"))?;
         Ok(Some(Self {
             inner,
             channels,

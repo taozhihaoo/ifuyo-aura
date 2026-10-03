@@ -4,7 +4,7 @@
 //! 0.6.1），不经通用 probe/registry——M1 只支持 FLAC，具体类型最稳定且零 API 漂移。
 //! 决策记录见 DECISIONS.md D-015。
 
-use symphonia::core::codecs::audio::{AudioCodecParameters, AudioDecoder, AudioDecoderOptions};
+use symphonia::core::codecs::audio::{AudioDecoder, AudioDecoderOptions};
 use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo, SeekedTo};
 use symphonia::core::io::{MediaSource, MediaSourceStream};
 use symphonia::core::units::Timestamp;
@@ -31,7 +31,7 @@ impl FlacDecoder {
     /// 从内存媒体数据构造。非 FLAC 输入返回 `InvalidFormat`。
     pub fn from_media_source(source: Box<dyn MediaSource>) -> Result<Self, AudioError> {
         let mss = MediaSourceStream::new(source, Default::default());
-        let mut reader = FlacReader::try_new(mss, FormatOptions::default())
+        let reader = FlacReader::try_new(mss, FormatOptions::default())
             .map_err(|_| AudioError::InvalidFormat("not a valid FLAC stream"))?;
 
         let track = reader

@@ -144,21 +144,22 @@ impl ConsumerHandle {
 
     /// generation-aware 读取（M1 §12/§21–22）。
     ///
-    /// 若检测到数据代变化：先精确丢弃 bump 时记录的旧代帧数（不含新代数据），
-    /// 返回 0（调用方输出静音），`seen` 更新为新代。之后读到的即为新代数据。
+    /// 若检测到数据代变化：精确丢弃 bump 时记录的旧代帧数（不含新代数据），
+    /// `seen` 更新为新代；随后同一调用内正常读取（bump 时缓冲为空的场景不
+    /// 牺牲任何块）。弹出过程中若发生代切换，本块整体丢弃并清掉残余后返回 0。
     pub fn pop_frames_until_generation(&mut self, out: &mut [f32], seen: &mut Generation) -> u64 {
         let current = self.read_generation();
         if current != *seen {
             *seen = current;
             self.discard_stale();
-            return 0;
         }
         let before = self.read_generation();
         let frames = self.pop_frames(out);
         let after = self.read_generation();
         if before != after {
-            // 弹出过程中发生代切换：本块可能混有旧代样本，整块丢弃。
+            // 弹出过程中发生代切换：本块可能混有旧代样本，整块丢弃并清掉残余。
             *seen = after;
+            self.discard_stale();
             return 0;
         }
         frames
@@ -167,14 +168,16 @@ impl ConsumerHandle {
     /// 丢弃残留旧代帧（精确数量，不波及 bump 后写入的新代数据）。
     fn discard_stale(&mut self) {
         let mut to_skip = self.stale_frames.swap(0, Ordering::AcqRel);
+        if to_skip == 0 {
+            return;
+        }
+        let ch = usize::from(self.channels.get());
         let mut sink = [0.0f32; 4096];
+        let sink_frames = sink.len() / ch;
         while to_skip > 0 {
-            let want = (usize::try_from(to_skip)
-                .unwrap_or(usize::MAX)
-                .min(sink.len()))
-                * usize::from(self.channels.get());
-            let (popped, _) = self.inner.pop_partial_slice(&mut sink[..want]);
-            let frames = (popped.len() / usize::from(self.channels.get())) as u64;
+            let want_frames = to_skip.min(sink_frames as u64) as usize;
+            let (popped, _) = self.inner.pop_partial_slice(&mut sink[..want_frames * ch]);
+            let frames = (popped.len() / ch) as u64;
             if frames == 0 {
                 break;
             }
