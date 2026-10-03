@@ -11,6 +11,7 @@
 
 pub mod audio;
 pub mod decoder;
+pub mod dsp;
 pub mod engine;
 pub mod error;
 pub mod output;
@@ -19,11 +20,18 @@ pub mod track;
 pub mod types;
 
 pub use audio::buffer::{ring_buffer, ConsumerHandle, ProducerHandle};
+pub use audio::crossfade::{
+    crossfade_frames, equal_power_gains, CROSSFADE_DEFAULT_SECONDS, CROSSFADE_MAX_SECONDS,
+};
 pub use audio::gain::{GainSmoother, SMOOTHING_WINDOW_MS};
 pub use audio::position::PositionTracker;
 pub use decoder::flac::FlacDecoder;
 pub use decoder::pcm::{map_channels, map_channels_into, PcmBuffer};
 pub use decoder::Decoder;
+pub use dsp::{
+    bands_from_preset, limit_sample, loudness_gain, EqBand, EqBandKind, EqBus, EqCoeffs, EqPreset,
+    TrackLoudness, TARGET_LUFS,
+};
 pub use engine::command::{AudioCommandQueue, CommandQueueError};
 pub use engine::player::Engine;
 pub use error::AudioError;
