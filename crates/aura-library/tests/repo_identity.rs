@@ -67,7 +67,6 @@ impl Env {
             .query_row(sql, [], |r| r.get(0))
             .unwrap()
     }
-
 }
 impl Drop for Env {
     fn drop(&mut self) {

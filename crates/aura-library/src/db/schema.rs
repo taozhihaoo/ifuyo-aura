@@ -64,7 +64,8 @@ CREATE TABLE tracks (
     modified_ms     INTEGER NOT NULL,
     date_added_ms   INTEGER NOT NULL,
     last_scanned_ms INTEGER NOT NULL,
-    is_active       INTEGER NOT NULL DEFAULT 1
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    fts_rowid       INTEGER
 );
 CREATE INDEX tracks_active ON tracks(is_active);
 

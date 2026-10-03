@@ -32,16 +32,39 @@ pub fn display_text(raw: &str) -> Option<String> {
 }
 
 /// 搜索/去重文本：确定性折叠。
+///
+/// CJK（表意/假名/谚文）原样保留 —— NFKD 会把浊音假名（ド→ト+浊点）
+/// 拆解后丢失浊点，必须整体绕过；非 CJK 走 NFKD + 过滤 combining marks
+/// 完成变音折叠，再小写。
 #[must_use]
 pub fn search_text(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
-    for ch in raw.nfkd() {
-        // NFKD 后 combining marks 与基字分离；过滤非字母数字即完成变音折叠。
-        if ch.is_alphanumeric() {
-            out.extend(ch.to_lowercase());
+    for c in raw.chars() {
+        if is_cjk(c) {
+            out.push(c);
+        } else {
+            for d in std::iter::once(c).nfkd() {
+                if d.is_alphanumeric() {
+                    out.extend(d.to_lowercase());
+                }
+            }
         }
     }
     out
+}
+
+/// CJK 统一表意文字 + 假名 + 谚文（搜索域内的非空格文字）。
+#[must_use]
+pub fn is_cjk(c: char) -> bool {
+    matches!(c as u32,
+        0x3040..=0x30FF   // 平假名/片假名
+        | 0x31F0..=0x31FF // 片假名音标扩展
+        | 0x3400..=0x4DBF // CJK 扩展 A
+        | 0x4E00..=0x9FFF // CJK 基本区
+        | 0xAC00..=0xD7AF // 谚文音节
+        | 0xF900..=0xFAFF // CJK 兼容表意
+        | 0x20000..=0x2A6DF // CJK 扩展 B
+    )
 }
 
 /// 宽容年份解析：`1999` / `1999-03-01` / `1999/03/01` / `1999.x` 等，

@@ -219,6 +219,16 @@ pub fn upsert_track(
             "UPDATE tracks SET is_active = 1 WHERE id = ?1",
             params![track_id],
         )?;
+        sync_fts(
+            tx,
+            track_id,
+            title.as_deref(),
+            artist.as_deref(),
+            album.as_deref(),
+            album_artist.as_deref(),
+            genre.as_deref(),
+            &path_str,
+        )?;
         ensure_stats_row(tx, track_id)?;
         return Ok(ImportOutcome {
             track_id: TrackId(track_id),
@@ -264,6 +274,16 @@ pub fn upsert_track(
                 "UPDATE tracks SET is_active = 1 WHERE id = ?1",
                 params![prev],
             )?;
+            sync_fts(
+                tx,
+                prev,
+                title.as_deref(),
+                artist.as_deref(),
+                album.as_deref(),
+                album_artist.as_deref(),
+                genre.as_deref(),
+                &path_str,
+            )?;
             ensure_stats_row(tx, prev)?;
             return Ok(ImportOutcome {
                 track_id: TrackId(prev),
@@ -289,6 +309,16 @@ pub fn upsert_track(
         tx.execute(
             "UPDATE track_paths SET track_id = ?1, is_active = 1, last_seen_ms = ?2 WHERE path = ?3",
             params![new_id, now_ms, path_str],
+        )?;
+        sync_fts(
+            tx,
+            new_id,
+            title.as_deref(),
+            artist.as_deref(),
+            album.as_deref(),
+            album_artist.as_deref(),
+            genre.as_deref(),
+            &path_str,
         )?;
         ensure_stats_row(tx, new_id)?;
         deactivate_if_orphan(tx, prev)?;
@@ -340,6 +370,16 @@ pub fn upsert_track(
             "UPDATE tracks SET is_active = 1 WHERE id = ?1",
             params![orphan_id],
         )?;
+        sync_fts(
+            tx,
+            orphan_id,
+            title.as_deref(),
+            artist.as_deref(),
+            album.as_deref(),
+            album_artist.as_deref(),
+            genre.as_deref(),
+            &path_str,
+        )?;
         ensure_stats_row(tx, orphan_id)?;
         return Ok(ImportOutcome {
             track_id: TrackId(orphan_id),
@@ -367,6 +407,16 @@ pub fn upsert_track(
         "INSERT INTO track_paths(track_id, root_id, path, is_active, first_seen_ms, last_seen_ms)
          VALUES (?1, ?2, ?3, 1, ?4, ?4)",
         params![new_id, root_id.0, path_str, now_ms],
+    )?;
+    sync_fts(
+        tx,
+        new_id,
+        title.as_deref(),
+        artist.as_deref(),
+        album.as_deref(),
+        album_artist.as_deref(),
+        genre.as_deref(),
+        &path_str,
     )?;
     ensure_stats_row(tx, new_id)?;
     Ok(ImportOutcome {
@@ -566,6 +616,42 @@ fn update_track_fields(
             now_ms,
             track_id,
         ],
+    )?;
+    Ok(())
+}
+
+/// 同步 track 的 FTS 索引行（事务内；旧行按记录的 rowid 删除，§49）。
+#[allow(clippy::too_many_arguments)]
+fn sync_fts(
+    tx: &Transaction,
+    track_id: i64,
+    title: Option<&str>,
+    artist: Option<&str>,
+    album: Option<&str>,
+    album_artist: Option<&str>,
+    genre: Option<&str>,
+    path: &str,
+) -> crate::error::Result<()> {
+    let old: Option<Option<i64>> = tx
+        .query_row(
+            "SELECT fts_rowid FROM tracks WHERE id = ?1",
+            params![track_id],
+            |r| r.get::<_, Option<i64>>(0),
+        )
+        .ok();
+    crate::search::delete_track(tx, old.flatten())?;
+    let doc = crate::search::FtsDoc {
+        title,
+        artist,
+        album,
+        album_artist,
+        genre,
+        path,
+    };
+    let rowid = crate::search::insert_track(tx, TrackId(track_id), &doc)?;
+    tx.execute(
+        "UPDATE tracks SET fts_rowid = ?1 WHERE id = ?2",
+        params![rowid, track_id],
     )?;
     Ok(())
 }
