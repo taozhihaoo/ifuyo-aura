@@ -104,6 +104,17 @@ Phase 0 前无架构文档。已创建 `ARCHITECTURE.md`（分层、crate 职责
 2. Tauri CLI 未安装 → `tauri build` 门禁延后至 M0 接线后。
 3. `Spec/` 中保留少量旧名称（`IFUYO Music` / `Aura Music` 等）——均为刻意的旧名称审计清单与章程变更记录，非冲突。
 
+## M6 上篇 Status（2026-10-05）
+
+**M6-A（上篇 §0–171）= PASS　M6-B（下篇 §172–318）= NOT STARTED（属独立里程碑）**
+
+- Tauri shell：frameless + 自绘标题栏 + window controls（capabilities 最小化，无 shell 权限 §23）；CSP 保持严格（§24）；1180×760/900×600（§17）。
+- 应用层（src-tauri）：AudioHandle 驱动线程（M1 Engine fill+process @10Hz 快照 + CPAL 真实输出，消费端移交 D-064）；LibraryService 接线（list/search/scan/progress 事件/cancel）；设置 JSON v1（§114–116）。
+- UI：React+TS+Zustand 分域 stores（§8/§9）；typed IPC + DTO guards（§11）；i18n zh-CN/en（§117）；Now Playing（真实播放状态/进度插值/音量/seek 禁用逻辑，§33–45）；Library（真实 FTS5 搜索 debounce/虚拟化列表/排序映射 M3/扫描进度+取消/空错态，§76–94）；Map 壳（§95–97）；Command Palette 注册架构 + Ctrl+K + 键盘导航（§98–102）；Settings panel（语言/缩放/reducedMotion/loudness/crossfade/EQ，§114）；Queue drawer（in-memory，引用 TrackId，§48–49）；Mini Player WebviewWindow（共享应用层，§109–113）；Aurora Three.js GLSL（单一 canvas/节流 30-8fps/reduced-motion/稳定 seed/context-loss fallback，§56–75）。
+- 测试：ui vitest **16 通过**（stores/i18n/命令注册/DTO guards/seed 确定性）；Rust ipc 单测保留；workspace **339 通过 / 0 失败**（M1–M5 全回归）。
+- 已知限制：Aurora FPS 预算为运行时实测项（§132）留待 M6 下篇窗口化验证；folder dialog 依赖 tauri-plugin-dialog（前端 npm 包 + Rust 插件均已接）；queue reorder/undo 为 B 级；Mica 材质待 Win11 实机验证（solid fallback 已实现）。
+- M6 上篇 Final Audit：见 2026-10-05 会话输出。
+
 ## M5 Status（2026-10-04）
 
 **M5-A = PASS（A 级 41/41）　M5-B = NOT COMPLETED（智能 prefetch/coalescing/部分离线/diagnostics/clear/priority 留待后续）**

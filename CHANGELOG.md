@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — M6 上篇: Desktop UI Foundation / Tauri Shell / Now Playing / Library / Command Palette / Aurora (2026-10-05)
+
+- Tauri 2 desktop shell: frameless window with custom title bar + window controls (minimal capabilities, no shell permission, strict CSP), 1180×760/min 900×600.
+- Rust application layer (src-tauri): AudioHandle driver thread owning the M1 Engine (fill+process loop, 10 Hz snapshots) with real CPAL output via new `detach_consumer_for_external_output` (D-064); LibraryService integration (list/search/scan with progress events + cancellation); app settings JSON v1 with backward-compatible defaults.
+- UI (React 18 + TS + Zustand + Vite): split domain/UI stores (ui/player/library/settings), typed IPC client with DTO guards (no `any`), i18n zh-CN/en with fallback chain, UI scale 90–140% via root font-size, global shortcuts (Ctrl+K/Space/Ctrl+F/Esc, typing-aware).
+- Now Playing: real playback state via snapshots + rAF position interpolation, seek disabled when non-seekable, volume → M2 smoothing, play/pause/stop controls.
+- Library: real FTS5 search with 250ms debounce, @tanstack/react-virtual list (TrackId stable keys), sort → M3 query API, scan progress + cancel (real CancelToken), structured empty/error/loading states.
+- Command Palette: declarative command registry (S99), fuzzy match, keyboard-only UX with focus restore, Ctrl+K global.
+- Queue drawer: application-layer in-memory queue referencing TrackId (S48–50).
+- Mini Player: separate always-on-top frameless WebviewWindow sharing the single audio engine (S109–113/157).
+- Aurora: single-canvas Three.js-free raw WebGL GLSL visual (brand-palette derived), playing/idle FPS throttle (30/8), reduced-motion support, stable per-track visual seed, WebGL-failure CSS fallback (S69), resolution cap + resize debounce.
+- Tests: 16 vitest (stores/i18n/commands/DTO guards/seed), Rust shell compiles clean; workspace 339 passed / 0 failed (M1–M5 regression intact).
+
 ### Added — M5: Persistent Network Cache / Range Reader / LRU / Pin / Recovery (2026-10-04)
 
 - `aura-cache` crate: CachePolicy hard gate (Forbidden zero-write structural guarantee, SessionOnly bounded 32MiB memory, Allowed persistent), content keys via normalized-URL SipHash-2-4-128 (query-preserving, fixed-depth path mapping, secret redaction).

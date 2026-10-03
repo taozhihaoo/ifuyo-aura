@@ -287,3 +287,15 @@ retry 3 次，仅 timeout/连接类/5xx；指数退避 base 200ms、cap 1.6s、j
 ## D-063 磁盘满/只读 cache（2026-10-04，M5）
 
 写失败（DiskFull/PermissionDenied）→ 错误上抛，不损坏已有 chunks、不动 pinned（§124）；已缓存内容可继续读（§126 只读 cache 允许读）。Allowed 目录不可写的 graceful 降级（§125：转 SessionOnly）由应用层捕获 PermissionDenied 后降级实现 —— cache 层提供错误分类，不静默重试。
+
+## D-064 Engine 消费端移交（2026-10-05，M6 必要最小修复 §5）
+
+M1 Engine 的 render_for_frames 同时承担「解码填充 ring」与「排空 ring → OutputStage」。M6 真实输出需要 CPAL 回调内的 OutputStage 直接消费 ring（CpalOutput::open_default(consumer, …) 设计意图）。新增 `Engine::detach_consumer_for_external_output()`：一次性移出 ConsumerHandle 并置 `consumer_detached` 标志；此后驱动线程只用 `fill_and_process()`（fill + process_commands）。占位空 ring consumer 保证误用安全。M1 全部 88 测试回归通过（增量 API，零语义变更）。
+
+## D-065 实时命令路径（2026-10-05，M6）
+
+UI 实时命令（Play/Pause/Stop/Seek/SetVolume）经 AudioCommandQueue（rtrb，单消费者）投递；队列由驱动线程独占，故 AudioHandle 将队列移入驱动线程，Handle 侧经控制通道 `Control::Post(AudioCommand)` 转发 —— 单一写入点，避免跨线程 &mut。快照读走 Arc<Mutex<PlayerSnapshot>>（10Hz 刷新 + revision 递增，§147–150 后端权威）。
+
+## D-066 Tauri 插件与权限（2026-10-05，M6）
+
+capabilities 最小集：core:default + core:window:{minimize,toggle-maximize,close,start-dragging} + dialog:default（Add Music Folder）。tauri-plugin-dialog（前端 @tauri-apps/plugin-dialog + Rust tauri-plugin-dialog）。无 shell/updater/fs 通配权限（§22/§23）。CSP 维持全自托管。

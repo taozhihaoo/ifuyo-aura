@@ -157,6 +157,16 @@ ring buffer 容量按帧对齐（Engine 默认 buffer/8 = 渲染块）。overrun
 - **Prefetch**（§49–§51）：读取触发 + 显式两种；epoch 计数器 seek 即取消。
 - **LRU/Pin**（§55–§61）：容量只计有效 chunk bytes（默认 2GiB 可配）；LRU 淘汰跳过 pinned 与 in-flight lease；全 pinned → `CacheFullPinned`。
 - **Crash Recovery**（§27/§66–§69）：DB 损坏 → 备份 + 重建；orphan/missing/corrupt → `verify_cache` 报告并修复；FaultFS 全场景测试。
+### Desktop UI Architecture（M6 上篇）
+
+分层（§7）：`UI Components → Zustand feature stores → Typed IPC → Tauri commands → aura-shell app layer → M1–M5`。React 不触碰 audio callback/ring/decoder/SQLite/reqwest（§7/§128）。
+
+- **状态分离**（§8/§9）：domain（player snapshot/library query）来自 Rust 快照；UI（view/panels/palette）来自分域 Zustand stores + selectors。
+- **高频边界**（§10/§14）：快照 250ms 轮询 + 位置走共享原子 `player_position`，rAF 本地插值；Aurora 以 ref telemetry 驱动，不经 React 渲染。
+- **Shell**：frameless + 自绘 titlebar；window controls 经 capabilities 最小授权（core:window-* + dialog:default，无 shell §23）；CSP 全自托管（§24/§25 零远程资源）。
+- **命令架构**（§99）：`Command { id, title, keywords, shortcut, execute }` 注册表 + 子序列模糊匹配；Ctrl+K/Space/Ctrl+F/Esc 全局快捷键（输入态不拦截 Space §103）。
+- **Aurora**（§56–§75）：单一 WebGL canvas；GLSL fbm 流场（品牌 palette 派生）；playing 30fps / idle 8fps / reduced-motion 2fps 节流；稳定 per-track seed（非 M7 seed）；WebGL 失败 → CSS 渐变 fallback；分辨率 cap + resize debounce（§134–136）。
+- **多窗口**（§157）：mini player 为同 dist `?view=mini` WebviewWindow，共享单一应用层/音频引擎；关闭 = 隐藏不停止（§113）。
 ## 构建与工程
 
 - Cargo workspace：7 个 aura crates + `src-tauri`（M0-3 起为正式 member，tauri 2.12）。
