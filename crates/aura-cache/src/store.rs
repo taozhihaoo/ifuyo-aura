@@ -161,6 +161,27 @@ impl ChunkStore {
         Ok(())
     }
 
+    /// 任意相对路径列表（integrity 扫描；rel 由调用方保证来自固定映射）。
+    pub fn list_dir(&self, path: &Path) -> Result<Vec<PathBuf>> {
+        if !self.fs.exists(path) {
+            return Ok(Vec::new());
+        }
+        Ok(self.fs.list_dir(path)?)
+    }
+
+    /// 删除任意 cache 根内文件（integrity 修复路径；校验在根内 §119）。
+    pub fn remove_file(&self, path: &Path) -> Result<()> {
+        if !path.starts_with(&self.root) {
+            return Err(CacheError::InvalidKey {
+                reason: "path escaped cache root".into(),
+            });
+        }
+        if self.fs.exists(path) {
+            self.fs.remove_file(path)?;
+        }
+        Ok(())
+    }
+
     /// chunk 相对路径列表（integrity 扫描）。
     pub fn list_entry_files(&self, content_key: &str) -> Result<Vec<PathBuf>> {
         let dir = self.root.join(keys::entry_rel_dir(content_key)?);

@@ -348,6 +348,46 @@ impl CacheDb {
         Ok(())
     }
 
+    /// 全量 chunk 行（integrity 扫描）。
+    pub fn list_all_chunks(&self) -> Result<Vec<CacheChunkRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT content_key, chunk_index, size, sha256, created_at_ms, last_accessed_ms
+             FROM cache_chunks ORDER BY content_key, chunk_index",
+        )?;
+        let rows = stmt.query_map([], map_chunk)?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    /// 全量 entry key（integrity 扫描）。
+    pub fn list_entry_keys(&self) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT content_key FROM cache_entries ORDER BY content_key")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    /// 全量 pin key（integrity 扫描）。
+    pub fn list_pins(&self) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT content_key FROM cache_pins ORDER BY content_key")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
     /// 显式事务入口（§64：entry 创建 + chunk 记录组合场景）。
     pub fn transaction(&mut self) -> Result<rusqlite::Transaction<'_>> {
         Ok(self.conn.transaction()?)
@@ -355,8 +395,7 @@ impl CacheDb {
 
     /// DB 完整性快照（诊断）。
     pub fn quick_check(&self) -> Result<String> {
-        self
-            .conn
+        self.conn
             .query_row("PRAGMA quick_check", [], |r| r.get(0))
             .map_err(CacheError::from)
     }
