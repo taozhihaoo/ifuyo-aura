@@ -86,8 +86,10 @@ export default function App() {
         }, 50);
       }
       if (e.key === 'Escape') {
+        // §183：Esc 必须能退出任何浮层（palette 关闭另有 input 级处理）。
         useUiStore.getState().setQueueOpen(false);
         useUiStore.getState().setSettingsOpen(false);
+        useUiStore.getState().setPaletteOpen(false);
       }
     };
     window.addEventListener('keydown', onKey);
