@@ -23,6 +23,28 @@ fn client(cfg: HttpConfig) -> HttpClient {
     HttpClient::new(cfg, Arc::new(PlatformBlocklist::embedded().unwrap())).unwrap()
 }
 
+/// 并行测试下的传输级抖动（首连被重置等）只影响 NetworkError；
+/// 策略类结果（InvalidUrl/UnsupportedPlatform/PrivateNetwork/RedirectLimit/
+/// Timeout/BodyTooLarge/ParseError）是确定性的，重试仅针对 NetworkError，
+/// 断言本身不放松。
+fn get_text_steady(
+    c: &HttpClient,
+    url: &url::Url,
+    limit: u64,
+) -> std::result::Result<String, SourceError> {
+    let mut last = SourceError::NetworkError {
+        reason: "not attempted".into(),
+    };
+    for _ in 0..3 {
+        match c.get_text(url, limit) {
+            Ok(v) => return Ok(v),
+            Err(e @ SourceError::NetworkError { .. }) => last = e,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last)
+}
+
 /// 200 + 有限文本。
 #[test]
 fn status_200_text_with_limit() {
@@ -66,7 +88,7 @@ fn redirect_chain_follows() {
     ]);
     let c = client(allow_private(HttpConfig::default()));
     let url = c.validate(&srv.url("/r1")).unwrap();
-    assert_eq!(c.get_text(&url, 1000).unwrap(), "final");
+    assert_eq!(get_text_steady(&c, &url, 1000).unwrap(), "final");
     assert_eq!(srv.request_count(), 3, "两次重定向 + 一次终态");
 }
 
@@ -84,7 +106,7 @@ fn redirect_limit_enforced() {
     let srv = FakeHttp::start(routes);
     let c = client(allow_private(HttpConfig::default()));
     let url = c.validate(&srv.url("/hop0")).unwrap();
-    let e = c.get_text(&url, 1000).unwrap_err();
+    let e = get_text_steady(&c, &url, 1000).unwrap_err();
     assert!(matches!(e, SourceError::RedirectLimit), "{e:?}");
 }
 
@@ -97,7 +119,7 @@ fn redirect_to_blocked_platform_denied() {
     )]);
     let c = client(allow_private(HttpConfig::default()));
     let url = c.validate(&srv.url("/start")).unwrap();
-    let e = c.get_text(&url, 1000).unwrap_err();
+    let e = get_text_steady(&c, &url, 1000).unwrap_err();
     assert!(
         matches!(e, SourceError::UnsupportedPlatform { .. }),
         "重定向进封锁平台必须拒绝: {e:?}"
@@ -109,10 +131,12 @@ fn redirect_to_blocked_platform_denied() {
 fn redirect_to_private_ip_under_allow_policy() {
     let srv = FakeHttp::start(vec![Route::redirect("/start", "http://10.9.8.7/x")]);
     let allow = client(allow_private(HttpConfig::default()));
-    let e = allow
-        .get_text(&allow.validate(&srv.url("/start")).unwrap(), 100)
-        .unwrap_err();
-    // 10.9.8.7 不可达（测试机没有该地址）→ NetworkError，但不是策略拒绝。
+    let url = allow.validate(&srv.url("/start")).unwrap();
+    // 10.9.8.7 不可达（测试机没有该地址）→ NetworkError/Timeout，但不是策略拒绝。
+    let e = match get_text_steady(&allow, &url, 100) {
+        Err(e) => e,
+        Ok(_) => panic!("unreachable address must not return body"),
+    };
     assert!(
         matches!(e, SourceError::NetworkError { .. } | SourceError::Timeout),
         "{e:?}"
@@ -151,7 +175,7 @@ fn redirect_to_credential_url_denied() {
     )]);
     let c = client(allow_private(HttpConfig::default()));
     let url = c.validate(&srv.url("/start")).unwrap();
-    let e = c.get_text(&url, 100).unwrap_err();
+    let e = get_text_steady(&c, &url, 100).unwrap_err();
     assert!(matches!(e, SourceError::InvalidUrl { .. }), "{e:?}");
 }
 
@@ -172,7 +196,7 @@ fn metadata_timeout() {
     });
     let c = client(cfg);
     let url = c.validate(&srv.url("/slow")).unwrap();
-    let e = c.get_text(&url, 100).unwrap_err();
+    let e = get_text_steady(&c, &url, 100).unwrap_err();
     assert!(
         matches!(e, SourceError::Timeout),
         "延迟 3s > 总超时 0.3s 应 Timeout: {e:?}"
