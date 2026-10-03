@@ -75,6 +75,10 @@ pub struct Engine {
     pending_block: Vec<f32>,
     /// pending_block 中已推送的采样数。
     pending_pos: usize,
+    /// 重采样输入块工作区（预分配复用，D-035）。
+    resample_chunk: Vec<f32>,
+    /// 重采样输出工作区（预分配复用，D-035）。
+    resample_out: Vec<f32>,
     eof: bool,
     /// 当前曲目已解码帧数（记账用）。
     current_track_decoded: u64,
@@ -149,6 +153,8 @@ impl Engine {
             decode_scratch_b: crate::decoder::pcm::PcmBuffer::new(),
             mapped_scratch: Vec::new(),
             resample_in: Vec::new(),
+            resample_chunk: Vec::new(),
+            resample_out: Vec::new(),
             pending_block: Vec::new(),
             pending_pos: 0,
             eof: false,
@@ -651,11 +657,10 @@ impl Engine {
                 // flush resampler 残留输入（EOF 尾块）到 pending，由下次推送
                 if let Some(mut r) = self.resampler.take() {
                     if !self.resample_in.is_empty() {
-                        let out = r
-                            .process_chunk_partial(&self.resample_in)
+                        r.process_chunk_partial_into(&self.resample_in, &mut self.resample_out)
                             .unwrap_or_default();
                         self.resample_in.clear();
-                        self.pending_block.extend_from_slice(&out);
+                        self.pending_block.extend_from_slice(&self.resample_out);
                     }
                     self.resampler = Some(r);
                 }
@@ -686,10 +691,14 @@ impl Engine {
                     >= r.input_frames_next()
                 {
                     let need = r.input_frames_next() * usize::from(self.channels.get());
-                    let chunk: Vec<f32> = self.resample_in[..need].to_vec();
+                    // 复用预分配 resample_chunk（避免每块 to_vec 分配，D-035）
+                    self.resample_chunk.clear();
+                    self.resample_chunk
+                        .extend_from_slice(&self.resample_in[..need]);
                     self.resample_in.drain(..need);
-                    let out = r.process_chunk(&chunk).unwrap_or_default();
-                    self.pending_block.extend_from_slice(&out);
+                    r.process_chunk_into(&self.resample_chunk, &mut self.resample_out)
+                        .unwrap_or_default();
+                    self.pending_block.extend_from_slice(&self.resample_out);
                 }
                 self.resampler = Some(r);
             } else if mapped_ok {
@@ -715,6 +724,9 @@ impl Engine {
         let ch = usize::from(self.channels.get());
         let chunk_frames = self.output.chunk_frames();
         let shared = self.shared.clone();
+        // 捕获容量仅在实际不足时追加预留（reserve 本身也是分配；
+        // 诊断捕获属捕获面而非回调路径，见 D-035）
+        self.output.ensure_capture_capacity(n as usize);
         let mut rendered: u64 = 0;
         while rendered < n {
             self.process_commands();
@@ -745,6 +757,25 @@ impl Engine {
 
     /// 捕获访问。
     #[must_use]
+    /// 渲染单块（不带 fill/命令处理）——零分配测试直接度量回调路径。
+    /// 返回渲染帧数。仅测试/诊断用途。
+    pub fn render_block_only(&mut self, out: &mut [f32]) -> u64 {
+        let shared = self.shared.clone();
+        let stage = self.output.stage_mut();
+        stage.render(
+            out,
+            &mut self.consumer,
+            &shared,
+            self.state,
+            Some(&self.eq_bus),
+        )
+    }
+
+    /// 灌满解码缓冲（解码面操作，允许分配；零分配度量前调用）。
+    pub fn fill_buffer_only(&mut self) -> u64 {
+        self.fill()
+    }
+
     pub fn capture(&self) -> &[f32] {
         self.output.capture()
     }

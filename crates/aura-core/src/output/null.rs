@@ -63,13 +63,21 @@ impl NullOutput {
     }
 
     pub fn clear_capture(&mut self) {
-        self.capture.clear();
+        self.capture.clear(); // 保留容量：reserve 后 extend 不再分配
     }
 
     /// 预分配捕获容量（帧）。
     pub fn reserve_capture(&mut self, frames: usize) {
         self.capture
             .reserve(frames * usize::from(self.format.channels.get()));
+    }
+
+    /// 仅在容量不足时追加预留（避免每次调用都触发 realloc）。
+    pub fn ensure_capture_capacity(&mut self, frames: usize) {
+        let needed = frames * usize::from(self.format.channels.get());
+        if self.capture.len() + needed > self.capture.capacity() {
+            self.capture.reserve(needed);
+        }
     }
 }
 

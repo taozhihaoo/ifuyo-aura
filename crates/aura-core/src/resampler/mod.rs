@@ -79,21 +79,30 @@ impl Resampler {
     }
 
     /// 处理一整块交错输入（长度须为 `input_frames_next()` 帧，EOF 尾块用
-    /// [`Self::process_chunk_partial`]）。返回交错输出。
-    pub fn process_chunk(&mut self, interleaved: &[f32]) -> Result<Vec<f32>, AudioError> {
-        self.process_inner(interleaved, None)
+    /// [`Self::process_chunk_partial_into`]）。输出写入调用方复用的缓冲。
+    pub fn process_chunk_into(
+        &mut self,
+        interleaved: &[f32],
+        out_buf: &mut Vec<f32>,
+    ) -> Result<(), AudioError> {
+        self.process_inner(interleaved, None, out_buf)
     }
 
     /// EOF 尾块：输入不足一个完整分块时使用（补静音语义，见 D-024）。
-    pub fn process_chunk_partial(&mut self, interleaved: &[f32]) -> Result<Vec<f32>, AudioError> {
-        self.process_inner(interleaved, Some(interleaved.len()))
+    pub fn process_chunk_partial_into(
+        &mut self,
+        interleaved: &[f32],
+        out_buf: &mut Vec<f32>,
+    ) -> Result<(), AudioError> {
+        self.process_inner(interleaved, Some(interleaved.len()), out_buf)
     }
 
     fn process_inner(
         &mut self,
         interleaved: &[f32],
         partial_samples: Option<usize>,
-    ) -> Result<Vec<f32>, AudioError> {
+        out_buf: &mut Vec<f32>,
+    ) -> Result<(), AudioError> {
         let ch = usize::from(self.channels.get());
         if !interleaved.len().is_multiple_of(ch) {
             return Err(AudioError::InvalidParameter(
@@ -113,11 +122,24 @@ impl Resampler {
             partial_len: Some(samples / ch),
             active_channels_mask: None,
         });
-        let out = self
+        // 输出写入调用方复用缓冲（process_into_buffer 消除每块分配，D-035）。
+        // out_buf 同时充当 InterleavedOwned 底层存储（new_from 零复制包装）。
+        let out_frames = self.inner.output_frames_next();
+        out_buf.clear();
+        out_buf.resize(out_frames * ch, 0.0);
+        let mut output = rubato::audioadapter_buffers::owned::InterleavedOwned::new_from(
+            std::mem::take(out_buf),
+            ch,
+            out_frames,
+        )
+        .map_err(|_| AudioError::InvalidParameter("resampler output shape invalid"))?;
+        let (_in_used, out_len) = self
             .inner
-            .process(&input, indexing.as_ref())
+            .process_into_buffer(&input, &mut output, indexing.as_ref())
             .map_err(|_| AudioError::ResampleError("resample failed"))?;
-        Ok(out.take_data())
+        *out_buf = output.take_data();
+        out_buf.truncate(out_len * ch);
+        Ok(())
     }
 
     /// 重置内部状态（seek 场景由新 generation 重建管线，一般无需调用）。
