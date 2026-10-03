@@ -136,7 +136,7 @@ fn concurrent_readers_during_wal_write() {
     let path = dir.join("wal.db");
     {
         let mut db = Database::open(&path).unwrap();
-        let mut tx = db.transaction().unwrap();
+        let tx = db.transaction().unwrap();
         tx.execute(
             "INSERT INTO library_roots(path, date_added_ms) VALUES (?1, ?2)",
             rusqlite::params!["C:\\music", 1000],
