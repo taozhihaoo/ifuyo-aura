@@ -83,7 +83,7 @@ fn scan_1000_files() {
 #[test]
 #[ignore = "perf baseline；显式运行"]
 fn search_10k_records() {
-    let mut svc = LibraryService::open_in_memory().unwrap();
+    let svc = LibraryService::open_in_memory().unwrap();
     let t0 = Instant::now();
     {
         let tx = svc.database().connection().unchecked_transaction().unwrap();
