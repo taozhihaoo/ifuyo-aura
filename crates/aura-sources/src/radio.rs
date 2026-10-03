@@ -108,6 +108,19 @@ impl RadioStream {
     pub fn is_cancelled(&self) -> bool {
         self.stream.is_cancelled()
     }
+
+    /// 拆出音频字节流与元数据事件接收端（M6 shell 装载用：NetworkAudioStream
+    /// 自身即 [`aura_core::decoder::AudioByteStream`]；事件端当前由调用方
+    /// 决定消费策略，drop 即放弃 ICY StreamTitle → UI 接线，属已知限制）。
+    #[must_use]
+    pub fn into_parts(
+        self,
+    ) -> (
+        NetworkAudioStream,
+        std::sync::mpsc::Receiver<StreamMetadataEvent>,
+    ) {
+        (self.stream, self.events)
+    }
 }
 
 impl Read for RadioStream {

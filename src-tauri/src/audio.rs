@@ -2,7 +2,7 @@
 //! 快照 ~10Hz（§14 低频）；实时位置走共享原子（UI 本地插值）。
 
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -64,9 +64,13 @@ pub struct PlayerSnapshot {
 
 /// 驱动线程控制消息。
 pub enum Control {
-    Load {
-        path: PathBuf,
+    /// decoder 已在命令线程打开（错误可回传 UI，§184）；驱动线程只装载。
+    LoadDecoder {
+        decoder: Box<dyn aura_core::decoder::Decoder>,
+        duration_frames: Option<u64>,
         title: Option<String>,
+        /// 快照展示标识（本地路径或流 URL）。
+        display: String,
     },
     SetCrossfade(f64),
     SetLoudness(bool),
@@ -137,20 +141,17 @@ impl AudioHandle {
                 loop {
                     while let Ok(msg) = rx.try_recv() {
                         match msg {
-                            Control::Load { path, title } => {
-                                let (decoder, duration_frames) = match open_decoder(&path) {
-                                    Ok((d, df)) => (d, df),
-                                    Err(_) => continue,
-                                };
+                            Control::LoadDecoder {
+                                decoder,
+                                duration_frames,
+                                title,
+                                display,
+                            } => {
                                 st.duration_frames = duration_frames;
-                                if let Some(df) = duration_frames {
-                                    st.sample_rate = 48_000; // 引擎输出侧恒 48k
-                                    let _ = df;
-                                }
                                 let _ = engine.load_track(decoder);
                                 let _ = poster.post(AudioCommand::Stop);
                                 let mut snap = snap2.lock().expect("snap");
-                                snap.track_path = Some(path.to_string_lossy().into_owned());
+                                snap.track_path = Some(display);
                                 snap.title = title;
                                 snap.state = "stopped".into();
                                 snap.position_seconds = 0.0;
@@ -246,7 +247,11 @@ impl AudioHandle {
     }
 }
 
-fn open_decoder(
+/// 本地文件 → StreamingDecoder（命令线程调用，错误可回传 UI）。
+///
+/// # Errors
+/// 文件不存在/不可读/codec 不支持（decoder probing 失败）。
+pub fn open_decoder(
     path: &Path,
 ) -> Result<(Box<dyn aura_core::decoder::Decoder>, Option<u64>), String> {
     let ext = path

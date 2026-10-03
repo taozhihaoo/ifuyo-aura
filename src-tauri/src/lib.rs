@@ -25,10 +25,26 @@ pub fn run() {
             let _ = audio.send(audio::Control::SetCrossfade(settings.crossfade_seconds));
             let _ = audio.send(audio::Control::SetLoudness(settings.loudness_enabled));
             let _ = audio.send(audio::Control::SetEqPreset(settings.eq_preset));
+            // M4 HTTP 客户端（D-070：用户显式输入 = 私网确认；scheme/凭据/
+            // 封锁表校验始终生效，§278 不因 UI 入口降低 M4 保护）。
+            let blocklist = std::sync::Arc::new(
+                aura_sources::platform_block::PlatformBlocklist::embedded()
+                    .map_err(|e| format!("blocklist init failed: {e}"))?,
+            );
+            let http_cfg = aura_sources::http::HttpConfig {
+                policy: aura_sources::url_policy::NetworkPolicy::allow_private(),
+                ..aura_sources::http::HttpConfig::default()
+            };
+            let http = std::sync::Arc::new(
+                aura_sources::http::HttpClient::new(http_cfg, std::sync::Arc::clone(&blocklist))
+                    .map_err(|e| format!("http client init failed: {e}"))?,
+            );
             app.manage(ipc::AppState {
                 audio: std::sync::Arc::new(audio),
                 library: std::sync::Arc::new(library),
                 app: handle,
+                http,
+                blocklist,
             });
             // §19：Win11 Mica（设置开关，失败自动保持 solid fallback §20）。
             #[cfg(target_os = "windows")]
@@ -72,6 +88,8 @@ pub fn run() {
             ipc::track_artwork,
             ipc::set_mica,
             ipc::track_id_by_path,
+            ipc::play_input,
+            ipc::library_stats,
         ]) // probe-isolated
         .run(tauri::generate_context!())
         .expect("error while running ifuyo Aura");

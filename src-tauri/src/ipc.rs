@@ -6,7 +6,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, Wry};
 
-use crate::audio::{AudioHandle, Control, PlayerSnapshot};
+use crate::audio::{self, AudioHandle, Control, PlayerSnapshot};
 use crate::library::{AppSettings, LibraryState, ScanProgressDto, TrackSummary};
 
 /// 结构化应用错误（§15）。
@@ -39,6 +39,10 @@ pub struct AppState {
     pub audio: Arc<AudioHandle>,
     pub library: Arc<LibraryState>,
     pub app: AppHandle<Wry>,
+    /// M4 HTTP 客户端（Open URL 用；allow_private = 用户显式输入即确认，
+    /// D-070；scheme 白名单/凭据拒绝/封锁表始终生效）。
+    pub http: Arc<aura_sources::http::HttpClient>,
+    pub blocklist: Arc<aura_sources::platform_block::PlatformBlocklist>,
 }
 
 /// 应用基础信息（M0 契约保留）。
@@ -112,6 +116,23 @@ pub fn set_volume(state: State<'_, AppState>, volume: f32) -> CmdResult<()> {
         .map_err(|e| from_err("AUDIO_UNAVAILABLE", e, true))
 }
 
+/// M4 SourceError → 结构化 AppError（§189 错误映射链的 Rust 侧起点）。
+fn from_source_err(e: aura_sources::error::SourceError) -> AppError {
+    use aura_sources::error::SourceError as E;
+    let (code, recoverable) = match &e {
+        E::UnsupportedInput { .. } | E::UnsupportedCodec { .. } | E::UnsupportedPlatform { .. } => {
+            ("UNSUPPORTED_SOURCE", false)
+        }
+        E::InvalidUrl { .. } | E::PrivateNetworkBlocked { .. } => ("SOURCE_BLOCKED", false),
+        E::Timeout => ("SOURCE_TIMEOUT", true),
+        E::Cancelled => ("CANCELLED", true),
+        E::ProtectedStream => ("UNSUPPORTED_SOURCE", false),
+        E::Io { .. } => ("SOURCE_UNAVAILABLE", true),
+        _ => ("SOURCE_UNAVAILABLE", true),
+    };
+    AppError::new(code, e.to_string(), recoverable)
+}
+
 /// §93：双击曲目 → application layer 解析 Track → Source → Audio Core。
 #[tauri::command]
 pub fn play_track(state: State<'_, AppState>, track_id: i64) -> CmdResult<()> {
@@ -119,17 +140,124 @@ pub fn play_track(state: State<'_, AppState>, track_id: i64) -> CmdResult<()> {
         .library
         .track_path(track_id)
         .map_err(|e| from_err("TRACK_UNAVAILABLE", e, true))?;
-    state
-        .audio
-        .send(Control::Load {
-            path: path.clone().into(),
-            title: None,
-        })
-        .map_err(|e| from_err("AUDIO_UNAVAILABLE", e, true))?;
+    play_input(state, path).map(|_| ())
+}
+
+/// §275/§276/§194：Open File / Open URL 统一入口。
+/// 全部经过 M4 Source Resolver（scheme 白名单 → 凭据拒绝 → 封锁表 →
+/// 私网策略 → 探测），frontend 不自行 fetch。本地路径由 resolver 的
+/// Local Source 分支处理（存在性/扩展名校验在 Rust 侧，§192）。
+#[tauri::command]
+pub fn play_input(state: State<'_, AppState>, input: String) -> CmdResult<String> {
+    let resolved = aura_sources::resolver::resolve_input(&input, &state.http, &state.blocklist)
+        .map_err(from_source_err)?;
+    use aura_sources::model::SourceKind;
+    let title = resolved
+        .meta
+        .track
+        .title
+        .clone()
+        .or(resolved.meta.stream.icy_name.clone());
+    let display: String = match resolved.kind {
+        SourceKind::Local => {
+            let path = resolved
+                .streams
+                .first()
+                .map(|s| s.url.clone())
+                .unwrap_or_else(|| input.clone());
+            let (decoder, duration_frames) = audio::open_decoder(std::path::Path::new(&path))
+                .map_err(|e| AppError::new("UNSUPPORTED_SOURCE", e.to_string(), true))?;
+            state
+                .audio
+                .send(Control::LoadDecoder {
+                    decoder,
+                    duration_frames,
+                    title,
+                    display: path.clone(),
+                })
+                .map_err(|e| from_err("AUDIO_UNAVAILABLE", e, true))?;
+            path
+        }
+        SourceKind::InternetRadio => {
+            let (net_stream, _icy_events) =
+                aura_sources::radio::open_resolved(&state.http, &resolved)
+                    .map_err(from_source_err)?
+                    .into_parts();
+            let url = resolved
+                .streams
+                .first()
+                .map(|s| s.url.clone())
+                .unwrap_or_else(|| input.clone());
+            let decoder =
+                aura_core::decoder::streaming::StreamingDecoder::open(Box::new(net_stream), None)
+                    .map_err(|e| AppError::new("UNSUPPORTED_SOURCE", e.to_string(), true))?;
+            state
+                .audio
+                .send(Control::LoadDecoder {
+                    decoder: Box::new(decoder),
+                    duration_frames: None, // Live：无确定时长（§57）
+                    title,
+                    display: url.clone(),
+                })
+                .map_err(|e| from_err("AUDIO_UNAVAILABLE", e, true))?;
+            url
+        }
+        _ => {
+            // DirectHttp（Finite/UnknownDuration）：NetworkAudioStream → decoder。
+            let stream = resolved
+                .streams
+                .first()
+                .cloned()
+                .ok_or_else(|| AppError::new("SOURCE_UNAVAILABLE", "no stream", true))?;
+            let url: url::Url =
+                url::Url::parse(&stream.url).map_err(|e| from_err("SOURCE_BLOCKED", e, false))?;
+            let resp = state.http.get_stream(&url).map_err(from_source_err)?;
+            let seekable = stream.seekable == aura_sources::model::SeekCapability::Seekable;
+            let capacity = aura_sources::network_stream::buffer_capacity(
+                stream.stream_type,
+                stream.bitrate_bps,
+            );
+            let nas = aura_sources::network_stream::NetworkAudioStream::start(
+                &state.http,
+                url,
+                resp,
+                capacity,
+                seekable,
+                stream.byte_size,
+                state.http.config().stream_idle_timeout,
+            );
+            // codec hint：URL 扩展名（最终以 decoder probing 为准，§77）。
+            let hint = stream
+                .url
+                .split(['?', '#'])
+                .next()
+                .and_then(|p| p.rsplit('.').next())
+                .map(str::to_ascii_lowercase)
+                .filter(|ext| aura_library::scanner::SUPPORTED_EXTENSIONS.contains(&ext.as_str()));
+            let decoder = aura_core::decoder::streaming::StreamingDecoder::open(
+                Box::new(nas),
+                hint.as_deref(),
+            )
+            .map_err(|e| AppError::new("UNSUPPORTED_SOURCE", e.to_string(), true))?;
+            let duration_frames = aura_core::decoder::Decoder::duration_frames(&decoder);
+            state
+                .audio
+                .send(Control::LoadDecoder {
+                    decoder: Box::new(decoder),
+                    duration_frames,
+                    title,
+                    display: stream.url.clone(),
+                })
+                .map_err(|e| from_err("AUDIO_UNAVAILABLE", e, true))?;
+            stream.url
+        }
+    };
+    // 装载成功即播放（与此前 play_track 行为一致）。
     state
         .audio
         .post(aura_core::AudioCommand::Play)
-        .map_err(|e| from_err("AUDIO_UNAVAILABLE", e, true))
+        .map_err(|e| from_err("AUDIO_UNAVAILABLE", e, true))?;
+    Ok(display)
 }
 
 /// §45：crossfade 0–12s。
@@ -297,6 +425,31 @@ pub fn track_artwork(state: State<'_, AppState>, track_id: i64) -> CmdResult<Opt
         "data:{mime};base64,{}",
         base64::engine::general_purpose::STANDARD.encode(bytes)
     )))
+}
+
+/// §284/§285：库统计（M3 真实计数；Map 展示用，不伪造数字）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryStats {
+    pub tracks: i64,
+    pub artists: i64,
+    pub albums: i64,
+}
+
+#[tauri::command]
+pub fn library_stats(state: State<'_, AppState>) -> CmdResult<LibraryStats> {
+    let service = state
+        .library
+        .service
+        .lock()
+        .map_err(|_| from_err("LIBRARY_DB_UNAVAILABLE", "lock", true))?;
+    let conn = service.database().connection();
+    let one = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap_or(0) };
+    Ok(LibraryStats {
+        tracks: one("SELECT COUNT(*) FROM tracks"),
+        artists: one("SELECT COUNT(DISTINCT artist) FROM tracks"),
+        albums: one("SELECT COUNT(DISTINCT album) FROM tracks"),
+    })
 }
 
 /// path → TrackId（Now Playing artwork 绑定用）。

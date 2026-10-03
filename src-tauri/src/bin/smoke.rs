@@ -41,10 +41,24 @@ fn main() {
                 .map_err(|e| format!("library open failed: {e}"))?;
             let settings = library.settings.lock().expect("settings").clone();
             let _ = audio.send(audio::Control::SetCrossfade(settings.crossfade_seconds));
+            let blocklist = Arc::new(
+                aura_sources::platform_block::PlatformBlocklist::embedded()
+                    .map_err(|e| format!("blocklist init failed: {e}"))?,
+            );
+            let http_cfg = aura_sources::http::HttpConfig {
+                policy: aura_sources::url_policy::NetworkPolicy::allow_private(),
+                ..aura_sources::http::HttpConfig::default()
+            };
+            let http = Arc::new(
+                aura_sources::http::HttpClient::new(http_cfg, Arc::clone(&blocklist))
+                    .map_err(|e| format!("http client init failed: {e}"))?,
+            );
             app.manage(AppState {
                 audio: Arc::new(audio),
                 library: Arc::new(library),
                 app: handle,
+                http,
+                blocklist,
             });
             Ok(())
         })
