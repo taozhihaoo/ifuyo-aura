@@ -31,6 +31,16 @@ function targetFps(playing: boolean, reducedMotion: boolean): number {
   return playing ? 30 : 8;
 }
 
+/** §179/§180：VISUAL_TEST_MODE —— URL 带 ?visualTest 时启用。固定
+ * seed/time/telemetry，只渲染一帧即停（截图可重复，无 rAF 抖动）。 */
+export const VISUAL_TEST_TIME_SECONDS = 42;
+function visualTestMode(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('visualTest')
+  );
+}
+
 export function AuroraCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [webglFailed, setWebglFailed] = useState(false);
@@ -168,6 +178,11 @@ export function AuroraCanvas() {
     const uReduced = gl.getUniformLocation(program, 'u_reduced');
     const uSeed = gl.getUniformLocation(program, 'u_seed');
 
+    const testMode = visualTestMode();
+    if (testMode) {
+      seedRef.current = visualSeed('visual-test');
+    }
+
     // §134/§135：内部分辨率 cap（避免 4K DPI GPU 失控）。
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     const resize = () => {
@@ -196,6 +211,37 @@ export function AuroraCanvas() {
     };
     canvas.addEventListener('webglcontextlost', onLost);
 
+    const drawFrame = (elapsedSeconds: number, tel: VisualTelemetry, reduced: boolean) => {
+      resize();
+      gl!.uniform2f(uRes, canvas!.width, canvas!.height);
+      gl!.uniform1f(uTime, elapsedSeconds);
+      gl!.uniform1f(uPlay, tel.isPlaying ? 1 : 0);
+      gl!.uniform1f(uProgress, tel.progress);
+      gl!.uniform1f(uReduced, reduced ? 1 : 0);
+      const s = seedRef.current;
+      gl!.uniform3f(
+        uSeed,
+        ((s & 0xff) / 255) * 2,
+        (((s >> 8) & 0xff) / 255) * 2,
+        (((s >> 16) & 0xff) / 255) * 2,
+      );
+      gl!.drawArrays(gl!.TRIANGLES, 0, 3);
+    };
+
+    if (testMode) {
+      // §180：确定帧 —— 固定 seed+time+telemetry，渲染一帧后停。
+      drawFrame(
+        VISUAL_TEST_TIME_SECONDS,
+        { isPlaying: true, progress: 0.5, volume: 1, sourceLive: false },
+        false,
+      );
+      return () => {
+        disposed = true;
+        if (program) gl!.deleteProgram(program);
+        if (buf) gl!.deleteBuffer(buf);
+      };
+    }
+
     const loop = (now: number) => {
       if (disposed) return;
       const tel = telemetryRef.current;
@@ -203,20 +249,7 @@ export function AuroraCanvas() {
       const interval = 1000 / fps;
       if (now - lastFrame >= interval) {
         lastFrame = now;
-        resize();
-        gl!.uniform2f(uRes, canvas!.width, canvas!.height);
-        gl!.uniform1f(uTime, (now - startTime) / 1000);
-        gl!.uniform1f(uPlay, tel.isPlaying ? 1 : 0);
-        gl!.uniform1f(uProgress, tel.progress);
-        gl!.uniform1f(uReduced, reducedMotion ? 1 : 0);
-        const s = seedRef.current;
-        gl!.uniform3f(
-          uSeed,
-          ((s & 0xff) / 255) * 2,
-          (((s >> 8) & 0xff) / 255) * 2,
-          (((s >> 16) & 0xff) / 255) * 2,
-        );
-        gl!.drawArrays(gl!.TRIANGLES, 0, 3);
+        drawFrame((now - startTime) / 1000, tel, reducedMotion);
       }
       raf = window.requestAnimationFrame(loop);
     };
