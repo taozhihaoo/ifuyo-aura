@@ -170,6 +170,8 @@ pub struct SpectralFeatures {
     pub rolloff_hz: f32,
     /// 亮度 = 质心 / (采样率/2)，[0,1]。
     pub brightness: f32,
+    /// §76/§77（D-102）：RMS dBFS → [0,1]（[-60,0] 线性映射）。
+    pub energy: f32,
     pub algorithm_version: u16,
 }
 

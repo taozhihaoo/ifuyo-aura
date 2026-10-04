@@ -154,13 +154,13 @@ impl AnalysisStore {
                 bpm, bpm_confidence, first_beat_offset_s, tempo_algo_version, tempo_availability,
                 musical_key, key_mode, key_confidence, camelot_key, key_algo_version, key_availability,
                 lufs, lra, true_peak_dbtp, loudness_algo_version, loudness_availability,
-                rms, peak, centroid_hz, rolloff_hz, brightness, spectral_algo_version, spectral_availability,
+                rms, peak, centroid_hz, rolloff_hz, brightness, energy, spectral_algo_version, spectral_availability,
                 mfcc_blob, mfcc_algo_version, mfcc_availability,
                 embedding_blob, embedding_dim, embedding_model_id, embedding_model_version, embedding_availability,
                 analyzed_at_ms
             ) VALUES (?1,?2,?3,?4,?5, ?6,?7,?8,?9,?10, ?11,?12,?13,?14,?15,?16,
-                ?17,?18,?19,?20,?21, ?22,?23,?24,?25,?26,?27,?28,
-                ?29,?30,?31, ?32,?33,?34,?35,?36, ?37)",
+                ?17,?18,?19,?20,?21, ?22,?23,?24,?25,?26,?27,?28,?29,
+                ?30,?31,?32, ?33,?34,?35,?36,?37, ?38)",
             params![
                 a.track_id,
                 a.content_identity,
@@ -188,6 +188,7 @@ impl AnalysisStore {
                 a.spectral.as_ref().map(|s| f64::from(s.centroid_hz)),
                 a.spectral.as_ref().map(|s| f64::from(s.rolloff_hz)),
                 a.spectral.as_ref().map(|s| f64::from(s.brightness)),
+                a.spectral.as_ref().map(|s| f64::from(s.energy)),
                 a.spectral.as_ref().map(|s| i64::from(s.algorithm_version)),
                 avail_str(a.spectral_availability),
                 mfcc_blob,
@@ -457,6 +458,7 @@ impl AnalysisStore {
                 centroid_hz: r.get::<_, Option<f64>>("centroid_hz")?.unwrap_or(0.0) as f32,
                 rolloff_hz: r.get::<_, Option<f64>>("rolloff_hz")?.unwrap_or(0.0) as f32,
                 brightness: r.get::<_, Option<f64>>("brightness")?.unwrap_or(0.0) as f32,
+                energy: r.get::<_, Option<f64>>("energy")?.unwrap_or(0.0) as f32,
                 algorithm_version: u16::try_from(
                     r.get::<_, Option<i64>>("spectral_algo_version")?
                         .unwrap_or(0),
@@ -588,6 +590,7 @@ mod tests {
             centroid_hz: 2400.0,
             rolloff_hz: 12000.0,
             brightness: 0.55,
+            energy: 0.5,
             algorithm_version: 1,
         });
         a.spectral_availability = FA::Available;

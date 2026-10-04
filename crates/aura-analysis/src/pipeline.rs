@@ -20,9 +20,7 @@ use crate::embedding::{EmbeddingInput, EmbeddingProvider};
 use crate::key_detect;
 use crate::loudness;
 use crate::mfcc;
-use crate::params::{
-    resample_linear, ANALYSIS_SAMPLE_RATE, CHUNK_SAMPLES, MAX_FEATURE_SAMPLES,
-};
+use crate::params::{resample_linear, ANALYSIS_SAMPLE_RATE, CHUNK_SAMPLES, MAX_FEATURE_SAMPLES};
 use crate::spectral::SpectralAccumulator;
 use crate::tempo;
 
@@ -204,6 +202,7 @@ pub fn analyze_stream(
             centroid_hz: sp.centroid_hz,
             rolloff_hz: sp.rolloff_hz,
             brightness: sp.brightness,
+            energy: sp.energy,
             algorithm_version: crate::spectral::SPECTRAL_ALGO_VERSION,
         });
         out.spectral_availability = FeatureAvailability::Available;
