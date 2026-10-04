@@ -16,6 +16,7 @@ pub mod loudness;
 pub mod mfcc;
 pub mod params;
 pub mod pipeline;
+pub mod query;
 pub mod scheduler;
 pub mod similarity;
 pub mod spectral;
@@ -43,6 +44,9 @@ pub use params::{
     HOP_LEN, MAX_ANALYSIS_SECONDS, MAX_BEATS, MAX_FEATURE_SAMPLES,
 };
 pub use pipeline::{analyze_stream, AnalysisProgress, CancelToken, Stage};
+pub use query::{
+    canonical_key_name, query_track_ids, recover_running_to_pending, AnalysisFilter, RangeFilter,
+};
 pub use scheduler::{
     AnalysisRepository, AnalysisScheduler, InMemoryRepository, Job, Priority, MAX_RETRIES,
 };
