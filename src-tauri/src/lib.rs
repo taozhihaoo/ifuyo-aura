@@ -3,6 +3,7 @@
 
 use tauri::Manager;
 
+pub mod analysis_ipc;
 pub mod audio;
 pub mod dreamscape;
 pub mod ipc;
@@ -107,6 +108,9 @@ pub fn run() {
             dreamscape::dreamscape_close,
             dreamscape::dreamscape_set_quality,
             dreamscape::dreamscape_set_environment,
+            analysis_ipc::track_analysis_summary,
+            analysis_ipc::analysis_visual_summary,
+            analysis_ipc::track_analysis_state,
         ]) // probe-isolated
         .run(tauri::generate_context!())
         .expect("error while running ifuyo Aura");
