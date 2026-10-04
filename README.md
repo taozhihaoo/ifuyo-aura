@@ -29,7 +29,7 @@
 | Win11 Mica（Win10 solid fallback） | ✅ |
 | Music Map（图引擎/空间布局） | M9 |
 | Dreamscape（程序化世界：seed/演化/稀有事件/快照 + Three.js 渲染） | ✅ |
-| Analysis（BPM/Key/LUFS） | M8 |
+| Analysis（基建已建；特征引擎） | 🚧 M8 中篇 |
 | SMTC / 托盘 / 媒体键 | M10 |
 
 ## 截图（来自当前真实构建）

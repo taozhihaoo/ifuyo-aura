@@ -218,6 +218,25 @@ ui/src/features/dreamscape/DreamscapeView.tsx  # React 集成壳
 - **确定性**（§171/§172）：逻辑 manifest/scene_hash 为准；GPU 视觉允许像素级差异（地形由 terrain patch 参数在渲染端确定性重建）。
 - **键盘**（§198/§285）：Esc 分层退出（palette→dreamscape→抽层）；palette 四命令（open/regenerate/copy seed/save snapshot §197）。
 
+### 分析基建（M8 上篇）
+
+`crates/aura-analysis`（§11 职责边界）：domain / key / embedding / decode / store。
+
+```text
+src/
+  domain.rs      # AnalysisStatus/FeatureAvailability/TrackAnalysis 聚合/各特征结构/AnalysisError（§13–§33）
+  key.rs         # analysis_key = hash(content_identity+versions)（§23，D-097）
+  embedding.rs   # EmbeddingProvider 合同 + SpectralStatsProvider（D-095，§41–§49）
+  decode.rs      # M1 StreamingDecoder 适配 → 单声道 f32（§12/§34）
+  local_stream.rs# 本地文件 analysis-side adapter（§12）
+  store.rs       # AnalysisStore：M3 库单事务持久化/替换检测/版本 Stale（D-096）
+```
+
+- **身份**（§15）：TrackId + content_identity（M3 identity_key，D-038 改名/移动/标签改写不变）+ analysis_version；§20 替换检测 → Stale；§21 metadata-only 不重算；§22 移动保持。
+- **持久化**（§24–§31）：M3 SQLite 单表（迁移 V2），save 单事务 all-or-nothing，feature availability 列存，BLOB 完整性读回校验。
+- **M2 契约**（§5）：LoudnessAnalysis → TrackLoudness 的 DTO 由应用层转换（M2 不依赖 aura-analysis）；M7/M9 消费 contract 见 domain/embedding（§205/§49）。
+- **禁止**（§3/§4/§38）：无网络、无 fake analysis、无 Map/推荐；中篇承载 BPM/Key/LUFS/Spectral/MFCC 算法，下篇承载 worker/queue/集成门禁。
+
 ## 构建与工程
 
 - Cargo workspace：7 个 aura crates + `src-tauri`（M0-3 起为正式 member，tauri 2.12）。

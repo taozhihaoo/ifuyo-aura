@@ -411,3 +411,15 @@ Phase 0 的 `body{display:grid;place-items:center}` 使 app-root 收缩居中—
 ## D-094 快照完整性校验与历史上限（2026-10-05，M7 下篇）
 
 §299：snapshot integrity = 载荷规范 hash（integrity 字段归零后计算）；validate 顺序 = 版本门（§106）→ 校验和 → world_id 一致性。§229/§230：`#[serde(default)]` 旧快照缺字段显式默认（integrity=0 视为无校验和）、未知字段忽略。§219/§220：MAX_MUTATION_LOG=200 / MAX_EVENT_LOG=500，超出即裁最旧（当前 genome 即压缩态）。§225：persist 原子写（tmp+rename）且写前 seal（§300）。
+
+## D-095 Embedding 选型：自有 DSP 统计嵌入（2026-10-05，M8 上篇）
+
+§39–§44 要求"真实、可运行、合法、可本地、可商业发行"的 embedding。评估结论：**不引入任何第三方模型/推理运行时**（ONNX/Candle/Burn 均因 binary size、打包、license 审计成本与"为一个功能引入大框架"原则（§44/§241）被否）。采用自有 SpectralStatsProvider：Hann 帧内 DFT（O(N²)，中篇换 FFT 时升 SPECTRAL/MFCC_ALGORITHM_VERSION）→ 14 个对数频带 dB 统计 ×2 + 帧能量 mean/std + ZCR/质心/滚降/时长代理 = 32 维，L2 归一化，f32 LE。满足 §42"真实可运行"（真实信号统计，非随机/hash，区分度有测试）；§46 纯定序 f32 运算逐位确定（无平台容差需求）；§40 永不联网下载；zero license 负担。若未来引入学习型模型：新 provider + 新 model_id/version，旧结果经 §18 版本机制自然 Stale。
+
+## D-096 分析持久化落点与 schema v2（2026-10-05，M8 上篇）
+
+§24/§25：不建第二数据库——analysis 表由 **M3 迁移 V2** 定义（M3 拥有 schema 真相 §6），aura-analysis 仅持 `&Connection` 门面（AnalysisStore），依赖方向 analysis → rusqlite（不反向依赖 aura-library，避免环）。表设计：单表 + 标量列 + 两个带元数据 BLOB（mfcc: 13+13 f32 LE；embedding: dim×4 f32 LE + dim/model_id/model_version 列，§27/§28）。analysis_key UNIQUE（§23）。读回时：未知枚举串拒绝（不静默映射）、BLOB 尺寸×dim 校验（§29）。
+
+## D-097 analysis_key 派生（2026-10-05，M8 上篇）
+
+§23：`analysis_key = SipHash13(固定域密钥, content_identity ‖ 0xff ‖ analysis_version ‖ embedding_model_id ‖ 0xff ‖ embedding_model_version)` 的 64-bit hex。判定结果是否仍对应现状的唯一权威；content 变化（§20）或版本升级（§18）都会使旧键失效→Stale。

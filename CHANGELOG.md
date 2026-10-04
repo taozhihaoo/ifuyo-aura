@@ -1,5 +1,14 @@
 # Changelog
 
+## M8 上篇（2026-10-05）
+
+### Added
+- aura-analysis 实装：domain model/status/availability/版本轴/analysis_key；EmbeddingProvider + 自有谱统计嵌入（32 维 L2，逐位确定）；M1 解码适配（mono downmix）；AnalysisStore（M3 迁移 v2 单表，单事务，替换/版本 Stale 检测）
+- 文档：D-095..D-097、ARCHITECTURE 分析节、PROGRESS/CHANGELOG
+
+### Notes
+- 特征引擎（BPM/Key/LUFS/Spectral/MFCC）= M8 中篇；运行时/集成/门禁 = M8 下篇；零网络、零 fake analysis
+
 ## M7 下篇（2026-10-05）
 
 ### Added

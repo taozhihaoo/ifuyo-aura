@@ -270,3 +270,24 @@ M7-B = PASS（真实渲染+集成+测试；B 级如实列出，见下）
 - 11-night/13-mutation/14-seed/15-settings 等建议截图未摆拍（需环境手动覆盖 UI，B 级留待后续）
 - Full-screen immersive（§199 B 级）未实现；用户手动 time-of-day/weather 预设（§100 B 级）未实现（Frozen/Auto 已可用）
 - World slots 多世界（§214 B 级）未实现；快照备份 last-known-good（§226 B 级）未实现
+
+## M8 上篇（2026-10-05）——分析基建（Domain/Identity/Persistence/Embedding Policy，§0–49）
+
+状态 = PASS（基建落地；特征引擎在中篇 §50–204，运行时/集成/门禁在下篇 §205–390）
+
+### Implemented
+
+- aura-analysis 实装：domain model（§13–§18/§31–§33）+ analysis_key（§23/D-097）+ EmbeddingProvider 合同与真实本地 provider（D-095）+ M1 解码适配（§12/§34）+ AnalysisStore 持久化（D-096）
+- M3 迁移 V2：track_analysis 重建（content binding/availability/算法版本/带元数据 BLOB/索引）
+- §4 合规结构保证：无结果 → Pending/Unsupported/Stale 明确态；任何"Available"必有真实数据行
+
+### Tests
+
+- aura-analysis 28（domain 10 / store 8 / embedding 6 / decode 4）；aura-library 110（含迁移 v2）；workspace 全绿
+- 关键不变量：all-or-nothing 完成语义（§31）、六态 availability 保留（§32）、替换→Stale（§20）、版本升级幂等 Stale（§18）、BLOB 完整性（§29）、嵌入逐位确定性（§46）、NaN/Inf 拒绝
+
+### Known Limitations
+
+- BPM/Key/LUFS/Spectral/MFCC 算法 = 中篇；worker/queue/cancellation 集成 = 下篇
+- SpectralStatsProvider 的 DFT 为 O(N²)（离线可接受；中篇换 FFT 并升算法版本）
+- 多声道 >2 无 downmix（M1 能力边界，明确报错不偷渡）
