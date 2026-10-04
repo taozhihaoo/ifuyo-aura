@@ -1,0 +1,18 @@
+[package]
+name = "aura-map"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "ifuyo Aura Music Map：相似度内核/kNN 图/聚类/2D 布局"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+siphasher = "1"
+aura-analysis = { version = "0.1.0", path = "../aura-analysis" }
+
+[dev-dependencies]
+
+[lints]
+workspace = true

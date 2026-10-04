@@ -6,6 +6,7 @@ members = [
     "crates/aura-cache",
     "crates/aura-library",
     "crates/aura-analysis",
+    "crates/aura-map",
     "crates/aura-synth",
     "crates/aura-testkit",
     "src-tauri",
