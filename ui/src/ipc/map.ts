@@ -20,6 +20,16 @@ export interface MapClusterDto {
   radius: number | null;
 }
 
+/** §247–§249：库 → 地图覆盖（真实计数）。 */
+export interface MapCoverageDto {
+  totalTracks: number;
+  mappedTracks: number;
+  unmappedTracks: number;
+  staleTracks: number;
+  unsupportedTracks: number;
+  missingEmbeddingTracks: number;
+}
+
 export interface MapOverviewDto {
   datasetHash: string;
   trackCount: number;
@@ -28,6 +38,9 @@ export interface MapOverviewDto {
   /** min_x/min_y/max_x/max_y（有限，§155）。 */
   bounds: [number, number, number, number];
   clusters: MapClusterDto[];
+  coverage: MapCoverageDto;
+  artists: number;
+  albums: number;
 }
 
 export interface MapNodeDto {
@@ -112,6 +125,19 @@ function isFiniteTuple4(v: unknown): v is [number, number, number, number] {
   return Array.isArray(v) && v.length === 4 && v.every(finite);
 }
 
+function isMapCoverageDto(v: unknown): v is MapCoverageDto {
+  if (typeof v !== 'object' || v === null) return false;
+  const n = v as Record<string, unknown>;
+  return (
+    finite(n.totalTracks) &&
+    finite(n.mappedTracks) &&
+    finite(n.unmappedTracks) &&
+    finite(n.staleTracks) &&
+    finite(n.unsupportedTracks) &&
+    finite(n.missingEmbeddingTracks)
+  );
+}
+
 export function isMapOverviewDto(v: unknown): v is MapOverviewDto {
   if (typeof v !== 'object' || v === null) return false;
   const n = v as Record<string, unknown>;
@@ -121,7 +147,10 @@ export function isMapOverviewDto(v: unknown): v is MapOverviewDto {
     finite(n.isolatedCount) &&
     finite(n.clusterCount) &&
     isFiniteTuple4(n.bounds) &&
-    Array.isArray(n.clusters)
+    Array.isArray(n.clusters) &&
+    isMapCoverageDto(n.coverage) &&
+    finite(n.artists) &&
+    finite(n.albums)
   );
 }
 

@@ -40,6 +40,28 @@ function node(partial: Partial<MapNodeDto>): MapNodeDto {
   };
 }
 
+
+function overview(hash: string): import('../../ipc/map').MapOverviewDto {
+  return {
+    datasetHash: hash,
+    trackCount: 0,
+    isolatedCount: 0,
+    clusterCount: 0,
+    bounds: [0, 0, 0, 0],
+    clusters: [],
+    coverage: {
+      totalTracks: 0,
+      mappedTracks: 0,
+      unmappedTracks: 0,
+      staleTracks: 0,
+      unsupportedTracks: 0,
+      missingEmbeddingTracks: 0,
+    },
+    artists: 0,
+    albums: 0,
+  };
+}
+
 beforeEach(() => {
   useMapStore.setState({
     mapOpen: false,
@@ -193,14 +215,7 @@ describe('MapDataModel（§130/§146/§191/§233）', () => {
       node({ trackId: 1, x: -0.5, y: -0.5, clusterId: 0 }),
       node({ trackId: 2, x: 0.5, y: 0.5, clusterId: 1, bpm: 125, energy: 0.7 }),
     ]);
-    m.resetForDataset('h1', {
-      datasetHash: 'h1',
-      trackCount: 2,
-      isolatedCount: 0,
-      clusterCount: 2,
-      bounds: [-0.5, -0.5, 0.5, 0.5],
-      clusters: [],
-    });
+    m.resetForDataset('h1', overview('h1'));
     await m.loadAll();
     await m.loadAll(); // 幂等
     expect(m.count).toBe(2);
@@ -212,33 +227,12 @@ describe('MapDataModel（§130/§146/§191/§233）', () => {
 
   it('§233：dataset hash 变化 → 全部失效', async () => {
     const m = makeModel([node({ trackId: 1, x: 0, y: 0, clusterId: 0 })]);
-    m.resetForDataset('h1', {
-      datasetHash: 'h1',
-      trackCount: 1,
-      isolatedCount: 0,
-      clusterCount: 1,
-      bounds: [0, 0, 0, 0],
-      clusters: [],
-    });
+    m.resetForDataset('h1', overview('h1'));
     await m.loadAll();
     expect(m.count).toBe(1);
-    m.resetForDataset('h1', {
-      datasetHash: 'h1',
-      trackCount: 1,
-      isolatedCount: 0,
-      clusterCount: 1,
-      bounds: [0, 0, 0, 0],
-      clusters: [],
-    });
+    m.resetForDataset('h1', overview('h1'));
     expect(m.count).toBe(1); // 同 hash：保留
-    m.resetForDataset('h2', {
-      datasetHash: 'h2',
-      trackCount: 0,
-      isolatedCount: 0,
-      clusterCount: 0,
-      bounds: [0, 0, 0, 0],
-      clusters: [],
-    });
+    m.resetForDataset('h2', overview('h2'));
     expect(m.count).toBe(0);
     expect(m.hitTest(0, 0, 0.5)).toBeNull();
   });
@@ -248,14 +242,7 @@ describe('MapDataModel（§130/§146/§191/§233）', () => {
       node({ trackId: 1, x: 0, y: 0, clusterId: 0, bpm: 125, energy: 0.8 }),
       node({ trackId: 2, x: 0.1, y: 0, clusterId: 0, bpm: null, energy: null }),
     ]);
-    m.resetForDataset('h1', {
-      datasetHash: 'h1',
-      trackCount: 2,
-      isolatedCount: 0,
-      clusterCount: 1,
-      bounds: [0, 0, 0.1, 0],
-      clusters: [],
-    });
+    m.resetForDataset('h1', overview('h1'));
     await m.loadAll();
     expect(m.filterMask(EMPTY_FILTERS)).toEqual(new Uint8Array([1, 1]));
     expect(m.filterMask({ bpmMin: 120, bpmMax: null, energyMin: null })).toEqual(new Uint8Array([1, 0]));

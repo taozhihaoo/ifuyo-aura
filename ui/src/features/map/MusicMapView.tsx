@@ -307,6 +307,40 @@ export function MusicMapView({
         }
       }
     }
+
+    // §122 hover 气泡：Title/Artist/Album/Cluster/BPM/Key（缺失行不显示）。
+    if (hoverRef.current !== null && hoverRef.current !== S.selectedTrackId) {
+      const hm = model.metaOf(hoverRef.current);
+      const hi = model.indexOf(hoverRef.current);
+      if (hm !== null && hi >= 0) {
+        const [hx, hy] = worldToScreen(cam, w, h, ...model.posAt(hi));
+        const lines: string[] = [hm.title ?? `#${hm.trackId}`];
+        const artistAlbum = [hm.artist, hm.album].filter(Boolean).join(' — ');
+        if (artistAlbum !== '') lines.push(artistAlbum);
+        lines.push(`Cluster ${String(hm.clusterId + 1).padStart(2, '0')}`);
+        if (hm.bpm !== null) lines.push(`BPM ${hm.bpm.toFixed(1)}`);
+        if (hm.musicalKey !== null) lines.push(hm.musicalKey);
+        ctx.font = '11px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        const bw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16;
+        const bh = lines.length * 15 + 10;
+        let bx = hx + 12;
+        let by = hy - bh - 10;
+        if (bx + bw > w - 4) bx = hx - bw - 12;
+        if (by < 4) by = hy + 12;
+        ctx.fillStyle = 'rgba(10,12,18,0.92)';
+        ctx.strokeStyle = 'rgba(120,140,190,0.4)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(bx, by, bw, bh, 6);
+        ctx.fill();
+        ctx.stroke();
+        lines.forEach((l, li) => {
+          ctx.fillStyle = li === 0 ? 'rgba(240,246,255,0.95)' : 'rgba(200,212,236,0.8)';
+          ctx.fillText(l, bx + 8, by + 18 + li * 15);
+        });
+      }
+    }
   }, [model]);
 
   drawRef.current = draw;

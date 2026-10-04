@@ -169,6 +169,15 @@ export function MapToolbar({
         </button>
         {ready && overview && (
           <span className="map-status-line">
+            {t('map.mappedRatio', {
+              mapped: overview.coverage.mappedTracks,
+              total: overview.coverage.totalTracks,
+            })}
+            {' · '}
+            {t('map.artists', { count: overview.artists })}
+            {' · '}
+            {t('map.albums', { count: overview.albums })}
+            {' · '}
             {t('map.readyCounts', { tracks: overview.trackCount, clusters: overview.clusterCount })}
           </span>
         )}

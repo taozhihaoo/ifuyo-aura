@@ -87,6 +87,23 @@ pub struct MapOverviewDto {
     pub cluster_count: usize,
     pub bounds: [f32; 4],
     pub clusters: Vec<MapClusterDto>,
+    /// §247–§249：真实覆盖计数（unmapped 绝不悄悄排除）。
+    pub coverage: MapCoverageDto,
+    /// §250：mapped 曲目的真实去重 artist/album 数（M3 来源）。
+    pub artists: usize,
+    pub albums: usize,
+}
+
+/// §247–§249：库 → 地图覆盖（每轨恰入一桶；数字全部来自本次采集）。
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MapCoverageDto {
+    pub total_tracks: usize,
+    pub mapped_tracks: usize,
+    pub unmapped_tracks: usize,
+    pub stale_tracks: usize,
+    pub unsupported_tracks: usize,
+    pub missing_embedding_tracks: usize,
 }
 
 /// §126：邻居列表（真实 M9 top-K；UI 命名 "Similar Tracks" §127）。
@@ -122,20 +139,45 @@ pub struct MapSnapshot {
     metas: HashMap<i64, NodeMeta>,
     cluster_of: HashMap<i64, usize>,
     pub dataset_hash: String,
+    pub coverage: MapCoverageDto,
+    pub artists: usize,
+    pub albums: usize,
 }
 
 impl MapSnapshot {
+    #[allow(clippy::too_many_arguments)]
     fn assemble(
         dataset: MapDataset,
         graph: MapGraph,
         clusters: Vec<MapCluster>,
         positions: BTreeMap<i64, MapPosition>,
         metas: HashMap<i64, NodeMeta>,
+        base_coverage: MapCoverageDto,
+        collected_entries: usize,
     ) -> Self {
         let mut cluster_of = HashMap::new();
         for c in &clusters {
             for id in &c.track_ids {
                 cluster_of.insert(*id, c.cluster_id);
+            }
+        }
+        // §248/§249：mapped 以 dataset 实际收录为准；采集与收录的差 =
+        // 不兼容嵌入（§247 unsupported model 语义），unmapped 全量如实。
+        let mut coverage = base_coverage;
+        coverage.mapped_tracks = dataset.entries.len();
+        coverage.unsupported_tracks += collected_entries.saturating_sub(coverage.mapped_tracks);
+        coverage.unmapped_tracks = coverage.total_tracks.saturating_sub(coverage.mapped_tracks);
+        // §250：mapped 曲目的去重 artist/album（真实频率来源 M3）。
+        let mut artists = std::collections::HashSet::new();
+        let mut albums = std::collections::HashSet::new();
+        for e in &dataset.entries {
+            if let Some(m) = metas.get(&e.track_id) {
+                if let Some(a) = &m.artist {
+                    artists.insert(a.clone());
+                }
+                if let Some(al) = &m.album {
+                    albums.insert(al.clone());
+                }
             }
         }
         Self {
@@ -146,6 +188,9 @@ impl MapSnapshot {
             clusters,
             positions,
             metas,
+            coverage,
+            artists: artists.len(),
+            albums: albums.len(),
         }
     }
 
@@ -293,6 +338,8 @@ impl MapHost {
                     output.clusters,
                     output.positions,
                     collected.metas,
+                    collected.coverage,
+                    collected.entries_len,
                 ));
                 inner.status = MapBuildStatus::Ready;
                 inner.message = None;
@@ -314,6 +361,10 @@ impl MapHost {
 struct Collection {
     entries: Vec<MapEntry>,
     metas: HashMap<i64, NodeMeta>,
+    /// §247/§248：采集期真实计数（mapped 之后在 assemble 修正）。
+    coverage: MapCoverageDto,
+    /// 采集到的嵌入条数（assemble 用它算不兼容差值）。
+    entries_len: usize,
 }
 
 fn collect_library(library: &crate::library::LibraryState) -> Result<Collection, AppError> {
@@ -330,17 +381,33 @@ fn collect_library(library: &crate::library::LibraryState) -> Result<Collection,
     let conn = service.database().connection();
     let mut entries = Vec::new();
     let mut metas = HashMap::new();
+    let mut coverage = MapCoverageDto::default();
     for t in tracks {
-        let Some(a) =
-            aura_analysis::store::AnalysisStore::load_by_track(conn, t.id.0).map_err(store_err)?
-        else {
+        coverage.total_tracks += 1;
+        let analysis =
+            aura_analysis::store::AnalysisStore::load_by_track(conn, t.id.0).map_err(store_err)?;
+        let Some(a) = analysis else {
+            coverage.missing_embedding_tracks += 1; // 未分析（§247 missing）
             continue;
         };
         // §239：只用 Completed 行——未完成的 embedding 不进图。
-        if a.status != AnalysisStatus::Completed {
-            continue;
+        match a.status {
+            AnalysisStatus::Stale => {
+                coverage.stale_tracks += 1;
+                continue;
+            }
+            AnalysisStatus::Unsupported => {
+                coverage.unsupported_tracks += 1;
+                continue;
+            }
+            AnalysisStatus::Completed => {}
+            _ => {
+                coverage.missing_embedding_tracks += 1;
+                continue;
+            }
         }
         let Some(embedding) = a.embedding.clone() else {
+            coverage.missing_embedding_tracks += 1;
             continue;
         };
         let s = TrackAnalysisSummary::from(&a);
@@ -365,7 +432,13 @@ fn collect_library(library: &crate::library::LibraryState) -> Result<Collection,
             embedding,
         });
     }
-    Ok(Collection { entries, metas })
+    let entries_len = entries.len();
+    Ok(Collection {
+        entries,
+        metas,
+        coverage,
+        entries_len,
+    })
 }
 
 /// §186 temp + 原子替换。
@@ -432,6 +505,9 @@ pub fn get_map_overview(state: State<'_, AppState>) -> CmdResult<MapOverviewDto>
         isolated_count: snap.graph.isolated.len(),
         cluster_count: snap.clusters.len(),
         bounds: snap.bounds(),
+        coverage: snap.coverage,
+        artists: snap.artists,
+        albums: snap.albums,
         clusters: snap
             .clusters
             .iter()
@@ -575,6 +651,8 @@ pub fn request_map_build(state: State<'_, AppState>) -> CmdResult<u64> {
     let gen = Arc::clone(&host.generation);
     let inner_arc = Arc::clone(&host.inner);
     let metas = collected.metas;
+    let coverage = collected.coverage;
+    let entries_len = collected.entries_len;
     let json_path = host.map_json_path();
     std::thread::Builder::new()
         .name("map-build".into())
@@ -598,6 +676,8 @@ pub fn request_map_build(state: State<'_, AppState>) -> CmdResult<u64> {
                             o.clusters,
                             o.positions,
                             metas,
+                            coverage,
+                            entries_len,
                         ));
                         write_atomic(&json_path, &o.persisted);
                         inner.snapshot = Some(snap);
