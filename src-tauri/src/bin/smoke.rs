@@ -57,6 +57,8 @@ fn main() {
             );
             let dreamscape = aura_shell_lib::dreamscape::DreamscapeHost::open(&tmp_ds)
                 .map_err(|e| format!("dreamscape init failed: {e}"))?;
+            let map = aura_shell_lib::map_ipc::MapHost::open(&tmp_ref)
+                .map_err(|e| format!("map init failed: {e}"))?;
             app.manage(AppState {
                 audio: Arc::new(audio),
                 library: Arc::new(library),
@@ -64,6 +66,7 @@ fn main() {
                 http,
                 blocklist,
                 dreamscape,
+                map,
             });
             Ok(())
         })

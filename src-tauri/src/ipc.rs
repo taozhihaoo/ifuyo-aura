@@ -45,6 +45,8 @@ pub struct AppState {
     pub blocklist: Arc<aura_sources::platform_block::PlatformBlocklist>,
     /// Dreamscape 会话宿主（M7 上篇；逻辑态持久化在 app_data）。
     pub dreamscape: crate::dreamscape::DreamscapeHost,
+    /// Music Map 会话宿主（M9 中篇；derived data §65 持久化在 app_data）。
+    pub map: crate::map_ipc::MapHost,
 }
 
 /// 应用基础信息（M0 契约保留）。

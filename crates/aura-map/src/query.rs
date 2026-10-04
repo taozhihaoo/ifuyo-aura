@@ -5,7 +5,7 @@ use crate::clustering::ClusteringResult;
 use crate::dataset::MapDataset;
 use crate::graph::MapGraph;
 use crate::layout::MapPosition;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::similarity::top_k_neighbors;
 
@@ -41,7 +41,7 @@ pub fn neighbors(
 /// §38：视口查询——返回 [-1,1]² 矩形内的节点位置（LOD 数据源）。
 #[must_use]
 pub fn viewport_nodes(
-    positions: &HashMap<i64, MapPosition>,
+    positions: &BTreeMap<i64, MapPosition>,
     min_x: f32,
     min_y: f32,
     max_x: f32,
@@ -69,6 +69,7 @@ mod tests {
     use super::*;
     use crate::dataset::MapEntry;
     use aura_analysis::domain::{Embedding, EMBEDDING_MODEL_ID};
+    use std::collections::HashMap;
 
     fn emb(v: Vec<f32>) -> Embedding {
         Embedding::normalized(v, EMBEDDING_MODEL_ID, 1)
@@ -108,7 +109,7 @@ mod tests {
 
     #[test]
     fn viewport_filters() {
-        let mut positions = HashMap::new();
+        let mut positions = BTreeMap::new();
         positions.insert(1, MapPosition { x: -0.5, y: -0.5 });
         positions.insert(2, MapPosition { x: 0.5, y: 0.5 });
         let r = viewport_nodes(&positions, 0.0, 0.0, 1.0, 1.0);

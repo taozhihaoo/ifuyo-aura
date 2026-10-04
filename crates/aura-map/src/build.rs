@@ -165,6 +165,16 @@ pub enum MapBuildError {
     Feature(String),
 }
 
+impl std::fmt::Display for MapBuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cancelled => write!(f, "map build cancelled"),
+            Self::Empty => write!(f, "no valid entries for map build"),
+            Self::Feature(e) => write!(f, "map build failed: {e}"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

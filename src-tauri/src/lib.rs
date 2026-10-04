@@ -8,6 +8,7 @@ pub mod audio;
 pub mod dreamscape;
 pub mod ipc;
 pub mod library;
+pub mod map_ipc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -43,6 +44,8 @@ pub fn run() {
             );
             let dreamscape = dreamscape::DreamscapeHost::open(&data_dir)
                 .map_err(|e| format!("dreamscape init failed: {e}"))?;
+            let map =
+                map_ipc::MapHost::open(&data_dir).map_err(|e| format!("map init failed: {e}"))?;
             app.manage(ipc::AppState {
                 audio: std::sync::Arc::new(audio),
                 library: std::sync::Arc::new(library),
@@ -50,6 +53,7 @@ pub fn run() {
                 http,
                 blocklist,
                 dreamscape,
+                map,
             });
             // §19：Win11 Mica（设置开关，失败自动保持 solid fallback §20）。
             #[cfg(target_os = "windows")]
@@ -111,6 +115,14 @@ pub fn run() {
             analysis_ipc::track_analysis_summary,
             analysis_ipc::analysis_visual_summary,
             analysis_ipc::track_analysis_state,
+            map_ipc::get_map_status,
+            map_ipc::get_map_overview,
+            map_ipc::get_map_nodes,
+            map_ipc::get_map_clusters,
+            map_ipc::get_map_neighbors,
+            map_ipc::get_map_track,
+            map_ipc::request_map_build,
+            map_ipc::cancel_map_build,
         ]) // probe-isolated
         .run(tauri::generate_context!())
         .expect("error while running ifuyo Aura");
