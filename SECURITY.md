@@ -156,3 +156,9 @@ api_key/password/token/client_secret/Authorization/Cookie/BEGIN PRIVATE KEY 全�
 - 无 shell 执行（§124）：SMTC/托盘零 PowerShell/cmd/外部可执行调用；无外链（§125）。
 - 路径安全（§235/§236/§48）：SMTC 封面只接受应用内 artwork 字节（InMemory 流），不存在用户路径注入面。
 - 权限最小化（§123/§238）：tauri 仅加 tray-icon/image-png feature；windows crate 仅 4 个 feature 面；无全局快捷键插件。
+### Release Engineering（M11 下篇 §233/§28–§29/§109/§370）
+- 更新安全边界（§109）：远程 manifest → 版本校验（降级拒绝 §47 单测）→ 字段校验 §46（单测）→ minisign 签名验证（updater 插件 Rust 侧）→ 官方安装流程；无"下载 exe 即执行"路径（§6/§9 无 shell）。
+- updater 端点（§9/§77）：production 仅 HTTPS（GitHub Releases latest.json §54）；dev=本地 fake server，配置严格隔离（release overlay 由 CI secrets 生成）；无用户可配端点。
+- secrets（§26/§28/§29）：私钥/证书只存 GitHub Secrets；gitleaks 全 history 扫描入 CI；.gitleaks.toml 基线（无 secret 允许项）。
+- 单实例（§230/§231）：第二实例仅 focus。
+- CI 日志（§27）：不回显 secret；记录 artifact/版本/签名状态。
