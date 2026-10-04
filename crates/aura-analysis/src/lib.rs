@@ -8,8 +8,10 @@
 pub mod decode;
 pub mod domain;
 pub mod embedding;
+pub mod fft;
 pub mod key;
 pub mod local_stream;
+pub mod params;
 pub mod store;
 
 pub use decode::{decode_file_to_mono, decode_to_mono, DecodedMono};
@@ -22,5 +24,10 @@ pub use embedding::{
     DType, DistanceMetric, EmbeddingInput, EmbeddingProvider, Normalization, SpectralStatsProvider,
     EMBEDDING_DIMENSION,
 };
+pub use fft::{fft_forward, magnitude_half};
 pub use key::analysis_key;
+pub use params::{
+    hann, resample_linear, ANALYSIS_CHANNELS, ANALYSIS_SAMPLE_RATE, CHUNK_SAMPLES, FRAME_LEN,
+    HOP_LEN, MAX_ANALYSIS_SECONDS, MAX_BEATS, MAX_FEATURE_SAMPLES,
+};
 pub use store::{AnalysisStore, StoreError};
