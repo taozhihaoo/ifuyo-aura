@@ -12,6 +12,8 @@ pub mod clustering;
 pub mod dataset;
 pub mod graph;
 pub mod layout;
+pub mod persistence;
+pub mod query;
 pub mod similarity;
 
 pub use clustering::{attach_spatial_stats, detect_clusters, MapCluster, CLUSTER_ALGO_VERSION};
