@@ -134,6 +134,14 @@ dependencies = [
 [[package]]
 name = "aura-analysis"
 version = "0.1.0"
+dependencies = [
+ "aura-core",
+ "aura-library",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "siphasher",
+]
 
 [[package]]
 name = "aura-cache"
