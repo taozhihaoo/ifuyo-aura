@@ -9,6 +9,7 @@ pub mod decode;
 pub mod domain;
 pub mod embedding;
 pub mod fft;
+pub mod generator;
 pub mod key;
 pub mod key_detect;
 pub mod local_stream;
@@ -37,6 +38,10 @@ pub use embedding::{
     EMBEDDING_DIMENSION,
 };
 pub use fft::{fft_forward, magnitude_half};
+pub use generator::{
+    chord, click_track, impulse_train, noise as gen_noise, silence as gen_silence,
+    sine as gen_sine, standard_fixtures, ExpectedFeature, FixtureMeta,
+};
 pub use key::analysis_key;
 pub use key_detect::{analyze_key, camelot, chroma, KeyResult, KEY_ALGO_VERSION};
 pub use loudness::{amplitude_for_target_lufs, analyze_loudness, true_peak_dbtp};
