@@ -263,6 +263,11 @@ fn handle_conn(
         .and_then(|l| l.split_once(':'))
         .map(|(_, v)| v.trim().trim_matches('"').to_string());
     let request_line = text.lines().next().unwrap_or("");
+    // 读取超时/中断导致请求行不完整（满载下的偶发）：关闭连接而不
+    // 回 404——否则上层 fallback 会把「没读到请求」误判为「路由缺失」。
+    if request_line.split_whitespace().nth(1).is_none() {
+        return;
+    }
     let path_full = request_line
         .split_whitespace()
         .nth(1)
