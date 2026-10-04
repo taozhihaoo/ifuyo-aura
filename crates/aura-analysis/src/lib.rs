@@ -24,6 +24,7 @@ pub mod spectral;
 pub mod store;
 pub mod summary;
 pub mod tempo;
+pub mod visual;
 
 pub use decode::{decode_file_to_mono, decode_to_mono, DecodedMono};
 pub use domain::{
@@ -60,3 +61,4 @@ pub use spectral::{SpectralAccumulator, SpectralResult, SPECTRAL_ALGO_VERSION};
 pub use store::{AnalysisStore, StoreError};
 pub use summary::TrackAnalysisSummary;
 pub use tempo::{analyze_tempo, AnalysisErrorLike, TempoResult};
+pub use visual::AnalysisVisualSummary;
