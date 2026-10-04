@@ -3,18 +3,14 @@
 //!
 //! 后台低优先级、可取消、可恢复、可缓存、content-key 绑定、逐位确定性。
 //!
-//! Phase 0：仅 crate 边界；M8 起填充实现。
+//! Phase 0 骨架已被 M8 上篇替换（§11 职责边界内）。
 
-/// 阶段标识；M8 实装后移除。
-#[must_use]
-pub const fn phase() -> &'static str {
-    "phase-0-skeleton"
-}
+pub mod domain;
+pub mod key;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn skeleton_compiles() {
-        assert_eq!(super::phase(), "phase-0-skeleton");
-    }
-}
+pub use domain::{
+    AnalysisError, AnalysisStatus, Embedding, FeatureAvailability, KeyAnalysis, KeyMode,
+    LoudnessAnalysis, MfccFeatures, MusicalKey, SpectralFeatures, TempoAnalysis, TrackAnalysis,
+    ANALYSIS_VERSION, EMBEDDING_MODEL_ID, EMBEDDING_MODEL_VERSION,
+};
+pub use key::analysis_key;
