@@ -149,3 +149,10 @@ api_key/password/token/client_secret/Authorization/Cookie/BEGIN PRIVATE KEY 全�
 - Build Generation（§166/§287）：旧 build 迟到不得覆盖（代号语义测试）。
 - No Network Dependency（§362/§363/§490）：地图构建/查询/搜索全链路零网络路径；搜索复用本地 M3 FTS5。
 - 参数化 SQL（§372）：所有 TrackId 查询经 rusqlite 参数绑定（M3/M8 层），map store 为 JSON 文件无 SQL。
+### Windows Integration（M10 上篇 §228–§236）
+- SMTC 外部事件 = untrusted（§232）：seek 位置经 coordinator 验证（finite/非负/可 seek/夹取 §69/§70）；字符串限长+控制字符清理（§133–§136）后才进系统。
+- 托盘（§229）：稳定菜单 ID（§156），metadata 只进显示行、绝不被解析为命令；locale 文案为常量表（无注入面）。
+- 单实例（§230/§231）：第二实例仅触发 show+focus；argv/cwd 不解析不路由不执行。
+- 无 shell 执行（§124）：SMTC/托盘零 PowerShell/cmd/外部可执行调用；无外链（§125）。
+- 路径安全（§235/§236/§48）：SMTC 封面只接受应用内 artwork 字节（InMemory 流），不存在用户路径注入面。
+- 权限最小化（§123/§238）：tauri 仅加 tray-icon/image-png feature；windows crate 仅 4 个 feature 面；无全局快捷键插件。

@@ -91,3 +91,9 @@ Music Map 明确零上传清单：**audio、embeddings、analysis 结果、map �
 - 断网完整可用（§361）：已有 M8 分析存在时，构建/浏览/搜索/过滤/播放全链路离线工作。
 - 无遥测（§358）：不记录 map usage/selected tracks/similarity queries/cluster interactions/screenshots/performance metrics（§491 grep 零命中）。
 - map.json（位置/簇/边 + 版本校验和）存 app_data/map/，可随时删除，下次构建全量重建（derived data）。
+## M10 上篇确认（§128–§132）
+
+- Windows 只看到当前播放所需 metadata：title/artist/album/状态/位置/时长/可选封面（§129）——绝不暴露全库、播放历史、嵌入、分析向量、Music Map/Dreamscape 数据。
+- 零新增遥测（§128/§131）：不统计不上传按键次数/播放行为；集成 diagnostics 仅本地内存（§225–§227）。
+- SMTC/托盘/单实例完全离线可用（§126/§127）；不依赖任何云服务（§360 同精神）。
+- 托盘菜单只显示当前曲目行（§132 合理系统媒体体验），无库列表。

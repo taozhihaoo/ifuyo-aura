@@ -29,6 +29,7 @@ Music Map 根据本地音频分析结果，把音乐库组织成可探索的相�
 | Win11 Mica（Win10 solid fallback） | ✅ |
 | Music Map（相似度地图：构建/Canvas 渲染/搜索/过滤） | ✅ |
 | Dreamscape（程序化世界：seed/演化/稀有事件/快照 + Three.js 渲染） | ✅ |
+| Windows 集成（SMTC/媒体键/系统托盘/单实例） | ✅（M10） |
 | Analysis（LUFS/Tempo/Key/Spectral/MFCC 本地确定性分析） | ✅ |
 | SMTC / 托盘 / 媒体键 | M10 |
 

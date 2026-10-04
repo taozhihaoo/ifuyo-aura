@@ -31,3 +31,6 @@ M8 新增运行时依赖：**无第三方 DSP/FFT/ML runtime/模型**（D-095：
 ## M9（2026-10-05）
 
 M9 新增第三方依赖：**siphasher 1.x**（MIT OR Apache-2.0；dataset hash 用，M9 上篇引入、Cargo.lock 锁定；deny bans/licenses/sources 全绿）。M9 下篇零新增依赖（§494/§495：渲染用平台 Canvas2D，无第二渲染库、无大型图框架）。全部其余 crates 均为本仓库 workspace 内（aura-map 等）或此前已记录的 serde/serde_json/rusqlite/tauri 栈（MIT/Apache-2.0）。
+## M10（2026-10-05）
+
+M10 新增第三方依赖：**windows 0.62**（MIT OR Apache-2.0；仅 4 个最小 feature 面——Media/Storage_Streams/Win32_Foundation/Win32_System_WinRT + windows-future 0.3 传递，§16/§237 审计通过：MSRV 兼容、官方维护、Windows 原生 API 绑定）；**tauri-plugin-single-instance 2**（MIT OR Apache-2.0，Tauri 官方插件 §238）；tauri 核心加 tray-icon/image-png feature（同 crate，无新依赖）。无 GPL/AGPL/LGPL（§379）。

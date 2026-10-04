@@ -257,6 +257,10 @@ dataset（兼容合同/dataset hash）→ similarity（cosine/top-K）→ graph�
 - **前端**（ui/src/features/map/）：mapStore（8 字段白名单 §145）+ MapDataModel（typed arrays + 空间 hash 非响应式 §146/§156）+ MusicMapView（单 Canvas2D：LOD 三级/视口 culling/标签优先级+碰撞/选中邻域边/按需渲染/dpr cap §326/键盘控制 §317/双击播放 §314）+ MapDetailPanel（§124 字段 + Similar Tracks 真实 top-K §126 + Open in Library §312）+ MapToolbar（搜索-to-focus §129–§132 经 LibrarySearchRunner 竞态守卫 §345/过滤 chips §218/配色 legend §210/视图命令 §138/构建状态 §235–§236）+ mapBus（Library/palette→Map 焦点与命令总线 §311/§411）。
 - **增量与性能**（下篇）：choose_build_kind 30% 阈值选增量/全量；增量以上一代位置为冻结种子（§82/D-120）；性能证据（release 实测 1k/4k/10k 全链 + 内存账面 + >25k 显式拒绝）见 docs/PERF.md M9 节。
 
+### Windows 系统集成（M10 上篇）
+
+`src-tauri/src/integration/`：纯逻辑协调层（SystemSnapshot/revision/变化检测/seek 验证/字符串 sanitize）+ worker 线程（500ms tick；有界事件通道）→ SMTC 适配器（windows crate interop，媒体键=SMTC 按钮）+ 托盘（tauri tray-icon，稳定菜单 ID/locale 动态文案/单例）+ 单实例插件（先于 SMTC 注册，第二实例仅 focus）。命令统一进 Playback Authority；next/previous 经事件桥复用前端 queue。
+
 ## 构建与工程
 
 - Cargo workspace：7 个 aura crates + `src-tauri`（M0-3 起为正式 member，tauri 2.12）。
