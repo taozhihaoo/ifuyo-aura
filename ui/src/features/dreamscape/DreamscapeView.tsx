@@ -73,7 +73,6 @@ export function DreamscapeView() {
       setStatus('idle');
     };
     // reducedMotion 变化经独立 effect 透传，避免重建渲染器。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 播放状态 → 帧率档（§144/§145；§190 不影响播放本身）。

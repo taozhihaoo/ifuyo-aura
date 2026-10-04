@@ -197,6 +197,7 @@ dependencies = [
  "aura-analysis",
  "aura-core",
  "aura-library",
+ "aura-map",
  "aura-sources",
  "aura-synth",
  "base64 0.22.1",

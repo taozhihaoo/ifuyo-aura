@@ -2,6 +2,17 @@
 import { invoke } from '@tauri-apps/api/core';
 import { isAppError, type AppSettings, type PlayerSnapshot, type ScanProgress, type SortKey, type TrackSummary } from './types';
 import { isDreamscapeState, isSceneManifest, type DreamscapeStateDto, type SceneManifest } from './dreamscape';
+import {
+  isMapNeighborDto,
+  isMapNodeDto,
+  isMapOverviewDto,
+  isMapStatusDto,
+  type MapClusterDto,
+  type MapNeighborDto,
+  type MapNodeDto,
+  type MapOverviewDto,
+  type MapStatusDto,
+} from './map';
 
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   try {
@@ -70,6 +81,50 @@ export const ipc = {
   dreamscapeRestoreSnapshot: () => call<DreamscapeStateDto>('dreamscape_restore_snapshot'),
   dreamscapeSetCamera: (yaw: number, pitch: number, distance: number) =>
     call<void>('dreamscape_set_camera', { yaw, pitch, distance }),
+  // ---- Music Map（M9 中篇；§234 状态握手 → 按需取数，§158/§160
+  // hover 不产生 IPC）----
+  // §234：先 status 再数据；畸形响应拒绝进渲染层（§253 同精神）。
+  mapStatus: async (): Promise<MapStatusDto> => {
+    const s = await call<unknown>('get_map_status');
+    if (!isMapStatusDto(s)) {
+      throw { code: 'MAP_CORRUPT', message: 'invalid map status', recoverable: false };
+    }
+    return s;
+  },
+  mapOverview: async (): Promise<MapOverviewDto> => {
+    const o = await call<unknown>('get_map_overview');
+    if (!isMapOverviewDto(o)) {
+      throw { code: 'MAP_CORRUPT', message: 'invalid map overview', recoverable: false };
+    }
+    return o;
+  },
+  // §191/§190：逐节点校验，非有限位置节点丢弃（不让 renderer 变 NaN）。
+  mapNodes: async (
+    minX: number | null,
+    minY: number | null,
+    maxX: number | null,
+    maxY: number | null,
+    limit: number | null,
+  ): Promise<MapNodeDto[]> => {
+    const rows = await call<unknown[]>('get_map_nodes', { minX, minY, maxX, maxY, limit });
+    return Array.isArray(rows) ? rows.filter(isMapNodeDto) : [];
+  },
+  mapClusters: async (): Promise<MapClusterDto[]> => {
+    const rows = await call<unknown[]>('get_map_clusters');
+    return Array.isArray(rows) ? (rows as MapClusterDto[]) : [];
+  },
+  // §126/§159：真选中才调用。
+  mapNeighbors: async (trackId: number, k: number | null): Promise<MapNeighborDto[]> => {
+    const rows = await call<unknown[]>('get_map_neighbors', { trackId, k });
+    return Array.isArray(rows) ? rows.filter(isMapNeighborDto) : [];
+  },
+  mapTrack: async (trackId: number): Promise<MapNodeDto | null> => {
+    const n = await call<unknown>('get_map_track', { trackId });
+    return n === null || n === undefined ? null : isMapNodeDto(n) ? n : null;
+  },
+  // §236 用户显式构建；§164 取消。
+  requestMapBuild: () => call<number>('request_map_build'),
+  cancelMapBuild: () => call<void>('cancel_map_build'),
 };
 
 export function isDreamscapeStateDto(v: unknown): v is DreamscapeStateDto {
