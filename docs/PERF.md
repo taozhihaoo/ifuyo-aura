@@ -239,3 +239,18 @@ cargo run -p aura-shell --bin smoke   # startup-to-ready / snapshot 行
 - progressive render（§304/§305）：首次打开 = status→overview→loadAll（真实加载驱动），无定时器假 loading。
 
 诚实声明：全部真实 release 测量；kNN graph 与 layout 为 O(N²·K) exact——10k≈9s debug 级别可用、25k 上限明确拒绝。后续 B 级路径（ANN/近似布局）引入前须按 §378 审计依赖并重测。
+## M10 Windows Integration（§291–§294/§398，2026-10-05）
+
+- 硬件同 M9 节（Ryzen 7 7700 / 31.2 GB / Windows 11 / tauri build release）。
+
+| 项 | 实测 | 说明 |
+| --- | --- | --- |
+| Single-instance 第二启动退出延迟 | 102–120 ms | 含进程启动+互斥检测+退出（M10-SINGLE-02 脚本实测多次） |
+| 应用启动到可用（smoke startup-to-ready） | 421–606 ms | 含 audio/库/dreamscape/map/集成 worker/托盘全部初始化 |
+| integration worker 空闲成本 | 2 Hz 快照轮询 + 事件驱动 | §180/§181：无媒体活动时仅 500ms recv_timeout，无忙循环 §145 |
+| SMTC position tick | 500 ms 间隔（D-124），仅 Playing | §182/§183：暂停即停 |
+| SMTC 初始化/元数据/timeline 单次调用耗时 | NOT MEASURED | WinRT 调用级计时未插桩（下篇如需可加诊断时钟）；失败均入 diagnostics §225 |
+| Tray creation / menu update | NOT MEASURED（单次创建+低频 set_text） | §91/§92：仅状态变化时更新 |
+| 长时运行内存（§295/§354） | NOT MEASURED（数小时 soak 未执行——如实声明） | 结构上：worker 持单快照+有界通道（§187），无累积容器 |
+
+复测：`scripts/m10-native-verify.ps1`（M10-* 证据行）。

@@ -1,5 +1,14 @@
 # Changelog
 
+## M10（2026-10-05）
+
+### Added
+- Windows 系统集成：SMTC（系统媒体面板/媒体键/元数据/封面/时间线）、系统托盘（播放控制/视图入口/语言跟随）、单实例（二次启动聚焦已有窗口）
+- 集成协调层：单一快照源驱动 SMTC+托盘；revision 单调；seek 验证；字符串限长；ICY 去重；artwork 竞态门
+- 关闭策略：主窗 X = 正式退出；托盘 Exit = 正式退出
+- 原生验证脚本（单实例/SMTC 会话注册/崩溃恢复/僵尸审计）
+- 文档：D-123..D-125、ARCHITECTURE/SECURITY/PRIVACY/SOURCES/THIRD_PARTY/PERF M10 节
+
 ## M9 中篇（2026-10-05）
 
 ### Added

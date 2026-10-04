@@ -29,7 +29,13 @@ Music Map 根据本地音频分析结果，把音乐库组织成可探索的相�
 | Win11 Mica（Win10 solid fallback） | ✅ |
 | Music Map（相似度地图：构建/Canvas 渲染/搜索/过滤） | ✅ |
 | Dreamscape（程序化世界：seed/演化/稀有事件/快照 + Three.js 渲染） | ✅ |
-| Windows 集成（SMTC/媒体键/系统托盘/单实例） | ✅（M10） |
+| Windows 媒体控件（SMTC） | ✅（系统面板显示当前曲目；面板自身行为随 Windows 版本） |
+| 媒体键 | ✅（经 SMTC；无自定义全局快捷键） |
+| 系统托盘 | ✅（播放控制/视图入口/退出；菜单跟随应用语言） |
+| 单实例 | ✅（二次启动自动聚焦已有窗口） |
+| Installer | Future（M11） |
+| Updater | Future（M11） |
+| Steam | Future（M13） |
 | Analysis（LUFS/Tempo/Key/Spectral/MFCC 本地确定性分析） | ✅ |
 | SMTC / 托盘 / 媒体键 | M10 |
 
