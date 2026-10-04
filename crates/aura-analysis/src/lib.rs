@@ -14,6 +14,7 @@ pub mod local_stream;
 pub mod loudness;
 pub mod params;
 pub mod store;
+pub mod tempo;
 
 pub use decode::{decode_file_to_mono, decode_to_mono, DecodedMono};
 pub use domain::{
@@ -33,3 +34,4 @@ pub use params::{
     HOP_LEN, MAX_ANALYSIS_SECONDS, MAX_BEATS, MAX_FEATURE_SAMPLES,
 };
 pub use store::{AnalysisStore, StoreError};
+pub use tempo::{analyze_tempo, AnalysisErrorLike, TempoResult};
