@@ -6,6 +6,7 @@
 //! Phase 0 骨架已被 M8 上篇替换（§11 职责边界内）。
 
 pub mod domain;
+pub mod embedding;
 pub mod key;
 pub mod store;
 
@@ -13,6 +14,10 @@ pub use domain::{
     AnalysisError, AnalysisStatus, Embedding, FeatureAvailability, KeyAnalysis, KeyMode,
     LoudnessAnalysis, MfccFeatures, MusicalKey, SpectralFeatures, TempoAnalysis, TrackAnalysis,
     ANALYSIS_VERSION, EMBEDDING_MODEL_ID, EMBEDDING_MODEL_VERSION,
+};
+pub use embedding::{
+    DType, DistanceMetric, EmbeddingInput, EmbeddingProvider, Normalization, SpectralStatsProvider,
+    EMBEDDING_DIMENSION,
 };
 pub use key::analysis_key;
 pub use store::{AnalysisStore, StoreError};

@@ -544,9 +544,7 @@ impl AnalysisStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{
-        FeatureAvailability as FA, EMBEDDING_MODEL_ID, EMBEDDING_MODEL_VERSION,
-    };
+    use crate::domain::{FeatureAvailability as FA, EMBEDDING_MODEL_ID, EMBEDDING_MODEL_VERSION};
 
     fn mem_db() -> Connection {
         // 与 M3 迁移系统同 schema（dev-dep aura-library）。
