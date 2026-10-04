@@ -390,3 +390,24 @@ fmt/clippy -D warnings/workspace **598**×2 轮/deny 四项/ui tsc+eslint+vitest
 - 数小时 soak（§481/§483/§487）未执行（远程环境限制，如实声明）；以 20 轮 build/cancel/reopen + 竞态守卫测试替代核心语义
 - 浏览器级 FPS/GPU 内存（§299）未测——Canvas2D 按需渲染无持续帧循环，指标不适用（如实记录）
 - M9-B 全部 NOT COMPLETED（§545 不混入 A）
+## M10 上篇（2026-10-05）——SMTC、媒体键、系统托盘与单实例（§0–242）
+
+状态 = A 级能力全部落地；B 级未实现（§2 不混入）；下篇（§243–411 测试/原生 QA/门禁）待续
+
+### Implemented
+- **integration 协调层**（纯逻辑+10 mock 测试 §47）：SystemSnapshot（§138/§139 单源）、revision 单调（§148/§149）、track 边界 vs status（§37/§91）、position 500ms 节流（§141/§144/§182–§184）、seek 验证（§69/§70）、ICY 去重（§55）、字符串限长+Unicode 保真（§133–§136）、title fallback（§43）、artwork 竞态门（§150）
+- **SMTC**（windows 0.62 最小 feature+interop）：GetForWindow 绑定主窗、Play/Pause/Stop/Next/Previous 按钮（§20–§25）、按钮 enabled 随 queue 边界（§65–§67）、DisplayUpdater metadata+封面字节流（§36/§47–§52）、timeline 秒→100ns checked（§32/§233）、token 保存退出移除（§104/§105）、回调只投递（§74/§187）
+- **托盘**（tauri tray-icon）：32px 程序生成图标（§79/§80）、稳定菜单 ID §156、动态 Play/Pause 文案 §85、enablement §86、当前曲目行 §84、locale 跟随 §93–§94、单例所有权 §106、失败降级 §120、左键菜单/双击聚焦 D-125 §88–§89
+- **单实例**：官方插件先于 SMTC 注册（§116）；第二实例仅 focus（§109/§113/§230–§231）
+- **命令路由**：全部进 Playback Authority（§7/§8）；next/previous 事件桥复用前端 queue（§23/§24）；queue 边界由前端上报（§65/§153）；媒体键=SMTC 按钮，未注册全局快捷键（§239/§241）
+- **close 策略**：主窗 X=正式退出（§98/§174）；Tray Exit=正式退出（§102/§103）
+- **修复**：setup 顺序（tray 在 manage 前 state() 导致启动 panic）——tauri build 产物运行时复验（加载/单实例/进程数 1）
+
+### Tests
+- Rust 608×2 轮全绿（含 integration 10 mock + shell 14）；vitest 79；smoke OK；deny 四项绿（windows 0.62/single-instance 审计 §237/§238）
+- 运行时验证（tauri build 产物）：独立加载 ✓、第二实例退出+主实例存活 ✓、进程数 1 ✓
+
+### Known Limitations
+- **SMTC v1 无 position-request 通道**（D-125，以实际 API 为准 §27）——seek 面由应用内 UI 承担；SMTC 侧无可达 seek 事件
+- 真实 SMTC 面板/托盘菜单的 GUI 交互验证（§191/§192 的桌面级 soak）= M10 下篇；本篇以确定性 mock+运行时健康验证为准
+- B 级全部未实现（全局自定义快捷键/SMTC seek 增减/任务栏集成/托盘子菜单/后台模式设置等 §2）
