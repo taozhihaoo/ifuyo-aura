@@ -13,6 +13,7 @@ pub mod env;
 pub mod genome;
 pub mod rng;
 pub mod seed;
+pub mod world;
 
 /// seed 语义版本（见 [`seed::SEED_VERSION`]）。
 #[must_use]
