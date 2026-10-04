@@ -62,6 +62,19 @@ impl BiomeKind {
         }
     }
 
+    /// 由稳定 id 反解（快照恢复用，§81；未知 id → None）。
+    #[must_use]
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "quiet-meadow" => Some(Self::QuietMeadow),
+            "misty-forest" => Some(Self::MistyForest),
+            "dream-shore" => Some(Self::DreamShore),
+            "moon-garden" => Some(Self::MoonGarden),
+            "amber-valley" => Some(Self::AmberValley),
+            _ => None,
+        }
+    }
+
     /// 地形轮廓：振幅 / 频率（§44 terrain profile；世界层据此生成）。
     #[must_use]
     pub const fn terrain_profile(self) -> (f32, f32) {

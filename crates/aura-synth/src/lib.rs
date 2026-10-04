@@ -17,6 +17,7 @@ pub mod manifest;
 pub mod region;
 pub mod rng;
 pub mod seed;
+pub mod snapshot;
 pub mod world;
 
 /// seed 语义版本（见 [`seed::SEED_VERSION`]）。
