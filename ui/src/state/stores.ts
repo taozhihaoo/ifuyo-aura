@@ -85,6 +85,7 @@ export const useLibraryStore = create<LibraryDomain>((set) => ({
 /** 设置（§114）：语言/缩放/reducedMotion 等；持久化在 Rust 侧 JSON。 */
 export interface SettingsState {
   locale: Locale;
+  updatesAutoCheck: boolean;
   uiScale: number;
   reducedMotion: boolean;
   loudnessEnabled: boolean;
@@ -95,6 +96,7 @@ export interface SettingsState {
   loaded: boolean;
   setAll: (s: {
     locale: Locale;
+    updatesAutoCheck: boolean;
     uiScale: number;
     reducedMotion: boolean;
     loudnessEnabled: boolean;
@@ -106,9 +108,11 @@ export interface SettingsState {
   setLocale: (l: Locale) => void;
   setUiScale: (v: number) => void;
   setReducedMotion: (v: boolean) => void;
+  setUpdatesAutoCheck: (v: boolean) => void;
 }
 export const useSettingsStore = create<SettingsState>((set) => ({
   locale: 'zh-CN',
+  updatesAutoCheck: true,
   uiScale: 1.0,
   reducedMotion: false,
   loudnessEnabled: false,
@@ -121,4 +125,5 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setLocale: (locale) => set({ locale }),
   setUiScale: (uiScale) => set({ uiScale }),
   setReducedMotion: (reducedMotion) => set({ reducedMotion }),
+  setUpdatesAutoCheck: (updatesAutoCheck) => set({ updatesAutoCheck }),
 }));

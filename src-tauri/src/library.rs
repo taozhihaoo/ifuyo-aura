@@ -40,6 +40,9 @@ pub struct AppSettings {
     pub version: u32,
     #[serde(default = "default_language")]
     pub language: String,
+    /// M11 §84：自动检查更新（默认 true；非阻塞、无遥测 §8/§44）。
+    #[serde(default = "default_true")]
+    pub updates_auto_check: bool,
     #[serde(default = "default_scale")]
     pub ui_scale: f32,
     #[serde(default)]
@@ -74,6 +77,7 @@ impl Default for AppSettings {
         Self {
             version: 1,
             language: default_language(),
+            updates_auto_check: true,
             ui_scale: default_scale(),
             reduced_motion: false,
             loudness_enabled: false,

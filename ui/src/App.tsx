@@ -5,6 +5,8 @@ import { FeatureBoundary } from './components/ErrorBoundary';
 import { useTranslation } from './i18n/react';
 import { useUiStore, usePlayerStore, useSettingsStore } from './state/stores';
 import { ipc } from './ipc/client';
+import { updateService } from './features/update/UpdateService';
+import { getAppInfo } from './ipc/appInfo';
 import { TitleBar } from './shell/TitleBar';
 import { Sidebar } from './shell/Sidebar';
 import { NowPlayingPage } from './features/nowplaying/NowPlayingPage';
@@ -30,11 +32,17 @@ export default function App() {
 
   // 启动优先级（§155）：shell → settings → player snapshot → library。
   useEffect(() => {
+    void getAppInfo()
+      .then((info) => {
+        (globalThis as { __AURA_VERSION__?: string }).__AURA_VERSION__ = info.version;
+      })
+      .catch(() => undefined);
     ipc
       .getSettings()
       .then((s) =>
         useSettingsStore.getState().setAll({
           locale: s.language === 'en' ? 'en' : 'zh-CN',
+          updatesAutoCheck: s.updatesAutoCheck,
           uiScale: s.uiScale,
           reducedMotion: s.reducedMotion,
           loudnessEnabled: s.loudnessEnabled,
@@ -53,6 +61,24 @@ export default function App() {
     pull();
     const timer = window.setInterval(pull, 250);
     return () => window.clearInterval(timer);
+  }, []);
+
+  // M11 §8/§34：启动延迟自动检查更新（非阻塞；§35 无弹窗——状态仅在
+  // 设置页呈现；§44 零遥测；失败只影响更新功能 §36）。
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const st = useSettingsStore.getState();
+      if (!st.updatesAutoCheck) return;
+      void updateService
+        .checkForUpdate()
+        .then((state) => {
+          if (state.kind === 'available') {
+            useUiStore.getState().setNotice('update.availableNotice');
+          }
+        })
+        .catch(() => undefined);
+    }, 15_000);
+    return () => window.clearTimeout(timer);
   }, []);
 
   // UI scale（§107）：root font-size 真实影响布局/字号/间距。

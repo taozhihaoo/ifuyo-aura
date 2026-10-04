@@ -43,6 +43,7 @@ export interface AppError {
 export interface AppSettings {
   version: number;
   language: string;
+  updatesAutoCheck: boolean;
   uiScale: number;
   reducedMotion: boolean;
   loudnessEnabled: boolean;

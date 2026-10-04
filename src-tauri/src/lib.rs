@@ -17,6 +17,11 @@ pub fn run() {
         // §116/§118：单实例最先建立（先于 SMTC/托盘注册窗口期）。
         .plugin(integration::single_instance::plugin())
         .plugin(tauri_plugin_dialog::init())
+        // M11：官方 updater（§5/§6 架构：Update Service → Tauri Updater
+        // Adapter → 已签名 artifact；Rust 侧只注册，策略面在前端
+        // UpdateService + release 配置隔离 §77）。
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .on_window_event(|window, event| {
             // §97/§98/§174 默认策略：主窗 X = 正式退出（后台模式为 B 级，
             // 未实现——不得悄悄后台驻留）。

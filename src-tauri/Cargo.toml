@@ -18,6 +18,8 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 # §16/§237 最小 feature 面（SMTC WinRT：媒体会话 + 流 + 基础）。
 [target.'cfg(windows)'.dependencies]
