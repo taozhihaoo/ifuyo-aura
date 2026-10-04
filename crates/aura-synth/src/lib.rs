@@ -8,6 +8,7 @@
 //! environment 状态 → 逐位一致的输出（RNG 序列、manifest、scene_hash）。
 //! 世界逻辑只接受逻辑时间（LogicalTick，§30），不读取 wall-clock。
 
+pub mod genome;
 pub mod rng;
 pub mod seed;
 
