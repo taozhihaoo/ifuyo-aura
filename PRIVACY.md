@@ -78,3 +78,8 @@ Subsonic 等服务的凭据只能存入 **Windows Credential Manager**，不进�
 - 零遥测：无 analysis/model usage/embedding/cloud error telemetry（§236/§379 grep 零命中）。
 - 日志：不记录 raw PCM/完整向量/敏感路径（§237/§239——当前无任何运行时日志输出）。
 - diagnostics 仅本地（§238）：summary/状态经 IPC 按需查询（§315 command/query 而非 push）。
+## M9 中篇确认（Music Map）
+
+- 地图 = derived data，全部可由本地 M3/M8 数据重建；map.json 存 app_data/map/（不进音乐文件夹 §184），损坏即删除重建，不触碰 M3 库（§185）。
+- 节点元数据不落第二份持久化副本——渲染时从本地库现读；零遥测/零上传/零网络（构建、查询、渲染全链路）。
+- 视图状态（zoom/pan）存 webview localStorage（本机 UI 偏好），按 dataset hash 键控，不含个人信息。

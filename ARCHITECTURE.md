@@ -249,7 +249,12 @@ aura-analysis 增：fft / params / loudness / tempo / key_detect / spectral / mf
 ### Music Map 内核（M9 上篇）
 
 `crates/aura-map`（§13/§14：aura-analysis ↓ aura-map ↓ application ↓ IPC ↓ Renderer）：
-dataset（兼容合同/dataset hash）→ similarity（cosine/top-K）→ graph（kNN 对称化/校验）→ clustering（确定性 LPA）→ layout（PCA+grid 松弛）→ persistence（JSON+校验和）。查询 API：neighbors/viewport/cluster_members。
+dataset（兼容合同/dataset hash）→ similarity（cosine/top-K）→ graph（kNN 对称化/校验）→ clustering（确定性 LPA）→ layout（PCA+grid 松弛）→ persistence（JSON+校验和，含 kNN 边与算法版本）→ build（冻结 snapshot/generation/取消/Stale/增量-全量阈值）→ restore（hash 未变免重算）→ query（neighbors/viewport/cluster_members）。
+
+### Music Map 应用层与前端（M9 中篇）
+
+- **shell**（src-tauri/src/map_ipc.rs）：MapHost 宿主——惰性 restore、冻结采集（只取 M8 Completed 行 §239）、后台 build 线程（generation/去重/取消）、map.json 原子写（app_data/map/，derived data）；8 个 typed IPC 命令（status/overview/nodes/clusters/neighbors/track/request_map_build/cancel_map_build §228）。
+- **前端**（ui/src/features/map/）：mapStore（8 字段白名单 §145）+ MapDataModel（typed arrays + 空间 hash 非响应式 §146/§156）+ MusicMapView（单 Canvas2D：LOD 三级/视口 culling/标签优先级+碰撞/选中邻域边/按需渲染）+ MapDetailPanel（§124 字段 + Similar Tracks 真实 top-K §126）+ MapToolbar（搜索-to-focus §129–§132/过滤 chips §218/配色 legend §210/视图命令 §138/构建状态 §235–§236）。
 
 ## 构建与工程
 

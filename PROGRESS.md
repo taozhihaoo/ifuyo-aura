@@ -350,3 +350,21 @@ M8-B = PASS（真实运行时与合同；长 soak 如实声明未执行）
 ### Known Limitations
 - exact scan ≤25k 节点（ANN = B 级 §44–§46 未引入，超界明确报错）
 - 渲染/交互/搜索定位/LOD = 中篇；小时级 soak = 下篇
+## M9 中篇（2026-10-05）——渲染、交互、构建与确定性（§109–269）
+
+状态 = 功能全部落地（构建服务/恢复/IPC/前端渲染交互）；门禁与最终审计 = 下篇 §270–554
+
+### Implemented
+- aura-map/build.rs：build_map（冻结 snapshot→图→簇→布局→持久化；取消/generation 检查点；结束 hash 变→Stale §245/§246）、BuildGeneration、choose_build_kind（30% 阈值 §171/§172）、BuildKind
+- aura-map/persistence.rs：PersistedMap 增 kNN 边 + graph/cluster 算法版本；restore_map（§174 免重算；图校验/非有限检查 §189/§190）
+- shell map_ipc.rs：MapHost（惰性 restore、冻结采集只取 Completed §239、后台线程 §237/§238、§165 去重、§186 原子写）+ 8 命令（§228）；smoke 装配
+- 前端 ui/src/features/map/：mapStore（§145 白名单测试锁定）、mapData（typed arrays+spatial hash+稳定配色+相机纯函数 §146/§156/§113/§135）、MusicMapView（Canvas2D 单渲染器 §149；LOD §142；视口 culling §143；标签优先级+碰撞 §206–§209；选中邻域边 ≤30 §118/§119；hover 本地 §158；按需渲染零 idle §197/§198；reduced motion 即时 §133；当前播放双环 §225）、MapDetailPanel（§124–§128）、MapToolbar（搜索 focus §129–§132、过滤 chips+Clear §217–§219、配色 legend §210–§216、视图命令 §138、构建/重建/取消 §236/§164、状态行 §235）、MapPage（状态握手 §234、构建轮询、§180 视图恢复/§181 损坏回退）
+- i18n（zh-CN/en 各 47 个 map.* 新键）+ CSS
+
+### Tests
+- aura-map 40 lib 全绿（build 5/persistence 5/query 3/聚类/布局/图/dataset）；前端 vitest 75（新增 map 15：§145 形状/§113 配色/§216 过滤/§156 hash/§135/§137/§139 相机/§233 失效/§191 守卫）；tsc/eslint 绿
+
+### Known Limitations
+- 地图真实数据端到端（真实库构建+截图）= 下篇门禁； PERF 基准复核（阈值 30%）留待下篇
+- Source 配色模式未提供（M4 stream 不入 M3 库表——§215 为"可以"级）
+- search-to-focus 走 library_search IPC 与地图交集（≥2 万节点大库按视口补数，loadAll 上限 2 万）

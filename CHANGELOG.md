@@ -1,5 +1,14 @@
 # Changelog
 
+## M9 中篇（2026-10-05）
+
+### Added
+- Map 构建服务：冻结 snapshot/generation/取消/Stale 检测/增量-全量阈值（aura-map build.rs）
+- 免重算恢复：PersistedMap 携带 kNN 边与算法版本，dataset 未变直接 restore
+- shell map IPC：MapHost + 8 命令（status/overview/nodes/clusters/neighbors/track/build/cancel）；节点元数据现读 M3/M8（不持久化副本）
+- Music Map 前端：Canvas2D 渲染器（LOD/视口 culling/标签/选中邻域边/按需渲染）、详情面板（Similar Tracks 真实 top-K）、工具栏（搜索 focus/过滤 chips/配色 legend/视图命令）、mapStore 白名单 + 非响应式数据模型（空间 hash）
+- 文档：D-116..D-119、ARCHITECTURE/PROGRESS/SECURITY/PRIVACY
+
 ## M8 中篇（2026-10-05）
 
 ### Added

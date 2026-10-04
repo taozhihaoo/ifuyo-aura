@@ -462,3 +462,9 @@ AnalysisRepository trait（save/load/mark_stale/list_pending）+ InMemory 实现
 - **D-113 聚类**：确定性 label propagation（节点 id 升序异步更新、计数最大+标签最小 tie-break、收敛即停）；canonical 重编号 = size DESC → min track_id ASC（§101/§102）；孤立节点自成单簇。Cluster 不伪造语义标签（§104）。
 - **D-114 布局**：确定性 PCA 初始化（幂迭代 24 轮、无随机起点、符号规范=最大绝对载荷为正 §74/§75）→ grid 斥力（半径 0.12、32×32 bins §77）+ 边引力（similarity 加权）→ [-1,1]² clamp；预算 150 迭代/25k 节点（§78）。增量 = neighbor_centroid 初始化 + 局部松弛（§82–§85）。
 - **D-115 持久化**：JSON + BTreeMap 位置（HashMap 序列化顺序不稳定导致校验和抖动——测试捕获）；payload 校验和（checksum 归零 FNV）；validate = format/map/analysis 版本 + dataset hash + checksum 全过（§67/§335–§340），任一不符 → 丢弃重建（derived data §65，不碰 M3）。
+## D-116..D-119 Music Map 构建/渲染/交互（2026-10-05，M9 中篇）
+
+- **D-116 构建服务**（build.rs）：请求时冻结 dataset（hash 锁定 §243–§244）；结束时 hash 已变 → Stale 而非 Ready（§245/§246）；generation（AtomicU64）保证旧 build 迟到不覆盖新 build（§166/§167）；相同 dataset hash 的活跃 build 去重（§165）；取消复用 M8 CancelToken；BuildKind 阈值 30%（§171/§172 显式常量起点，benchmark 复核留待 PERF）。
+- **D-117 免重算恢复**：PersistedMap 增加 kNN 边 + graph/cluster 算法版本字段；dataset hash 未变 → restore_map 直接重建快照（图校验 + 非有限位置/簇统计检查，§174/§189/§190），布局/图/聚类零重算；失效/损坏 → 删除重建（derived data §65/§187，不碰 M3 §185）。
+- **D-118 shell map IPC**（map_ipc.rs MapHost）：节点元数据（title/artist/bpm/key/energy/brightness/loudness）不持久化——每次快照从 M3/M8 数据库现读（M3 是唯一真相，避免第二份元数据副本）；只取 Completed 行的 embedding（§239 绝不用未完成分析造假图）；持久化 temp+rename 原子写（§186）；惰性 restore 每运行只评估一次；查询命令 = status/overview/nodes（视口批量 §229/§230）/clusters/neighbors（真选中才 IPC §159）/track/build/cancel。
+- **D-119 前端架构**：mapStore 只存 8 个白名单字段（§145，测试锁定形状）；MapDataModel = 非响应式 typed arrays + 空间 hash（§146/§147/§156，hit testing 本地零 IPC §158）；单 Canvas2D 渲染器（§149；§194 fallback 语义由 Canvas2D 天然满足）；按需渲染无 idle rAF（§197/§198）；边仅选中邻域 ≤30 条（§118/§119）；配色全部稳定映射——簇=黄金角散列色板、key=12 pitch class 固定色相、energy/brightness=冷→暖标量、缺失=中性灰（§113/§213/§216）；视图持久化 localStorage 按 dataset hash 键控（§180/§181——UI 域状态不入 Rust settings；损坏/非有限 → 缺省 fit）。

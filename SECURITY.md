@@ -131,3 +131,8 @@ api_key/password/token/client_secret/Authorization/Cookie/BEGIN PRIVATE KEY 全�
 - DB 失败语义（§247–§250）：SQLite 事务回滚；分析失败不破坏 M3 tracks/playlists/stats/artwork；Running→Pending 重启恢复（§211）。
 - 无网络（§328 offline audit PASS）：分析全链路零网络路径；模型=自有代码无下载（§204）。
 - BLOB 限制：嵌入 BLOB 读回 dim×4 校验（§29），越界拒绝。
+### Music Map（M9 中篇 §240–§249 精神）
+- Input validation：TrackId 全部参数化查询（库内存在性）；视口/limit 服务端钳制（limit ≤2 万）；非法/非有限视口回退全图缺省（不 crash §192）。
+- 前端 validation-first：节点/状态/邻居 DTO 逐字段守卫；非有限位置节点丢弃（§190/§191 不让 renderer NaN）。
+- 构建线程隔离：后台线程 panic 不落 snapshot（generation 检查）；取消幂等。
+- 无网络：地图全链路（构建/查询/渲染）零网络路径。
