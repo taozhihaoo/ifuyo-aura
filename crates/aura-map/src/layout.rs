@@ -43,7 +43,7 @@ pub struct LayoutResult {
 /// # Errors
 /// dataset 空 → [`String`] 描述（简化错误面；管线层映射）。
 pub fn compute_layout(ds: &MapDataset, g: &MapGraph) -> Result<LayoutResult, String> {
-    layout_with_options(ds, g, MAX_ITERATIONS)
+    layout_seeded(ds, g, None, MAX_ITERATIONS)
 }
 
 /// 增量/受限布局（§82/§84）：复用初始位置，仅松弛。
@@ -52,13 +52,37 @@ pub fn layout_with_options(
     g: &MapGraph,
     max_iterations: usize,
 ) -> Result<LayoutResult, String> {
+    layout_seeded(ds, g, None, max_iterations)
+}
+
+/// §82–§85/§277/§278：种子布局——已有节点从 `seeds` 起步（增量加轨/
+/// 删轨场景保持既有空间记忆 §177），新节点走 PCA 初始；迭代数由调用
+/// 方预算（增量建议远小于全量）。无种子节点用 PCA 初始化。
+///
+/// # Errors
+/// dataset 空 / 超预算 → [`String`]。
+pub fn layout_seeded(
+    ds: &MapDataset,
+    g: &MapGraph,
+    seeds: Option<&BTreeMap<i64, MapPosition>>,
+    max_iterations: usize,
+) -> Result<LayoutResult, String> {
     if ds.entries.is_empty() {
         return Err("empty dataset".to_string());
     }
     if ds.entries.len() > MAX_NODES {
         return Err(format!("dataset exceeds max nodes {}", MAX_NODES));
     }
-    let mut positions = pca_init(ds);
+    let pca = pca_init(ds);
+    let mut positions: Vec<(f32, f32)> = ds
+        .entries
+        .iter()
+        .enumerate()
+        .map(|(i, e)| match seeds.and_then(|m| m.get(&e.track_id)) {
+            Some(p) => (p.x, p.y),
+            None => pca[i],
+        })
+        .collect();
 
     // 图感知松弛（§72/§76/§77：grid 斥力 + 边引力）。
     let index: HashMap<i64, usize> = ds
@@ -76,8 +100,17 @@ pub fn layout_with_options(
     }
 
     let n = positions.len();
-    for iter in 0..max_iterations.min(MAX_ITERATIONS) {
-        let _ = iter;
+    // §82–§85/§277/§278：种子节点冻结（已有节点位置保持——空间记忆
+    // §177），只有新节点参与松弛；冻结节点仍作为斥力/引力锚点。
+    let frozen: Vec<bool> = match seeds {
+        Some(m) => ds
+            .entries
+            .iter()
+            .map(|e| m.contains_key(&e.track_id))
+            .collect(),
+        None => vec![false; n],
+    };
+    for _iter in 0..max_iterations.min(MAX_ITERATIONS) {
         // 斥力：grid 邻域（§77）。
         let mut grid: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
         for (i, p) in positions.iter().enumerate() {
@@ -98,14 +131,17 @@ pub fn layout_with_options(
                             }
                             let q = positions[j];
                             let (vx, vy) = (p.0 - q.0, p.1 - q.1);
-                            let d2 = vx * vx + vy * vy + 1e-6;
-                            if d2 < REPULSION_RADIUS * REPULSION_RADIUS {
+                            // §396/§397：重叠分离用原始距离判定（加 epsilon
+                            // 的 d2 会让完全重合走不进退化分支——死代码）。
+                            let d2raw = vx * vx + vy * vy;
+                            let d2 = d2raw + 1e-6;
+                            if d2raw < REPULSION_RADIUS * REPULSION_RADIUS {
                                 let d = d2.sqrt();
                                 let f = (REPULSION_RADIUS - d) / REPULSION_RADIUS * 0.05;
-                                let (fx, fy) = if d > 1e-5 {
+                                let (fx, fy) = if d2raw > 1e-12 {
                                     (vx / d * f, vy / d * f)
                                 } else {
-                                    // 确定性抖动（§74 无随机：用 index 派生）。
+                                    // 确定性抖动（§74/§399 无随机：index 派生）。
                                     let a = i as f32 * 2.399;
                                     ((a.cos()) * 0.01, (a.sin()) * 0.01)
                                 };
@@ -132,8 +168,11 @@ pub fn layout_with_options(
                 }
             }
         }
-        // 应用 + 归一化边界 clamp。
-        for (p, f) in positions.iter_mut().zip(&force) {
+        // 应用 + 归一化边界 clamp（冻结节点跳过）。
+        for (i, (p, f)) in positions.iter_mut().zip(&force).enumerate() {
+            if frozen[i] {
+                continue;
+            }
             p.0 = (p.0 + f.0).clamp(-1.0, 1.0);
             p.1 = (p.1 + f.1).clamp(-1.0, 1.0);
         }

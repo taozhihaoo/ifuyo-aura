@@ -658,8 +658,15 @@ pub fn request_map_build(state: State<'_, AppState>) -> CmdResult<u64> {
         .name("map-build".into())
         .spawn(move || {
             // §238：后台低优先（独立线程；audio 线程不受影响）。
-            let out =
-                aura_map::build_map(&ds, &hash, BuildParams::default(), build_id, &gen, &cancel);
+            let out = aura_map::build_map(
+                &ds,
+                &hash,
+                BuildParams::default(),
+                build_id,
+                &gen,
+                &cancel,
+                None,
+            );
             let mut inner = match inner_arc.lock() {
                 Ok(i) => i,
                 Err(_) => return,

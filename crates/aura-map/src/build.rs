@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use crate::clustering::{attach_spatial_stats, detect_clusters};
 use crate::dataset::{MapDataset, MapEntry};
 use crate::graph::build_knn_graph;
-use crate::layout::compute_layout;
 use crate::persistence::{persist, PersistedMap};
 
 /// §161 构建状态。
@@ -113,7 +112,8 @@ pub fn freeze_snapshot(entries: Vec<MapEntry>) -> (MapDataset, String) {
 /// 执行完整 build（同步；worker 线程在 shell 侧包裹，§80/§241）。
 ///
 /// `snapshot_hash` 为 build 开始时冻结的 hash；结束时若 dataset hash
-/// 已变 → status = Stale（§245/§246 不直接 Ready）。
+/// 已变 → status = Stale（§245/§246 不直接 Ready）。`seeds` 提供上一
+/// 代位置（§82–§85/§176/§177：增量重建时保持空间记忆）。
 ///
 /// # Errors
 /// dataset 空 → [`MapBuildError::Empty`]；取消 → Cancelled。
@@ -124,6 +124,7 @@ pub fn build_map(
     build_id: u64,
     gen: &BuildGeneration,
     cancel: &aura_analysis::pipeline::CancelToken,
+    seeds: Option<&std::collections::BTreeMap<i64, crate::layout::MapPosition>>,
 ) -> Result<MapBuildOutput, MapBuildError> {
     if cancel.is_cancelled() {
         return Err(MapBuildError::Cancelled);
@@ -134,7 +135,8 @@ pub fn build_map(
         return Err(MapBuildError::Cancelled);
     }
     let mut clusters = detect_clusters(&g, 20).clusters;
-    let layout = compute_layout(snapshot, &g).map_err(MapBuildError::Feature)?;
+    let layout = crate::layout::layout_seeded(snapshot, &g, seeds, params.max_iterations)
+        .map_err(MapBuildError::Feature)?;
     attach_spatial_stats(&mut clusters, &layout.positions);
     let persisted = persist(snapshot, &g, &clusters, &layout.positions);
 
@@ -221,6 +223,7 @@ mod tests {
             id,
             &gen,
             &CancelToken::new(),
+            None,
         )
         .unwrap();
         assert_eq!(out.status, MapBuildStatus::Ready, "§189");
@@ -241,6 +244,7 @@ mod tests {
             id,
             &gen,
             &CancelToken::new(),
+            None,
         )
         .unwrap();
         assert_eq!(out.status, MapBuildStatus::Stale);
@@ -254,7 +258,7 @@ mod tests {
         let cancel = aura_analysis::pipeline::CancelToken::new();
         cancel.cancel();
         assert_eq!(
-            build_map(&ds, &hash, BuildParams::default(), id, &gen, &cancel).unwrap_err(),
+            build_map(&ds, &hash, BuildParams::default(), id, &gen, &cancel, None).unwrap_err(),
             MapBuildError::Cancelled
         );
     }
