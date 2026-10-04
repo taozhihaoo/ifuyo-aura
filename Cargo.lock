@@ -181,6 +181,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "aura-map"
+version = "0.1.0"
+dependencies = [
+ "aura-analysis",
+ "serde",
+ "serde_json",
+ "siphasher",
+]
+
+[[package]]
 name = "aura-shell"
 version = "0.1.0"
 dependencies = [
