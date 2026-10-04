@@ -66,6 +66,18 @@ pub enum RestoreError {
     Corrupt,
 }
 
+impl std::fmt::Display for RestoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedSnapshot(v) => write!(f, "snapshot version {v} unsupported"),
+            Self::UnsupportedGeneration(v) => {
+                write!(f, "world generation version {v} unavailable")
+            }
+            Self::Corrupt => write!(f, "snapshot corrupt (world identity mismatch)"),
+        }
+    }
+}
+
 impl DreamscapeSnapshot {
     /// 从会话状态捕获（DTO 构造；字段即快照结构，不拆参数对象）。
     #[allow(clippy::too_many_arguments)]

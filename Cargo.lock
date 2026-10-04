@@ -179,6 +179,7 @@ dependencies = [
  "aura-core",
  "aura-library",
  "aura-sources",
+ "aura-synth",
  "base64 0.22.1",
  "rusqlite",
  "serde",
@@ -207,6 +208,11 @@ dependencies = [
 [[package]]
 name = "aura-synth"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "siphasher",
+]
 
 [[package]]
 name = "aura-testkit"
