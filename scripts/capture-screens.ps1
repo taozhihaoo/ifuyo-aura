@@ -102,12 +102,25 @@ function Focus-Main([object]$Proc) {
 }
 
 # --- 主窗口流程 ---
+# 导航统一走「剪贴板 + palette」：标题栏合成点击在本环境不达 webview
+# （历史 05/02 号截图即因此从未真正导航）；直接打字会被中文 IME 拦截
+# （D-078）。剪贴板粘贴绕过 IME；无输入组合时 Enter 直达。
+function Navigate-Palette([string]$Query) {
+    Focus-Main $proc
+    Set-Clipboard -Value $Query
+    $ws.SendKeys("^k")
+    Start-Sleep -Milliseconds 900
+    $ws.SendKeys("^v")
+    Start-Sleep -Milliseconds 700
+    $ws.SendKeys("{ENTER}")
+    Start-Sleep -Milliseconds 2500
+}
+
 $proc = Start-Process -FilePath $Exe -PassThru
 try {
     Capture-Window "ifuyo Aura" (Join-Path $OutDir "01-now-playing.png")
 
-    Focus-Main $proc
-    Click-At $proc.MainWindowHandle 193 20            # 音乐库（§262 按钮点击替代 IME 敏感的 SendKeys）
+    Navigate-Palette "library"
     Capture-Window "ifuyo Aura" (Join-Path $OutDir "02-library.png")
 
     Focus-Main $proc; $ws.SendKeys("^k")            # Ctrl+K → Palette
@@ -118,21 +131,19 @@ try {
     Capture-Window "ifuyo Aura" (Join-Path $OutDir "07-queue.png")
     Focus-Main $proc; $ws.SendKeys("{ESC}")
 
-    Focus-Main $proc
-    Click-At $proc.MainWindowHandle 279 20            # Map
+    Navigate-Palette "map"
     Capture-Window "ifuyo Aura" (Join-Path $OutDir "05-map-shell.png")
 
-    # 梦境导航按钮（M7；等待生成 + 首帧）。
-    Focus-Main $proc
-    Click-At $proc.MainWindowHandle 334 20
-    Start-Sleep -Milliseconds 5000
+    # 梦境（等待生成 + 首帧）。
+    Navigate-Palette "dreamscape"
+    Start-Sleep -Milliseconds 4000
     Capture-Window "ifuyo Aura" (Join-Path $OutDir "10-dreamscape-default.png")
 
     # 环境推进数逻辑时后再截（§320 12-environment；光/雾经本地插值渐变）。
     Start-Sleep -Seconds 6
     Capture-Window "ifuyo Aura" (Join-Path $OutDir "12-dreamscape-environment.png")
 
-    # Ctrl+M → Mini（palette 输入会被中文 IME 拦截，D-078）。
+    # Ctrl+M → Mini。
     Focus-Main $proc; $ws.SendKeys("^m")
     Start-Sleep -Milliseconds 3000
     Capture-Small-Window (Join-Path $OutDir "04-mini-player.png")
