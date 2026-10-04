@@ -368,3 +368,25 @@ M8-B = PASS（真实运行时与合同；长 soak 如实声明未执行）
 - 地图真实数据端到端（真实库构建+截图）= 下篇门禁； PERF 基准复核（阈值 30%）留待下篇
 - Source 配色模式未提供（M4 stream 不入 M3 库表——§215 为"可以"级）
 - search-to-focus 走 library_search IPC 与地图交集（≥2 万节点大库按视口补数，loadAll 上限 2 万）
+## M9 下篇（2026-10-05）——测试、性能与发布门禁（§270–554）
+
+**M9-A = PASS**（§544 四十五项门槛全部满足；见 Final Audit）
+**M9-B = NOT COMPLETED**（ANN/增量 kNN/高级聚类/局部化布局/簇标签/密度层/专辑封面节点/书签/保存视图/大库优化 = B 级，未混入 A）
+
+### Implemented（下篇）
+- 门禁测试矩阵（tests/m9_gate.rs，12 项）：相似度 §389/kNN K=1,3,5+tie §390/图 §391/簇 §392/布局 0–1000+病理 §393–394/相同向量 §395/版本失效 §279–282/损坏 §283–285/构建生命周期 §286–289/build-cancel-reopen 循环 §482/查询语义 §298/内存核算 §291
+- 增量布局：layout_seeded 种子冻结语义（§82/§277/§278 已有节点位置精确保持）+ build_map seeds 参数；**修复真实缺陷**——相同向量重叠分离死分支（§396/§397 epsilon 判定）
+- shell：choose_build_kind 30% 阈值增量接线（旧位置作种子、迭代 40）+ 真实 build_duration_ms（§471–§473）+ MapHost 损坏 map.json 清除测试（§285）
+- 前端：键盘 +/-/F/Esc/Enter（§317/§315）、双击播放（§314）、dpr cap（§326）、LibrarySearchRunner 搜索竞态守卫（§345）+4 测试、Open on Map（§311）/Open in Library（§312）、palette 命令 Rebuild/Fit/Reset（§411）、视图持久化提取+损坏测试（§181/§331）
+- PERF（release 实测，PERF.md M9 节）：1k/4k/10k 全链分段（kNN 9.7s@10k、布局 9.1s、恢复 34ms、top-k 1.13ms）+ 内存账面 + >25k DatasetTooLarge 显式拒绝（§290 B 级边界）
+- 文档：SOURCES M9 来源表（siphasher 核验 §381）、THIRD_PARTY、SECURITY §549 清单、PRIVACY §547、README §546、DECISIONS D-120..D-122、ARCHITECTURE
+- 截图管线修复：标题栏合成点击在本环境不达 webview（历史 02/05 号截图从未真正导航）；改剪贴板+palette 导航；05 号首次截到真实 Map 空态（§400/§529）
+
+### Gates（全绿）
+fmt/clippy -D warnings/workspace **598**×2 轮/deny 四项/ui tsc+eslint+vitest **79**/smoke/tauri build+NSIS 8.48MiB/产物独立加载验证
+
+### Known Limitations
+- **真实数据全图截图 BLOCKED**：M8 未暴露分析触发 IPC（§404/§405 以实际代码为准，不伪造入口）→ 图数据无法经 UI 生成；截图提供真实空态
+- 数小时 soak（§481/§483/§487）未执行（远程环境限制，如实声明）；以 20 轮 build/cancel/reopen + 竞态守卫测试替代核心语义
+- 浏览器级 FPS/GPU 内存（§299）未测——Canvas2D 按需渲染无持续帧循环，指标不适用（如实记录）
+- M9-B 全部 NOT COMPLETED（§545 不混入 A）
