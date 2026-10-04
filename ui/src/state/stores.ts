@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import type { Locale } from '../i18n';
 
-export type ViewId = 'now-playing' | 'library' | 'map';
+export type ViewId = 'now-playing' | 'library' | 'map' | 'dreamscape';
 
 interface UiState {
   view: ViewId;
@@ -14,6 +14,9 @@ interface UiState {
   sidebarCollapsed: boolean;
   /** 全局用户反馈（i18n key，§187/§189；null = 无）。 */
   notice: string | null;
+  /** §269：Zustand 只存 open/status；manifest 走 renderer ref（§270）。 */
+  dreamscapeOpen: boolean;
+  dreamscapeStatus: 'idle' | 'loading' | 'ready' | 'fallback';
   setView: (v: ViewId) => void;
   setPaletteOpen: (open: boolean) => void;
   setQueueOpen: (open: boolean) => void;
@@ -21,6 +24,8 @@ interface UiState {
   setMiniPlayerOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   setNotice: (key: string | null) => void;
+  setDreamscapeOpen: (open: boolean) => void;
+  setDreamscapeStatus: (s: 'idle' | 'loading' | 'ready' | 'fallback') => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -31,6 +36,8 @@ export const useUiStore = create<UiState>((set) => ({
   miniPlayerOpen: false,
   sidebarCollapsed: false,
   notice: null,
+  dreamscapeOpen: false,
+  dreamscapeStatus: 'idle',
   setView: (view) => set({ view }),
   setPaletteOpen: (commandPaletteOpen) => set({ commandPaletteOpen }),
   setQueueOpen: (queueOpen) => set({ queueOpen }),
@@ -38,6 +45,8 @@ export const useUiStore = create<UiState>((set) => ({
   setMiniPlayerOpen: (miniPlayerOpen) => set({ miniPlayerOpen }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setNotice: (notice) => set({ notice }),
+  setDreamscapeOpen: (dreamscapeOpen) => set({ dreamscapeOpen }),
+  setDreamscapeStatus: (dreamscapeStatus) => set({ dreamscapeStatus }),
 }));
 
 /** domain state：播放（来自 Rust 快照，§8）。 */
