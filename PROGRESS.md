@@ -411,3 +411,24 @@ fmt/clippy -D warnings/workspace **598**×2 轮/deny 四项/ui tsc+eslint+vitest
 - **SMTC v1 无 position-request 通道**（D-125，以实际 API 为准 §27）——seek 面由应用内 UI 承担；SMTC 侧无可达 seek 事件
 - 真实 SMTC 面板/托盘菜单的 GUI 交互验证（§191/§192 的桌面级 soak）= M10 下篇；本篇以确定性 mock+运行时健康验证为准
 - B 级全部未实现（全局自定义快捷键/SMTC seek 增减/任务栏集成/托盘子菜单/后台模式设置等 §2）
+## M10 下篇（2026-10-05）——测试、原生 QA 与发布门禁（§243–411）
+
+**M10-A = PASS**（§401 五十项门槛；两项如实标注，见 Known Limitations）
+**M10-B = NOT COMPLETED**（§402：全局自定义快捷键/高级 SMTC/任务栏集成/高级托盘/启动策略——未实现，未混入 A）
+
+### Implemented（下篇）
+- **纯逻辑测试矩阵**（§251–§267，26 shell lib 测试）：状态映射 §253（playing/paused/stopped/error/buffering/idle）、seek 边界 §254（zero/inside/exact/beyond/NaN/inf/unknown/non-seekable）、时间换算 §255（44.1/48/96k；0/1 帧；分钟/小时/超长不溢出）、按钮启用 §256、revision 序列 §257、track/metadata 竞态 §258/§260、artwork 门 §259、tray 文案/映射/菜单推导/本地化 §261–§263、单实例 argv 不路由 §264（tray_action/apply_menu_state/second_instance_action 纯函数化）
+- **原生验证脚本**（scripts/m10-native-verify.ps1，tauri build 产物）：M10-SINGLE-01..03（B 退出 102–120ms/进程数 1）、**M10-SMTC-01（系统 GSMTC 会话管理器列出 aura-shell.exe——SMTC 注册的系统级证据）**、M10-CRASH-01（强杀重启自恢复）、**M10-ZOMBIE-01 PASS（WM_CLOSE 正式退出后 0 残留进程 §355/§361）**
+- **PERF M10 节**（§291–§294/§398）：单实例 102–120ms、启动 421–606ms；WinRT 调用级/长时内存如实 NOT MEASURED
+- 文档：README 功能矩阵（§397/§400 不夸大：Installer/Updater/Steam=Future）、CHANGELOG、SECURITY grep §370 零命中
+
+### Gates（全绿）
+fmt/clippy --workspace -D warnings/workspace **620**（一轮 aura-sources 网络压力偶发超时，重跑 7 连绿——已记录的既有 flake）/deny 四项/ui tsc+eslint+vitest **79**/smoke 389ms/tauri build+NSIS 8.93MiB/原生验证全证据行
+
+### Known Limitations（§399/§400/§343 如实）
+- **SMTC 按钮回环的状态读取 BLOCKED**：PS5.1 WinRT 投影无法解包 GSMTC 会话属性（会话注册本身已系统级验证）——人工按媒体键目测面板 = 手动 QA 清单
+- **SMTC v1 无 position-request 通道**（D-125）——面板无用户 seek 面；seek 验证逻辑保留给应用内入口
+- 数小时 desktop soak（§353）未执行（环境限制如实声明）；以 20 轮 build/cancel/reopen + 原生验证脚本替代核心语义
+- Windows 版本矩阵（§337）：仅在本机 Windows 11 实测；Windows 10 未测——如实声明
+- DPI/多显示器/主题矩阵（§338–§340）：未逐项实测——如实声明；托盘图标为深浅主题通用设计
+- Tray 重连（§283）：Tauri tray 创建失败仅降级+diagnostics，不做后台重试（§365/§367 无忙修复循环）——limitation 如实记录
