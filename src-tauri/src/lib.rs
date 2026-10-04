@@ -6,6 +6,7 @@ use tauri::Manager;
 pub mod analysis_ipc;
 pub mod audio;
 pub mod dreamscape;
+pub mod integration;
 pub mod ipc;
 pub mod library;
 pub mod map_ipc;
