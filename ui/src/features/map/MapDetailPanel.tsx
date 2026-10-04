@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import type { MapNeighborDto, MapNodeDto } from '../../ipc/map';
 import { ipc } from '../../ipc/client';
 import { useArtwork } from '../../components/Artwork';
+import { useLibraryStore, useUiStore } from '../../state/stores';
 import { useTranslation } from '../../i18n/react';
 import type { MapDataModel } from './mapData';
 import { useMapStore } from './mapStore';
@@ -101,6 +102,19 @@ export function MapDetailPanel({ model, trackId, onFocus }: MapDetailPanelProps)
         </button>
         <button className="ghost-btn" onClick={() => onFocus(detail.trackId)}>
           {t('map.focusThis')}
+        </button>
+        {/* §312：Map→Library，真实 TrackId。 */}
+        <button
+          className="ghost-btn"
+          onClick={() => {
+            useLibraryStore.getState().setFocusTrack({
+              id: detail.trackId,
+              title: detail.title ?? `#${detail.trackId}`,
+            });
+            useUiStore.getState().setView('library');
+          }}
+        >
+          {t('map.openInLibrary')}
         </button>
       </div>
       <h4 className="map-neighbors-title" title={t('map.similarityMetric')}>

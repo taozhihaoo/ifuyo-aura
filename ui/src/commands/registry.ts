@@ -29,6 +29,9 @@ export interface CommandContext {
   regenerateDreamscape: () => void;
   copyDreamscapeSeed: () => void;
   saveDreamscapeSnapshot: () => void;
+  rebuildMap: () => void;
+  fitMap: () => void;
+  resetMapView: () => void;
 }
 
 /** 命令表：声明式注册（§99），无 if/else 链。 */
@@ -52,6 +55,11 @@ export function buildCommands(ctx: CommandContext, t: (key: string) => string): 
     { id: 'dreamscape.regenerate', titleKey: 'dreamscape.regenerate', keywords: 'dreamscape regenerate new world', execute: ctx.regenerateDreamscape },
     { id: 'dreamscape.copy-seed', titleKey: 'dreamscape.copySeed', keywords: 'dreamscape seed copy', execute: ctx.copyDreamscapeSeed },
     { id: 'dreamscape.save-snapshot', titleKey: 'dreamscape.saveSnapshot', keywords: 'dreamscape snapshot save', execute: ctx.saveDreamscapeSnapshot },
+    // §411：Map 命令（少量核心；§412 不做命令爆炸；Open Music Map =
+    // nav.map 已存在）。
+    { id: 'map.rebuild', titleKey: 'map.rebuild', keywords: 'map rebuild music graph', execute: ctx.rebuildMap },
+    { id: 'map.fit', titleKey: 'map.fitLibrary', keywords: 'map fit library view', execute: ctx.fitMap },
+    { id: 'map.reset', titleKey: 'map.resetView', keywords: 'map reset view camera', execute: ctx.resetMapView },
   ].map((c) => ({ ...c, title: t(c.titleKey) }));
 }
 

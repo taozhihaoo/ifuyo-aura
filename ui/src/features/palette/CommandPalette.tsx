@@ -4,6 +4,7 @@ import { useUiStore, usePlayerStore, useSettingsStore } from '../../state/stores
 import { ipc } from '../../ipc/client';
 import { errorToI18nKey } from '../../ipc/errors';
 import { buildCommands, matchCommand, type Command } from '../../commands/registry';
+import { requestMapCommand } from '../map/mapBus';
 import { useTranslation } from '../../i18n/react';
 import { playNext, playPrevious } from '../queue/QueueDrawer';
 
@@ -108,6 +109,18 @@ export function CommandPalette() {
           .dreamscapeSaveSnapshot()
           .then(() => setNotice('dreamscape.snapshotSaved'))
           .catch((e) => setNotice(errorToI18nKey(e)));
+      },
+      rebuildMap: () => {
+        setView('map');
+        void ipc.requestMapBuild().catch((e) => setNotice(errorToI18nKey(e)));
+      },
+      fitMap: () => {
+        setView('map');
+        requestMapCommand('fit');
+      },
+      resetMapView: () => {
+        setView('map');
+        requestMapCommand('reset');
       },
     }),
     [setView, setQueueOpen, setSettingsOpen, setMiniPlayerOpen, snapshot?.state],

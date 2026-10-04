@@ -1,13 +1,14 @@
-// Music Map 页面（M9 中篇）：状态握手（§234）→ 数据按需加载 →
+// Music Map 页面（M9 中/下篇）：状态握手（§234）→ 数据按需加载 →
 // 渲染器/工具栏/详情面板装配。构建期间轮询 status（§161 真实状态；
-// 空闲 0 轮询 §198）。§180：同 dataset 恢复上次 zoom/pan（localStorage，
-// 损坏/非有限 → 缺省 fit §181）。
+// 空闲 0 轮询 §198）。§180：同 dataset 恢复上次 zoom/pan（§181 损坏/
+// 非有限 → 缺省 fit）。§317：键盘控制 +/-/F/Esc/Enter（§315 可达性）。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ipc } from '../../ipc/client';
 import type { MapOverviewDto, MapStatusDto } from '../../ipc/map';
 import { usePlayerStore } from '../../state/stores';
 import { useTranslation } from '../../i18n/react';
-import { clampCamera, MapDataModel } from './mapData';
+import { MapDataModel, loadSavedView, saveView } from './mapData';
+import { consumeMapCommand, consumeMapFocus } from './mapBus';
 import { useMapStore } from './mapStore';
 import { MapDetailPanel } from './MapDetailPanel';
 import { MapToolbar } from './MapToolbar';
@@ -15,49 +16,6 @@ import { MusicMapView, type MapViewCommand } from './MusicMapView';
 
 /** 模块级单例：非响应式 renderer state（§146，不进 React 树）。 */
 const mapModel = new MapDataModel();
-
-const VIEW_KEY = 'aura.map.view';
-
-interface SavedView {
-  hash: string;
-  zoom: number;
-  panX: number;
-  panY: number;
-}
-
-function loadSavedView(hash: string): { zoom: number; panX: number; panY: number } | null {
-  try {
-    const raw = window.localStorage.getItem(VIEW_KEY);
-    if (raw === null) return null;
-    const v = JSON.parse(raw) as Partial<SavedView>;
-    if (
-      v.hash !== hash ||
-      typeof v.zoom !== 'number' ||
-      typeof v.panX !== 'number' ||
-      typeof v.panY !== 'number' ||
-      !Number.isFinite(v.zoom) ||
-      !Number.isFinite(v.panX) ||
-      !Number.isFinite(v.panY)
-    ) {
-      return null; // §181 无效 → 缺省视图，不 crash
-    }
-    const cam = clampCamera({ zoom: v.zoom, panX: v.panX, panY: v.panY });
-    return { zoom: cam.zoom, panX: cam.panX, panY: cam.panY };
-  } catch {
-    return null;
-  }
-}
-
-function saveView(hash: string | null): void {
-  if (hash === null) return;
-  try {
-    const st = useMapStore.getState();
-    const v: SavedView = { hash, zoom: st.zoom, panX: st.pan.x, panY: st.pan.y };
-    window.localStorage.setItem(VIEW_KEY, JSON.stringify(v));
-  } catch {
-    /* 忽略（隐私模式等） */
-  }
-}
 
 export function MapPage() {
   const { t } = useTranslation();
@@ -125,6 +83,46 @@ export function MapPage() {
       unsub();
     };
   }, [overview?.datasetHash]);
+
+  // §311/§411：消费来自 Library/palette 的焦点与命令（数据就绪后）。
+  useEffect(() => {
+    if (overview === null) return;
+    const f = consumeMapFocus();
+    if (f !== null) focusTrack(f);
+    const c = consumeMapCommand();
+    if (c !== null) issueCommand(c);
+  }, [overview, focusTrack, issueCommand]);
+
+  // §317 键盘控制：+/- 缩放、F fit、Esc 清除选择、Enter 播放选中
+  // （输入中不拦截；不与全局 Ctrl 组合冲突；§315 键盘可达性基线）。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        return;
+      }
+      const st = useMapStore.getState();
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        issueCommand('zoomIn');
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        issueCommand('zoomOut');
+      } else if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        issueCommand('fit');
+      } else if (e.key === 'Escape') {
+        st.selectTrack(null);
+        st.selectCluster(null);
+      } else if (e.key === 'Enter' && st.selectedTrackId !== null) {
+        void ipc.playTrack(st.selectedTrackId).catch(() => undefined); // §314 单曲语义
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [issueCommand]);
 
   // §225 当前播放 TrackId：M6 快照只给 path → 一次 trackIdByPath 解析
   // （§226 只要身份）。

@@ -5,9 +5,12 @@
 // 即时（§133）；当前播放静态双环（§225，无持续粒子 §200）。
 import { useCallback, useEffect, useRef } from 'react';
 import type { MapNeighborDto } from '../../ipc/map';
+import { ipc } from '../../ipc/client';
 import { useSettingsStore } from '../../state/stores';
 import {
+  CLUSTER_LOD_ZOOM,
   CLUSTER_PALETTE,
+  LABEL_LOD_ZOOM,
   clampCamera,
   fitCamera,
   nodeColor,
@@ -20,7 +23,7 @@ import type { MapDataModel } from './mapData';
 import { useMapStore } from './mapStore';
 
 export interface MapViewCommand {
-  kind: 'reset' | 'fit' | 'focusSelected' | 'focusCluster';
+  kind: 'reset' | 'fit' | 'focusSelected' | 'focusCluster' | 'zoomIn' | 'zoomOut';
   nonce: number;
 }
 
@@ -34,9 +37,6 @@ interface MusicMapViewProps {
   onHoverTrack: (id: number | null) => void;
 }
 
-/** LOD 阈值（§142）：far → 簇晕；mid → 节点；near → 标签。 */
-const CLUSTER_LOD_ZOOM = 0.7;
-const LABEL_LOD_ZOOM = 2.0;
 /** §119 边预算：只画选中节点邻域，上限 30 条。 */
 const MAX_VISIBLE_EDGES = 30;
 const NEIGHBOR_FETCH_K = 12;
@@ -136,7 +136,8 @@ export function MusicMapView({
     if (!canvas || !wrap) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const dpr = window.devicePixelRatio || 1;
+    // §326 高 DPI pixel ratio cap（4K/200% 缩放下防爆填充率）。
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
     const w = wrap.clientWidth;
     const h = wrap.clientHeight;
     if (w < 2 || h < 2) return;
@@ -408,6 +409,10 @@ export function MusicMapView({
     const h = wrap.clientHeight;
     if (command.kind === 'reset') {
       animateTo({ zoom: 1, panX: 0, panY: 0 });
+    } else if (command.kind === 'zoomIn' || command.kind === 'zoomOut') {
+      // §317：键盘 +/-（以视口中心为锚）。
+      const factor = command.kind === 'zoomIn' ? 1.25 : 1 / 1.25;
+      animateTo(zoomAt(camRef.current, w, h, w / 2, h / 2, factor));
     } else if (command.kind === 'fit') {
       animateTo(model.overview ? fitCamera(model.overview.bounds, w, h) : { zoom: 1, panX: 0, panY: 0 });
     } else if (command.kind === 'focusSelected' && selectedTrackId !== null) {
@@ -525,6 +530,23 @@ export function MusicMapView({
     }
   };
 
+  // §314：双击播放（单曲；不改 queue）。
+  const onDoubleClick = (e: React.MouseEvent): void => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const [wx, wy] = screenToWorld(
+      camRef.current,
+      rect.width,
+      rect.height,
+      e.clientX - rect.left,
+      e.clientY - rect.top,
+    );
+    const hitR = 10 / (camRef.current.zoom * (Math.min(rect.width, rect.height) / 2));
+    const id = model.hitTest(wx, wy, hitR);
+    if (id !== null) void ipc.playTrack(id).catch(() => undefined);
+  };
+
   const onWheel = (e: React.WheelEvent): void => {
     e.preventDefault();
     const wrap = wrapRef.current;
@@ -554,6 +576,7 @@ export function MusicMapView({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onDoubleClick={onDoubleClick}
         onPointerLeave={() => {
           hoverRef.current = null;
           onHoverTrack(null);

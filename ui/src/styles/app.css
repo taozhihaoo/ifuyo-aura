@@ -216,6 +216,14 @@
 @keyframes pulse { 50% { opacity: 0.5; } }
 
 /* ---- Map（M9 中篇 §95–§160）：工具栏 + Canvas 舞台 + 详情面板 ---- */
+.tr-act {
+  background: none; border: none; color: var(--color-text-muted); cursor: pointer;
+  font-size: 14px; padding: 2px 6px; border-radius: var(--radius-sm);
+}
+.tr-act:hover { color: var(--color-sky); background: rgba(255, 255, 255, 0.06); }
+.track-row.tr-focused { outline: 1px solid var(--color-sky); background: rgba(122, 162, 247, 0.08); }
+
+
 .map-page { display: flex; flex-direction: column; height: 100%; padding: 20px 24px 16px; gap: 12px; }
 .map-page h1 { margin: 0; font-size: var(--font-size-lg); }
 .map-intro { color: var(--color-text-muted); max-width: 480px; text-align: center; }

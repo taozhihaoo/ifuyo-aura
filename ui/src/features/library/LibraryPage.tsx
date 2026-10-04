@@ -2,7 +2,8 @@
 // + 分页（§85）+ 扫描进度（§88/§89）+ 空态/错误态（§91/§92）。
 import { useEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useLibraryStore, useSettingsStore } from '../../state/stores';
+import { useLibraryStore, useSettingsStore, useUiStore } from '../../state/stores';
+import { requestMapFocus } from '../map/mapBus';
 import { ipc } from '../../ipc/client';
 import type { ScanProgress, SortKey, TrackSummary } from '../../ipc/types';
 import { useTranslation } from '../../i18n/react';
@@ -35,6 +36,33 @@ export function LibraryPage() {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [scan, setScan] = useState<ScanProgress | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const setView = useUiStore((s) => s.setView);
+  const focusTrack = useLibraryStore((s) => s.focusTrack);
+
+  // §312：消费 Map→Library 定位请求（真实 TrackId）：切换查询保证
+  // 可见，再滚动高亮该行。
+  useEffect(() => {
+    if (focusTrack === null) return;
+    if (query !== focusTrack.title) {
+      setQuery(focusTrack.title);
+    }
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+      const el = listRef.current?.querySelector(`[data-track-id="${focusTrack.id}"]`);
+      if (el) {
+        el.scrollIntoView({ block: 'center' });
+        el.classList.add('tr-focused');
+        window.setTimeout(() => el.classList.remove('tr-focused'), 2400);
+        window.clearInterval(timer);
+        useLibraryStore.getState().setFocusTrack(null);
+      } else if (attempts >= 12) {
+        window.clearInterval(timer);
+        useLibraryStore.getState().setFocusTrack(null);
+      }
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [focusTrack, query, setQuery]);
 
   // §79：搜索 debounce 250ms。
   useEffect(() => {
@@ -175,6 +203,7 @@ export function LibraryPage() {
                 <div
                   key={track.id}
                   className="track-row"
+                  data-track-id={track.id}
                   style={{ position: 'absolute', top: row.start, height: 52 }}
                   onDoubleClick={() => {
                     playWithQueueContext(track, tracks);
@@ -190,6 +219,19 @@ export function LibraryPage() {
                   <span className="tr-duration">
                     {formatDuration(track.durationSeconds) ?? ''}
                   </span>
+                  {/* §311：Library→Map "Open on Map"。 */}
+                  <button
+                    className="tr-act"
+                    title={t('map.openOnMap')}
+                    aria-label={t('map.openOnMap')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      requestMapFocus(track.id);
+                      setView('map');
+                    }}
+                  >
+                    ⌖
+                  </button>
                 </div>
               );
             })}

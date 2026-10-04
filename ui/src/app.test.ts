@@ -86,6 +86,9 @@ describe('command registry (§99–101)', () => {
     regenerateDreamscape: () => undefined,
     copyDreamscapeSeed: () => undefined,
     saveDreamscapeSnapshot: () => undefined,
+        rebuildMap: () => undefined,
+        fitMap: () => undefined,
+        resetMapView: () => undefined,
   };
   const t = (k: string) => k;
   const cmds = buildCommands(ctx, t);

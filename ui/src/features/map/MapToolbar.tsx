@@ -1,11 +1,12 @@
 // Map 工具栏（§129–§132 搜索/focus、§210–§216 配色+legend、§217–§219
 // 过滤 chips、§138 视图命令、§161/§235/§236/§164 构建/重建/取消）。
 // §220：改过滤不自动播放；§235 提示里的数字全部来自真实 backend。
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { MapOverviewDto, MapStatusDto } from '../../ipc/map';
 import { ipc } from '../../ipc/client';
 import { useTranslation } from '../../i18n/react';
 import { clusterColor, PITCH_CLASSES, pitchClassColor } from './mapData';
+import { LibrarySearchRunner } from './mapSearch';
 import type { MapViewCommand } from './MusicMapView';
 import { useMapStore, type MapColorMode } from './mapStore';
 
@@ -46,28 +47,33 @@ export function MapToolbar({
   const filters = useMapStore((s) => s.filters);
 
   // §129/§130/§131：搜索 M3 库 → 与地图交集 → focus + 高亮。
+  // §345：序列号守卫在 LibrarySearchRunner 内（stale 响应丢弃）。
+  const applyResult = useCallback(
+    (q: string, ids: number[]) => {
+      if (q === '') {
+        setResultCount(null);
+        resultIdsRef.current = [];
+        onSearchMatches(new Set());
+        return;
+      }
+      resultIdsRef.current = ids;
+      resultCursorRef.current = 0;
+      setResultCount(ids.length);
+      onSearchMatches(new Set(ids));
+      const first = ids[0];
+      if (first !== undefined) onFocusTrack(first);
+    },
+    [onFocusTrack, onSearchMatches],
+  );
+  const runnerRef = useRef<LibrarySearchRunner | null>(null);
+  if (runnerRef.current === null) {
+    runnerRef.current = new LibrarySearchRunner(
+      (q, limit, offset) => ipc.librarySearch(q, limit, offset),
+      applyResult,
+    );
+  }
   const runSearch = (): void => {
-    const q = query.trim();
-    if (q === '') {
-      setResultCount(null);
-      resultIdsRef.current = [];
-      onSearchMatches(new Set());
-      return;
-    }
-    void ipc
-      .librarySearch(q, 50, 0)
-      .then((rows) => {
-        const ids = rows.map((r) => r.id);
-        resultIdsRef.current = ids;
-        resultCursorRef.current = 0;
-        setResultCount(ids.length);
-        onSearchMatches(new Set(ids));
-        const first = ids[0];
-        if (first !== undefined) onFocusTrack(first);
-      })
-      .catch(() => {
-        setResultCount(0);
-      });
+    runnerRef.current?.run(query);
   };
 
   const cycle = (): void => {

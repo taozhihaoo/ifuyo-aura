@@ -64,16 +64,21 @@ export interface LibraryDomain {
   query: string;
   sort: import('../ipc/types').SortKey;
   refreshNonce: number;
+  /** §312：Map→Library 定位请求（真实 TrackId；LibraryPage 消费）。 */
+  focusTrack: { id: number; title: string } | null;
   setQuery: (q: string) => void;
   setSort: (s: import('../ipc/types').SortKey) => void;
+  setFocusTrack: (t: { id: number; title: string } | null) => void;
   bumpRefresh: () => void;
 }
 export const useLibraryStore = create<LibraryDomain>((set) => ({
   query: '',
   sort: 'title',
   refreshNonce: 0,
+  focusTrack: null,
   setQuery: (query) => set({ query }),
   setSort: (sort) => set({ sort }),
+  setFocusTrack: (focusTrack) => set({ focusTrack }),
   bumpRefresh: () => set((s) => ({ refreshNonce: s.refreshNonce + 1 })),
 }));
 

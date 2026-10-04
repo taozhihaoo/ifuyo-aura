@@ -4,7 +4,7 @@
 import type { MapNodeDto, MapOverviewDto } from '../../ipc/map';
 import { ipc } from '../../ipc/client';
 import type { MapColorMode, MapFilters } from './mapStore';
-import { clampZoom } from './mapStore';
+import { clampZoom, useMapStore } from './mapStore';
 
 // ---------- 稳定配色（§112/§113：来自稳定映射，非随机） ----------
 
@@ -405,5 +405,69 @@ export class MapDataModel {
   /** §130：搜索结果与地图交集（匹配不高亮时也用于 focus）。 */
   presentTrackIds(ids: number[]): number[] {
     return ids.filter((id) => this.idToIndex.has(id));
+  }
+}
+
+/** §142/§338 LOD 阈值：far（<cluster）→ mid（节点）→ near（≥label 显标签）。 */
+export const CLUSTER_LOD_ZOOM = 0.7;
+export const LABEL_LOD_ZOOM = 2.0;
+
+// ---------- 视图持久化（§180/§181：同 dataset 恢复 zoom/pan） ----------
+
+interface SavedView {
+  hash: string;
+  zoom: number;
+  panX: number;
+  panY: number;
+}
+
+export const MAP_VIEW_STORAGE_KEY = 'aura.map.view';
+
+type StorageLike = {
+  getItem: (k: string) => string | null;
+  setItem: (k: string, v: string) => void;
+};
+
+function defaultStorage(): StorageLike | null {
+  const g = globalThis as { localStorage?: StorageLike };
+  return g.localStorage ?? null;
+}
+
+/** §181：损坏/跨 dataset/非有限 → null（调用方回退缺省 fit，不 crash）。 */
+export function loadSavedView(
+  hash: string,
+  storage: StorageLike | null = defaultStorage(),
+): { zoom: number; panX: number; panY: number } | null {
+  if (storage === null) return null;
+  try {
+    const raw = storage.getItem(MAP_VIEW_STORAGE_KEY);
+    if (raw === null) return null;
+    const v = JSON.parse(raw) as Partial<SavedView>;
+    if (
+      v.hash !== hash ||
+      typeof v.zoom !== 'number' ||
+      typeof v.panX !== 'number' ||
+      typeof v.panY !== 'number' ||
+      !Number.isFinite(v.zoom) ||
+      !Number.isFinite(v.panX) ||
+      !Number.isFinite(v.panY)
+    ) {
+      return null;
+    }
+    const cam = clampCamera({ zoom: v.zoom, panX: v.panX, panY: v.panY });
+    return { zoom: cam.zoom, panX: cam.panX, panY: cam.panY };
+  } catch {
+    return null;
+  }
+}
+
+export function saveView(hash: string | null, storage: StorageLike | null = defaultStorage()): void {
+  if (hash === null || storage === null) return;
+  try {
+    const st = useMapStore.getState();
+    const v: SavedView = { hash, zoom: st.zoom, panX: st.pan.x, panY: st.pan.y };
+    storage.setItem(MAP_VIEW_STORAGE_KEY, JSON.stringify(v));
+  } catch {
+    /* 忽略（隐私模式等） */
   }
 }
