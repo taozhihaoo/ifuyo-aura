@@ -28,7 +28,7 @@
 | Aurora 视觉（WebGL fbm，播放响应） | ✅ |
 | Win11 Mica（Win10 solid fallback） | ✅ |
 | Music Map（图引擎/空间布局） | M9 |
-| Dreamscape（生成引擎） | M7 |
+| Dreamscape（世界核心已建；渲染与集成） | 🚧 M7 下篇 |
 | Analysis（BPM/Key/LUFS） | M8 |
 | SMTC / 托盘 / 媒体键 | M10 |
 

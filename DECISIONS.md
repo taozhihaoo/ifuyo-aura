@@ -347,3 +347,39 @@ mini 窗口（label `mini`）经 JS `new WebviewWindow()` 创建，需 capabilit
 ## D-078 键盘导航图（2026-10-05，M6-B）
 
 Ctrl+K palette；Esc 逐层退出（palette→queue/settings）；Space 播放/暂停（输入态让出 §258）；Ctrl+F 聚焦库搜索；Alt+1/2/3 主导航；Ctrl+Q queue；Ctrl+M mini。全部为应用级 keydown（window 捕获），不与 OS 全局热键冲突（仅在窗口聚焦时生效）。
+
+## D-079 Dreamscape seed 设计（2026-10-05，M7 上篇）
+
+内部 seed = 60 bit 规范值 + `seed_version`（SipHash-13，域分离固定密钥；§15 禁 DefaultHasher）。人类格式 `DS-XXXXX-XXXX-XXXX`：Crockford Base32，60 bit 载荷 + 4 bit 折叠校验（§13，非裸 hex）；解码大小写不敏感、I/L→1、O→0，非法返回 None 不 crash（§105）。`world_id = hash(seed + generation_version + 初始环境)`（§18），永久稳定。60 bit 选择：13 字符 Crockford 恰好承载 64 bit（60+4），无损双向转换。
+
+## D-080 RNG 命名流（2026-10-05，M7 上篇）
+
+SplitMix64（全周期、零依赖）；流 = `hash(master_seed, seed_version, 流名)`（§21 结构化派生，非 index 偏移）。标准流名集合固定（world/terrain/vegetation/weather/event/mutation/placement/palette），新增只追加。逐日/逐桶决策用 `from_stream_bucket(master, stream, bucket)`（O(1)、同桶同结果、可重放）。序列锚点测试锁定算法变更（打破即有意升级并记 DECISIONS）。
+
+## D-081 Genome 与 mutation 步长（2026-10-05，M7 上篇）
+
+8 个有界参数（min/max/default 集中在 `GenomeField::bounds`，§25）+ `GENOME_VERSION`。seed→genome 以 default 为锚、world 流决定 ±半幅内偏移。mutation：每条 1–3 字段、步长 ≤ 区间 3%（§26 小步、§83 不毁世界）；触发仅 NewSession/LongIdle(每 8 逻辑小时窗口至多一次)/WorldEvent/Explicit（§27/§28，无每帧随机）；记录含 parent_state_hash 与 mutation_id（§29 可重放，日志重放一致性测试锁定）。
+
+## D-082 环境时间模型（2026-10-05，M7 上篇）
+
+绝对逻辑 tick（1 tick = 1 逻辑分钟，§30）为唯一时间源；`time_phase = tick/1440 mod 1`（§33 连续相位，渲染层插值）。天气五档氛围级（§35/§36），`neighbors` 过渡图禁 Clear↔Rain 直跳，blend 全程 ≈240 tick（§37）；决策按 240-tick 日桶派生。fog 硬上限 0.7（§39）；夜间环境光 ≥0.25（§99）。palette：biome 锚 ±seed 漂移 ±色温联动，点缀相隔 90–150°，sat/lum/accent 约束区间（§41/§42），300 组合扫描测试锁定。
+
+## D-083 世界预算与放置（2026-10-05，M7 上篇）
+
+有限边界 ±256 m（§50）；地形 = 两倍频程 value-noise（晶格值经固定 hash，查询顺序无关，§48/§49）。预算常量（§63）：objects ≤512 / landmarks ≤7 / particles ≤256，密度受 1.3 硬帽——极端 genome 实测不超。放置规则（§52）：坡度容差、0.9 m 排除半径（spatial hash 3×3 邻域，§54）、landmark 排除（§53）、族亲和由 biome 决定；landmark 稳定 id = hash(seed, index)（§56）。
+
+## D-084 稀有事件稀有度（2026-10-05，M7 上篇）
+
+事件 = `hash(seed, 240-tick 日桶) + event 流`（§91 可重放）；桶触发概率 1/30（期望 ≈ 每逻辑月一次，§90 真稀有）；时长 2–6 逻辑小时，各 1/4 淡入淡出（§94），任意时刻同时可见 ≤3。事件日志只记 event_id/kind/tick/params（§93）；simulate→to_log→replay 与模拟可见集合一致（§92 测试锁定）。无奖励字段（§96）。
+
+## D-085 SceneManifest 与 scene_hash（2026-10-05，M7 上篇）
+
+manifest 为 renderer-friendly 但 domain-neutral 的纯数值 DTO（terrain patch/palette/light/atmosphere/landmarks/SoA 实例组，§110）；无 Three.js 概念（§111）。`scene_hash` = 域分离 SipHash 按规范字段序（§113）；同 seed+version+genome+env 相等、任一输入变化即变（§114 测试锁定）。体积受世界预算传导，实测 <256 KiB（§115）。
+
+## D-086 Region 流式与取消（2026-10-05，M7 上篇）
+
+64 m 区域网格（§117）；region seed = hash(world seed, coord)（§118）；区域内容 = 世界对象的确定性子集（§119，切分完整性测试锁定）。`RegionStreamer`：worker 线程（§121）+ 非阻塞 request/poll（§120 不阻塞调用帧）+ 代际（epoch）取消——cancel_all 前移代数，陈旧代结果不送达（§124）；drop 即停机。LRU 内存缓存 ≤16 区域（§125 B 级；纯内存，与 M5 无关 §126）。
+
+## D-087 逻辑态持久化（2026-10-05，M7 上篇）
+
+`dreamscape.json`（app_data）仅存 DreamscapeSnapshot 逻辑态（§79/§80/§127）：world_id/seed/代/genome/env/mutation_log/event_log/camera/tick；原子写（tmp+rename）。损坏/版本不符 → 回退缺省世界并继续启动（§265/§266 精神）；restore 命令区分 NO_SNAPSHOT/CORRUPT/DREAMSCAPE_VERSION_UNAVAILABLE（§106 不静默换世界）。缺省 seed 固定 `ifuyo-aura-default`（§77 明天回来仍是同一世界；Regenerate 仅显式 §103）。shell 侧 9 个 typed IPC 命令为下篇渲染层的数据通道。

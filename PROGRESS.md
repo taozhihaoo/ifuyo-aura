@@ -215,3 +215,23 @@ M6-B = PASS（下篇，全部为真实实现；无「声明完成未验证」项
 - 数小时 soak 未执行（远程虚拟显示环境；§296 如实声明，脚本= capture/门禁复跑）
 - 06/09 两张建议截图未专门摆拍；Mica 视觉需 Win11 实机确认
 - queue 持久化（M3-B 表）未接线（§50 允许，应用层 in-memory）
+
+## M7 上篇（2026-10-05）——Dreamscape 世界生成核心（§0–127）
+
+状态 = PASS（世界核心全部落地；渲染/集成/门禁在下篇 §128–330，未偷渡）
+
+### Implemented
+
+- aura-synth 正式建立（11 模块，§7 职责边界内）：seed（D-079）/ RNG 命名流（D-080）/ Genome+mutation（D-081）/ Environment+palette（D-082）/ Biome×5（§43–46）/ World 拓扑+预算（D-083）/ 稀有事件框架（D-084）/ SceneManifest+scene_hash（D-085）/ GeneratorV1（§108/109）/ Region 流式+取消（D-086）/ Snapshot+Session（D-087）
+- shell：dreamscape.rs 装配 + `dreamscape.json` 逻辑态持久化（原子写、损坏回退）+ 9 个 typed IPC 命令；ui 错误码接线（INVALID_SEED/DREAMSCAPE_*）
+- 明确禁止项未实现（§2）：无 BPM/Key/LUFS/MFCC/embedding/Map/SMTC 等
+
+### Tests
+
+- aura-synth 78 项（确定性合同/预算/过渡/重放/边界/serde 全覆盖）；shell 3 项（持久化往返/损坏回退/版本门）；workspace 全绿
+- 关键不变量测试锁定：scene_hash 同输入相等（§114）、事件日志重放一致（§92）、mutation 小步（§26/83）、fog≤0.7（§39）、夜间环境光≥0.25（§99）、manifest<256KiB（§115）、区域切分完整（§119）
+
+### Known Limitations
+
+- 渲染（Three.js Dreamscape renderer/相机/LOD/上下文恢复/截图模式）、palette 命令接线、audio telemetry 反应、性能 bench——全部属于 M7 下篇（§128–330）
+- 植被/地形仅逻辑数据（渲染表现待下篇验证）； vegetation RNG 流已定义但世界层尚未消费（对象密度走 placement 流——见 D-083，下篇渲染密度控制时接线）

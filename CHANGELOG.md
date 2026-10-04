@@ -1,5 +1,15 @@
 # Changelog
 
+## M7 上篇（2026-10-05）
+
+### Added
+- `crates/aura-synth` 正式实装：确定性 seed 系统（DS 人类格式/world_id/版本轴）、RNG 命名流、Genome+受控 mutation、Environment（tick→相位/天气/光态）+约束 Palette、Biome×5、World 拓扑（地形/放置/预算）、稀有事件框架（日志/重放/过期）、SceneManifest+scene_hash、GeneratorV1、Region 流式生成（worker/取消/LRU）、Snapshot+Session
+- shell：Dreamscape 会话装配 + `dreamscape.json` 逻辑态持久化 + 9 个 typed IPC 命令；ui 错误码接线
+- 文档：D-079..D-087、ARCHITECTURE M7 节、PROGRESS/CHANGELOG
+
+### Notes
+- 渲染/集成/门禁 = M7 下篇（§128–330）；M2 禁止项（BPM/Key/…）零偷渡
+
 ## M6（2026-10-05）
 
 ### Added

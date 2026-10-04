@@ -178,6 +178,29 @@ ring buffer 容量按帧对齐（Engine 默认 buffer/8 = 渲染块）。overrun
 - **测试栈**（§181–§183）：vitest + jsdom + @testing-library（渲染/a11y/键盘矩阵/挂载卫生 42 项）；桌面冒烟 `--bin smoke`（真实 Wry 装配 + 启动计时）。
 - **键盘图**（D-078）：Ctrl+K/Esc/Space/Ctrl+F/Alt+1/2/3/Ctrl+Q/Ctrl+M；Esc 全局可退出任一浮层（§183 无死路）。
 
+### Dreamscape 世界生成核心（M7 上篇）
+
+`crates/aura-synth`（§7 职责边界）：`seed → genome → environment → procedural generation → scene manifest`；无 Three.js/WebGL/React/Tauri/audio/SQLite/HTTP。
+
+```text
+src/
+  seed.rs       # 60bit 规范 seed + DS 人类格式 + world_id（D-079）
+  rng.rs        # SplitMix64 命名流 + 桶派生（D-080）
+  genome.rs     # 有界参数 + 小步 mutation 记录（D-081）
+  env.rs        # 绝对 tick → 相位/天气/光态 + 约束 palette（D-082）
+  biome.rs      # 五原型六要素 + per-seed 变异（§43–46）
+  world.rs      # 地形/放置/spatial hash/landmark/预算（D-083）
+  events.rs     # 稀有事件 + 日志重放过期（D-084）
+  manifest.rs   # SceneManifest + scene_hash（D-085）
+  generator.rs  # GeneratorV1 版本化契约（§108/§109）
+  region.rs     # 区域流式：worker/epoch 取消/LRU（D-086）
+  snapshot.rs   # Snapshot/Session/缺省世界（D-087）
+```
+
+- 确定性合同：同 seed+generation_version+environment → RNG 序列/manifest/scene_hash 逐位一致；世界逻辑只接受逻辑 tick。
+- 分层：synth 只做「世界是什么」；shell `dreamscape.rs` 装配会话与 `dreamscape.json` 逻辑态持久化（§127）+ 9 个 typed IPC 命令；渲染（下篇 Three.js）消费 manifest/DTO。
+- 版本轴：seed_version / generation_version / genome·env·world·manifest·snapshot 各自版本常量；升级 = 显式 DECISIONS。
+
 ## 构建与工程
 
 - Cargo workspace：7 个 aura crates + `src-tauri`（M0-3 起为正式 member，tauri 2.12）。
