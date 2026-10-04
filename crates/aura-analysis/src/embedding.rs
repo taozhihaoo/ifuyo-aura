@@ -121,6 +121,12 @@ impl EmbeddingProvider for SpectralStatsProvider {
                 samples: input.samples.len(),
             });
         }
+        // 静音输入：无频谱内容可嵌入（ §42 真实性——零向量嵌入无语义）。
+        if input.samples.iter().all(|v| *v == 0.0) {
+            return Err(AnalysisError::TooShort {
+                samples: input.samples.len(),
+            });
+        }
 
         let sr = input.sample_rate as f32;
         let frame_len = (sr as usize / 20).max(64); // 50ms 帧下限 64 样本
