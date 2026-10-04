@@ -58,19 +58,6 @@ pub fn run() {
                 .map_err(|e| format!("dreamscape init failed: {e}"))?;
             let map =
                 map_ipc::MapHost::open(&data_dir).map_err(|e| format!("map init failed: {e}"))?;
-            // §118 初始化顺序：… → Windows Integration → SMTC → Tray。
-            // §120：托盘失败只降级（Tray=unavailable），应用继续运行。
-            let lang = app
-                .state::<ipc::AppState>()
-                .library
-                .settings
-                .lock()
-                .expect("settings")
-                .language
-                .clone();
-            if let Err(e) = integration::tray::create(&handle, &lang) {
-                eprintln!("tray unavailable: {e}");
-            }
             let integration = integration::Shared::new();
             app.manage(ipc::AppState {
                 audio: std::sync::Arc::new(audio),
@@ -83,6 +70,7 @@ pub fn run() {
                 integration: integration.clone(),
             });
             // §118 初始化顺序：… → Windows Integration worker → SMTC → Tray。
+            // §120：托盘失败只降级（Tray=unavailable），应用继续运行。
             let st = app.state::<ipc::AppState>();
             integration::worker::spawn(
                 handle.clone(),
@@ -90,6 +78,10 @@ pub fn run() {
                 st.library.clone(),
                 integration,
             );
+            let lang = st.library.settings.lock().expect("settings").language.clone();
+            if let Err(e) = integration::tray::create(&handle, &lang) {
+                eprintln!("tray unavailable: {e}");
+            }
             // §19：Win11 Mica（设置开关，失败自动保持 solid fallback §20）。
             #[cfg(target_os = "windows")]
             {
