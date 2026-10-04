@@ -78,7 +78,13 @@ pub fn run() {
                 st.library.clone(),
                 integration,
             );
-            let lang = st.library.settings.lock().expect("settings").language.clone();
+            let lang = st
+                .library
+                .settings
+                .lock()
+                .expect("settings")
+                .language
+                .clone();
             if let Err(e) = integration::tray::create(&handle, &lang) {
                 eprintln!("tray unavailable: {e}");
             }

@@ -208,6 +208,17 @@ impl Coordinator {
     }
 }
 
+/// §57/§59/§60/§253：播放状态映射（error/buffering/idle → stopped 语义，
+/// 不长期假 Playing）。
+#[must_use]
+pub fn normalize_state(raw: &str) -> &'static str {
+    match raw {
+        "playing" => "playing",
+        "paused" => "paused",
+        _ => "stopped",
+    }
+}
+
 /// §133/§134/§135：限长（char 边界截断，不产生半个 emoji）+ 去控制
 /// 字符（保留全部可打印 Unicode：CJK/emoji/特殊符号 §135/§136）。
 #[must_use]
@@ -546,5 +557,120 @@ mod tests {
         assert!(!gate.valid(1), "旧代完成被拒");
         assert!(gate.valid(2));
         assert!(!gate.begin(0), "过期代开始被拒");
+    }
+
+    // ---------- 下篇测试矩阵（§251–§267） ----------
+
+    /// §253：状态映射（Playing/Paused/Stopped/Error/Live/Buffering/idle）。
+    #[test]
+    fn playback_state_mapping() {
+        assert_eq!(normalize_state("playing"), "playing");
+        assert_eq!(normalize_state("paused"), "paused");
+        assert_eq!(normalize_state("stopped"), "stopped");
+        // §59：error 不得长期假 Playing。
+        assert_eq!(normalize_state("error"), "stopped");
+        // §58：buffering → 停止语义（不伪造 playing）。
+        assert_eq!(normalize_state("buffering"), "stopped");
+        assert_eq!(normalize_state("idle"), "stopped");
+        assert_eq!(normalize_state("unknown-future"), "stopped");
+    }
+
+    /// §254：seek 边界矩阵（zero/exact duration/overflow）。
+    #[test]
+    fn seek_validation_matrix() {
+        let c = Coordinator::new();
+        let s = snap(1, "A", "playing"); // seekable、100s
+        assert_eq!(c.validate_seek(&s, 0.0), SeekDecision::Seek(0.0), "zero");
+        assert_eq!(
+            c.validate_seek(&s, 50.0),
+            SeekDecision::Seek(50.0),
+            "inside"
+        );
+        assert_eq!(
+            c.validate_seek(&s, 100.0),
+            SeekDecision::Seek(100.0),
+            "exact"
+        );
+        assert_eq!(
+            c.validate_seek(&s, 100.5),
+            SeekDecision::Seek(100.0),
+            "beyond clamp"
+        );
+        assert_eq!(
+            c.validate_seek(&s, f64::INFINITY),
+            SeekDecision::Ignore,
+            "overflow/inf"
+        );
+        assert_eq!(c.validate_seek(&s, f64::NEG_INFINITY), SeekDecision::Ignore);
+    }
+
+    /// §255：时间换算矩阵（44.1/48/96k；0/1 帧；1 分钟/1 小时/超长）
+    /// ——往返单调且不溢出（§233）。
+    #[test]
+    fn timeline_conversion_matrix() {
+        for sr in [44_100u64, 48_000, 96_000] {
+            // 0 帧 / 1 帧。
+            assert_eq!(frames_to_seconds(0, sr), 0.0);
+            let one = frames_to_seconds(1, sr);
+            assert!(one > 0.0 && one < 0.001);
+            // 1 分钟 / 1 小时。
+            let minute = frames_to_seconds(60 * sr, sr);
+            assert!((minute - 60.0).abs() < 1e-6);
+            let hour = frames_to_seconds(3600 * sr, sr);
+            assert!((hour - 3600.0).abs() < 1e-6);
+            assert!(seconds_to_ticks(hour) > seconds_to_ticks(minute), "单调");
+        }
+        // 超长（≈68 年 @48k）不溢出 u64 ticks。
+        let very_long = frames_to_seconds(u64::MAX / 48_000, 48_000);
+        let ticks = seconds_to_ticks(very_long);
+        assert!(seconds_to_ticks(very_long.floor()) > 0);
+        let _ = ticks;
+    }
+
+    /// §257：revision 1→2→3 顺序接受，乱序拒绝。
+    #[test]
+    fn revision_ordering_sequence() {
+        let mut c = Coordinator::new();
+        let mut sink = MockSink::default();
+        c.offer(&snap(1, "A", "playing"), &mut sink);
+        c.offer(&snap(2, "A", "paused"), &mut sink);
+        c.offer(&snap(3, "A", "playing"), &mut sink);
+        c.offer(&snap(2, "A", "paused"), &mut sink); // 乱序迟到
+        assert_eq!(sink.statuses.len(), 2, "迟到 rev2 不产生 status");
+        assert_eq!(sink.tracks.len(), 1);
+    }
+
+    /// §258：track 竞态——A→B 后，迟到 A（旧 revision）不覆盖 B。
+    #[test]
+    fn track_race_late_a_rejected() {
+        let mut c = Coordinator::new();
+        let mut sink = MockSink::default();
+        c.offer(&snap(1, "A", "playing"), &mut sink);
+        c.offer(&snap(2, "B", "playing"), &mut sink);
+        let late_a = snap(1, "A", "playing"); // §149 stale snapshot
+        c.offer(&late_a, &mut sink);
+        assert_eq!(sink.tracks.last().unwrap().title, "B");
+        assert_eq!(sink.tracks.len(), 2);
+    }
+
+    /// §260：ICY metadata 顺序处理——最终保留最新（单线程 worker 内
+    /// 不存在乱序；乱序等价于旧 revision，由 §149 拒绝）。
+    #[test]
+    fn metadata_race_last_wins() {
+        let mut c = Coordinator::new();
+        assert!(c.stream_title_changed("A", "TA"));
+        assert!(c.stream_title_changed("B", "TB"));
+        // 迟到的 A 事件（与最近值不同）是合法新更新——语义为"最新生效"。
+        assert!(c.stream_title_changed("A", "TA"));
+        assert!(!c.stream_title_changed("A", "TA"), "重复被合并 §55");
+    }
+
+    /// §132/§84：曲目行拼接。
+    #[test]
+    fn track_line_format() {
+        use tray::track_line;
+        assert_eq!(track_line(Some("A"), "T"), "A — T");
+        assert_eq!(track_line(Some(""), "T"), "T");
+        assert_eq!(track_line(None, "T"), "T");
     }
 }

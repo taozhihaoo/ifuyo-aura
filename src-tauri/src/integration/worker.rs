@@ -13,15 +13,6 @@ use super::{
     Coordinator, Event, GenerationGate, IntegrationSink, Shared, SystemCommand, SystemSnapshot,
 };
 
-/// 播放状态→快照状态（idle/error 等按 §59/§60 映射为 stopped 语义）。
-fn normalize_state(raw: &str) -> &'static str {
-    match raw {
-        "playing" => "playing",
-        "paused" => "paused",
-        _ => "stopped",
-    }
-}
-
 struct Worker {
     app: AppHandle<Wry>,
     audio: Arc<crate::audio::AudioHandle>,
@@ -91,7 +82,7 @@ impl Worker {
                 .map(str::to_string)
                 .or_else(|| meta.artist.clone()),
             artwork,
-            playback_state: normalize_state(&ps.state).to_string(),
+            playback_state: super::normalize_state(&ps.state).to_string(),
             position_seconds: position,
             duration_seconds: duration,
             seekable: ps.seekable && duration.is_some(),
