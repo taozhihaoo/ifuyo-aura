@@ -1,0 +1,11 @@
+# M11 §29：gitleaks 基线配置。
+# 全 history 扫描（CI fetch-depth: 0）。允许路径中不含任何私钥/证书；
+# 如未来出现经验证误报，在此用 [allowlist] 记录理由（§29 不关闭扫描）。
+[extend]
+useDefault = true
+
+[allowlist]
+description = "测试用 updater 公钥（公开材料，非 secret）"
+paths = [
+  '''src-tauri/tauri\.conf\.json''',
+]

@@ -13,6 +13,18 @@ on:
     branches: [main]
   pull_request:
 
+  # §29：成熟 secret scanning（gitleaks；全 history 扫描 §28）。
+  gitleaks:
+    name: Secret scan (gitleaks §29)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 jobs:
   rust:
     name: Rust (fmt / clippy / test)
@@ -56,6 +68,8 @@ jobs:
           cache-dependency-path: ui/package-lock.json
       - name: npm ci
         run: npm ci
+      - name: version:check（§A1 版本权威）
+        run: npm run version:check
       - name: typecheck
         run: npm run typecheck
       - name: lint

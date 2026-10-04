@@ -62,18 +62,19 @@ const tags = gitTags();
 const semverTags = tags.filter((t) => SEMVER.test(t));
 if (semverTags.length > 0) {
   const highest = semverTags.sort((a, b) => (a < b ? -1 : 1)).at(-1);
-  if (highest !== uiV) {
-    fail(`Git tag app-v${highest} 与当前版本 ${uiV} 不一致（tag 必须匹配已提交版本 §20）`);
+  const v0 = versions[0];
+  if (highest !== v0) {
+    fail(`Git tag app-v${highest} 与当前版本 ${v0} 不一致（tag 必须匹配已提交版本 §20）`);
   }
-  console.log(`version:check tag app-v${highest} = ${uiV}`);
+  console.log(`version:check tag app-v${highest} = ${v0}`);
 } else {
-  console.log(`version:check 无 app-v* tag（开发态，跳过 tag 比对）：${uiV}`);
+  console.log(`version:check 无 app-v* tag（开发态，跳过 tag 比对）：${versions[0]}`);
 }
 
 // §82：CHANGELOG 版本段（warning——release pipeline 强制）。
 const changelog = readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8');
-if (!changelog.includes(uiV)) {
-  console.warn(`version:check WARNING — CHANGELOG 未包含版本 ${uiV}（release pipeline 将强制）`);
+if (!changelog.includes(versions[0])) {
+  console.warn(`version:check WARNING — CHANGELOG 未包含版本 ${versions[0]}（release pipeline 将强制）`);
 }
 
-console.log(`version:check OK — ${uiV} (全部来源一致${semverTags.length ? '，tag 匹配' : ''})`);
+console.log(`version:check OK — ${versions[0]} (全部来源一致${semverTags.length ? '，tag 匹配' : ''})`);
