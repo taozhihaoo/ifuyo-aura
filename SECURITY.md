@@ -107,3 +107,20 @@ devtools 未显式启用（tauri v2 默认 release 关闭）；无调试日志�
 
 ### Credential / Secret Audit（§300 实测）
 `api_key|apikey|password|client_secret|Authorization|Cookie|BEGIN PRIVATE KEY` 全仓扫描（src/crates/ui/src/src-tauri）：仅命中凭据**拒绝逻辑**与对应测试（url_policy）；无 `.env`；无硬编码密钥。VisualTelemetry 为进程内渲染数据，非网络遥测（命名历史原因，PRIVACY.md 有说明）。
+
+## M7 Dreamscape（§254/§318 实测）
+
+### Snapshot 安全
+- 存储路径：app_data/dreamscape.json（§223 不写音乐目录）；原子写 tmp→rename（§225）；写前 seal、读后 validate（§300）。
+- 内容仅逻辑态（§222）：无凭据/无 Authorization/无 cookie/无绝对路径（结构上不持有）；integrity 校验和检测篡改（§299，测试锁定）。
+- 损坏/版本不符 → 回退默认世界继续启动（§224，实测）；restore 命令区分 NO_SNAPSHOT/CORRUPT/VERSION_UNAVAILABLE。
+
+### 输入与资源
+- Seed parser：任意 UTF-8（空/100KB/Unicode/emoji/NUL/坏 DS 格式）不 panic（§250/§251 fuzz 500 轮）。
+- Snapshot parser：malformed JSON/bytes 不 panic（§252）；未知字段忽略、缺字段默认（§229/§230）。
+- Manifest：UI 侧 validation-first（§253）——字段/数值有限性/实例总数 ≤2048/landmark ≤16，超界拒绝渲染。
+- 无任意资产路径：全部程序化生成（§59/§303 零外部模型/贴图/HDRI）；无网络需求（§301/§302 断网可玩）。
+- IPC 参数校验：set_quality 白名单；advance 单次 ≤ 一年逻辑 tick；相机值钳制。
+
+### 凭据扫描（§318）
+api_key/password/token/client_secret/Authorization/Cookie/BEGIN PRIVATE KEY 全仓扫描： Dreamscape 相关零命中；无 .env。

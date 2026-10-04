@@ -1,5 +1,19 @@
 # Changelog
 
+## M7 下篇（2026-10-05）
+
+### Added
+- Three.js Dreamscape 渲染器（程序化地形/实例化/质量档/Auto 迟滞/节流/context 恢复/pixelRatio cap）
+- M6 集成：Aurora 互斥、palette 四命令、Esc 分层退出、幂等 IPC + revision
+- validate_world/快照 integrity/历史上限/Frozen；stress_fuzz（病态 seed+fuzz 500 轮+malformed 快照）
+- 真实构建截图 ×8（含 Dreamscape 世界）；PERF M7 节；D-088..D-094
+
+### Fixed
+- body grid 居中导致全 app 布局收缩（Phase 0 遗留）；manifest serde 大小写致前端守卫拒绝；渲染器初始 setSize 缺失；WebGL 构造异常未捕获
+
+### Notes
+- M8（BPM/Key/LUFS/MFCC/embedding）零偷渡；VisualInfluence 扩展点 = VisualTelemetry 结构（§205/§206 null 时完整运行）
+
 ## M7 上篇（2026-10-05）
 
 ### Added

@@ -64,3 +64,10 @@ Subsonic 等服务的凭据只能存入 **Windows Credential Manager**，不进�
 - 用户主动联网行为不变：direct URL / Radio Browser 仍走 M4 策略（§278 未降级）；Open URL 输入即确认私网（D-070，仅影响用户显式输入的地址）。
 - localStorage/sessionStorage：零使用（纯 UI 偏好亦由 Rust 侧 settings JSON 持久化，§200）。凭据类数据不落任何前端存储（§201）。
 - `VisualTelemetry`（Aurora 渲染输入：isPlaying/progress/volume）为进程内数据结构，不离开进程，与"遥测"无关。
+
+## M7 确认（§154/§236–§239）
+
+- 零新增遥测/上传：渲染诊断（fps/frame_time/objects/triangles）仅本地 `canvas[data-fps]` 与内存（§155），无网络出站。
+- Dreamscape 全程序化：无在线天气/日出 API（§237/§302）、无在线资产下载（§303）、seed 不出本机（§238）。
+- 断网完整可用（§301）：世界生成/演化/快照全链路无网络。
+- 快照存 app_data（§223），仅逻辑态，可随时删除不影响音乐库。

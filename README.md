@@ -28,7 +28,7 @@
 | Aurora 视觉（WebGL fbm，播放响应） | ✅ |
 | Win11 Mica（Win10 solid fallback） | ✅ |
 | Music Map（图引擎/空间布局） | M9 |
-| Dreamscape（世界核心已建；渲染与集成） | 🚧 M7 下篇 |
+| Dreamscape（程序化世界：seed/演化/稀有事件/快照 + Three.js 渲染） | ✅ |
 | Analysis（BPM/Key/LUFS） | M8 |
 | SMTC / 托盘 / 媒体键 | M10 |
 
@@ -39,6 +39,7 @@
 | ![Now Playing](docs/screenshots/01-now-playing.png) | ![Library](docs/screenshots/02-library.png) |
 | ![Command Palette](docs/screenshots/03-command-palette.png) | ![Mini Player](docs/screenshots/04-mini-player.png) |
 | ![Map Shell](docs/screenshots/05-map-shell.png) | ![Queue](docs/screenshots/07-queue.png) |
+| ![Dreamscape](docs/screenshots/10-dreamscape-default.png) | ![Dreamscape 环境](docs/screenshots/12-dreamscape-environment.png) |
 
 ## 安全与隐私
 
@@ -49,6 +50,7 @@
 ## 当前限制（如实）
 
 - Aurora FPS 绝对值未在真实 GPU 桌面环境采样（机制已内建：`canvas[data-fps]`）；Mica 视觉效果需 Win11 实机确认（API + fallback 已就绪）。
+- Dreamscape 为第一版视觉（无阴影/后处理特效栈）；full-screen 模式、手动天气预设、多世界 slots 未实现。数小时桌面 soak 未在本环境执行。
 - 数小时级桌面 soak 未在本开发环境执行（远程虚拟显示）；本地复测脚本见 `docs/PERF.md`。
 - 安装包（NSIS bundle）未签名；M6 已实际产出 unsigned 产物（`tauri build`）。
 

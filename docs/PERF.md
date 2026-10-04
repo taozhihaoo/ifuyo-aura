@@ -150,3 +150,24 @@ cargo run -p aura-shell --bin smoke   # startup-to-ready / snapshot 行
 ```
 
 诚实声明（§204）：以上均为真实测量；无通过关 Aurora/不渲染 artwork/假数据制造的“好性能”。Aurora FPS 绝对值因远程虚拟显示环境不记录（机制已内建，实机运行时 data-fps 可直接读取）。
+
+## M7 Dreamscape（2026-10-05）
+
+- 硬件/OS：同 M6 节（Ryzen 7 7700 / 31.2GB / Win10.0.26200；远程虚拟显示）
+- 构建：`cargo test -p aura-synth --test perf_generation -- --ignored --nocapture`（debug profile）；前端 vitest 计时
+- 方法：Instant 环绕 ×100–1000 取均值；前端 engine 决策均为 O(1) 纯逻辑
+
+| 项 | 实测 | 说明 |
+| --- | --- | --- |
+| seed→genome | 475ns/call | world 流 8 字段派生 |
+| world 生成（default） | 9.90ms/call（objects=679, landmarks=4） | placement 坡度/排除半径 + spatial hash |
+| world 生成（dense genome） | 10.77ms/call（objects=748） | 预算帽内 |
+| manifest serialize | 995.7µs/call（31,365 bytes JSON） | §115 有界 |
+| manifest deserialize | 813.7µs/call | validation-first 守卫在 UI 侧另计 |
+| manifest scene_hash | 60.3µs/call | 规范字节序 SipHash |
+| snapshot save（capture+seal+JSON） | 124.6µs/call | §225 原子写路径 |
+| snapshot load（parse+validate+restore） | 110.5µs/call | 含 world_id 一致性校验 |
+| 渲染帧率目标 | 播放 30 / idle 10 / 隐藏 2 / reducedMotion 5（fps） | §144–147；远程虚拟显示无真实 GPU，绝对 FPS 不采样（data-fps 可实测） |
+| Auto 质量 | 升档 >50fps×3s / 降档 <22fps×2s / 冷却 4s（§143） | engine 单测锁定 |
+
+复测命令见 perf_generation.rs 头注释。诚实声明（§204）：真实测量；渲染 FPS 绝对值因远程虚拟显示不记录（机制内建 data-fps）。

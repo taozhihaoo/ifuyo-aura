@@ -235,3 +235,38 @@ M6-B = PASS（下篇，全部为真实实现；无「声明完成未验证」项
 
 - 渲染（Three.js Dreamscape renderer/相机/LOD/上下文恢复/截图模式）、palette 命令接线、audio telemetry 反应、性能 bench——全部属于 M7 下篇（§128–330）
 - 植被/地形仅逻辑数据（渲染表现待下篇验证）； vegetation RNG 流已定义但世界层尚未消费（对象密度走 placement 流——见 D-083，下篇渲染密度控制时接线）
+
+## M7 下篇（2026-10-05）——渲染、集成、测试与发布门禁（§128–330）
+
+M7-A = PASS（上篇世界核心 + 下篇渲染/集成全部落地）
+M7-B = PASS（真实渲染+集成+测试；B 级如实列出，见下）
+
+### Implemented（下篇）
+
+- Three.js 渲染器（three 0.186，D-088）：程序化地形/InstancedMesh/landmark 原语组合/粒子；质量档 Low/Med/High/Auto（D-089）；节流 30/10/2/5fps（D-090）；context lost→恢复重建（§151）；pixelRatio cap（§150）
+- 集成：Aurora 互斥（D-091）；Zustand 最小状态（§269）；manifest 走 ref（§270）；低频推进（§263/§264）；palette 四命令 + Esc 分层退出（§197/§198）；幂等命令 + revision（D-093）
+- 后端加固：validate_world（§167/§182）；快照 integrity+原子写（D-094）；Frozen（§101）；历史上限（§219/§220）；serde 兼容（§229/§230）
+- 真实构建截图 ×8（01–05/07/10/12，§320 建议项 11/13/14–18 未专门摆拍）；capture 脚本鼠标点击导航（绕 IME）
+
+### Tests
+
+- vitest 60（新增 engine 13 + dreamscape-integration 5：§187/§142-143/§258-261/§275/§277/§189/§190/§188 短循环）
+- Rust：synth 85 lib + stress_fuzz 4（§249–252）+ shell 3；workspace 全绿
+- 截图管线暴露并修复 4 个真实缺陷（body 居中/manifest serde 大小写/初始 setSize 缺失/WebGL 构造异常未捕获）
+
+### Performance
+
+见 docs/PERF.md「M7 Dreamscape」节（world 生成 9.9ms、manifest ser 996µs、snapshot save 125µs 等）
+
+### Soak（§246–§248 如实声明）
+
+- 确定性重放：事件日志重放一致性/快照往返/×400 演化有界——测试锁定
+- 渲染器 enter/exit ×20（vitest）+ ×10 mount/unmount（keyboard 测试）
+- 数小时真实桌面 soak 未执行（远程虚拟显示环境，同 M6 限制）；§246 动作循环已在截图管线与测试中部分覆盖
+
+### Known Limitations
+
+- 渲染为第一版视觉（Lambert 材质、无阴影/后处理栈；High 档 postEnabled 预留未实装特效）
+- 11-night/13-mutation/14-seed/15-settings 等建议截图未摆拍（需环境手动覆盖 UI，B 级留待后续）
+- Full-screen immersive（§199 B 级）未实现；用户手动 time-of-day/weather 预设（§100 B 级）未实现（Frozen/Auto 已可用）
+- World slots 多世界（§214 B 级）未实现；快照备份 last-known-good（§226 B 级）未实现

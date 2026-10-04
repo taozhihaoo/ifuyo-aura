@@ -383,3 +383,31 @@ manifest 为 renderer-friendly 但 domain-neutral 的纯数值 DTO（terrain pat
 ## D-087 逻辑态持久化（2026-10-05，M7 上篇）
 
 `dreamscape.json`（app_data）仅存 DreamscapeSnapshot 逻辑态（§79/§80/§127）：world_id/seed/代/genome/env/mutation_log/event_log/camera/tick；原子写（tmp+rename）。损坏/版本不符 → 回退缺省世界并继续启动（§265/§266 精神）；restore 命令区分 NO_SNAPSHOT/CORRUPT/DREAMSCAPE_VERSION_UNAVAILABLE（§106 不静默换世界）。缺省 seed 固定 `ifuyo-aura-default`（§77 明天回来仍是同一世界；Regenerate 仅显式 §103）。shell 侧 9 个 typed IPC 命令为下篇渲染层的数据通道。
+
+## D-088 Dreamscape 渲染器架构（2026-10-05，M7 下篇）
+
+`ui/src/visual/dreamscape/`：engine.ts（纯逻辑：质量档/AutoQuality 迟滞/节流/GenerationGate/Lifecycle 状态机，无 WebGL 可单测）+ scene.ts（manifest→GL 装配，Disposables 登记释放）+ DreamscapeRenderer（生命周期编排）。§128 建议的 8 文件结构收敛为 3 文件——职责等价（Telemetry=stats 回调；InstancePool=每族共享 InstancedMesh §61/§133；Effects=场景内 fog/光，无后处理栈 §140）。
+
+## D-089 质量档与 Auto（2026-10-05，M7 下篇）
+
+Low/Medium/High/Auto（§141）：pixelRatioCap 1.0/1.25/1.5（§150）、地形细分 32/64/96、粒子 0.35/0.7/1.0、后处理仅 High（§139/§140 默认不叠层）。Auto：帧时长 >45ms 持续 2s 降档、<20ms 持续 3s 升档、变更后 4s 冷却（§143 不震荡）；中带 20–45ms 不动作。
+
+## D-090 帧率与可见性（2026-10-05，M7 下篇）
+
+targetFps：播放 30 / idle 10（§145 5–15 取中）/ 最小化或隐藏 2（§146/§147）/ reducedMotion 5（§70 相机近静止+粒子停）。音频稳定性优先（§144 不追 60fps）。§263/§264：IPC 只做低频推进（2s 实时 = 30 逻辑分钟）+ 按需拉取；相机/插值/粒子全部渲染器本地（§265–§267）。
+
+## D-091 Aurora 互斥（2026-10-05，M7 下篇）
+
+§130/§131：dreamscape 视图时不挂载 AuroraCanvas（React 条件卸载），退出即恢复——单高负载 WebGL 规则由结构保证（测试锁定）。Mini Player 永不显示 Dreamscape（§291/§292）。
+
+## D-092 base.css 全屏居中移除（2026-10-05，M7 下篇）
+
+Phase 0 的 `body{display:grid;place-items:center}` 使 app-root 收缩居中——真实构建截图暴露主布局/Dreamscape 画布被压缩（§282/§204 不伪造视觉）。移除后 app-root 满幅；M6 各页面布局随之正常化（此前恰好被绝对定位的 Aurora 遮罩掩盖）。
+
+## D-093 幂等命令与 revision（2026-10-05，M7 下篇）
+
+§256/§257：dreamscape_open/close 重复调用不报错（渲染器单例在 UI 侧，close 不销毁世界状态 §75）；set_quality 合法值校验后幂等；set_environment 冻结/解冻（§100/§101）。§262：状态 revision 单调递增随 DTO 下发——UI 陈旧回调丢弃的基础（§259/§260/§261 由 GenerationGate 在渲染器侧同语义执行）。
+
+## D-094 快照完整性校验与历史上限（2026-10-05，M7 下篇）
+
+§299：snapshot integrity = 载荷规范 hash（integrity 字段归零后计算）；validate 顺序 = 版本门（§106）→ 校验和 → world_id 一致性。§229/§230：`#[serde(default)]` 旧快照缺字段显式默认（integrity=0 视为无校验和）、未知字段忽略。§219/§220：MAX_MUTATION_LOG=200 / MAX_EVENT_LOG=500，超出即裁最旧（当前 genome 即压缩态）。§225：persist 原子写（tmp+rename）且写前 seal（§300）。
