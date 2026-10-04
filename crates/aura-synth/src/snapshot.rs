@@ -39,10 +39,18 @@ impl Default for CameraState {
     }
 }
 
-/// 世界快照（§79：关键逻辑态）。
+/// 日志历史上限（§219：世界长期运行不无限增长；§220 genome 即压缩态）。
+pub const MAX_MUTATION_LOG: usize = 200;
+pub const MAX_EVENT_LOG: usize = 500;
+
+/// 世界快照（§79/§221 版本化保存格式）。
+/// `#[serde(default)]`：旧快照缺字段 → 显式默认（§230）；
+/// 未知字段：serde 默认忽略（§229）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DreamscapeSnapshot {
     pub snapshot_version: u16,
+    /// 完整性校验和（§299；载荷规范 hash，不含本字段）。
     pub world_id: u64,
     pub seed: DreamscapeSeed,
     pub generation_version: u16,
@@ -53,6 +61,26 @@ pub struct DreamscapeSnapshot {
     pub event_log: Vec<EventEntry>,
     pub camera: CameraState,
     pub saved_at_tick: u64,
+    pub integrity: u64,
+}
+
+impl Default for DreamscapeSnapshot {
+    fn default() -> Self {
+        Self {
+            snapshot_version: SNAPSHOT_VERSION,
+            world_id: 0,
+            seed: DreamscapeSeed::from_value(0),
+            generation_version: SUPPORTED_GENERATION_VERSION,
+            biome_id: String::new(),
+            genome: Genome::default_genome(),
+            environment: EnvironmentState::initial(&DreamscapeSeed::from_value(0), 0),
+            mutation_log: Vec::new(),
+            event_log: Vec::new(),
+            camera: CameraState::default(),
+            saved_at_tick: 0,
+            integrity: 0,
+        }
+    }
 }
 
 /// 恢复错误（§105/§106：明确失败，不静默改世界）。
@@ -93,7 +121,7 @@ impl DreamscapeSnapshot {
         camera: CameraState,
         saved_at_tick: u64,
     ) -> Self {
-        Self {
+        let value = Self {
             snapshot_version: SNAPSHOT_VERSION,
             world_id,
             seed,
@@ -105,19 +133,41 @@ impl DreamscapeSnapshot {
             event_log: event_log.to_vec(),
             camera,
             saved_at_tick,
-        }
+            integrity: 0,
+        };
+        let mut snap = value;
+        snap.seal();
+        snap
     }
 
-    /// 校验快照一致性（§81/§106 门）。
+    /// 快照载荷规范 hash（§299；integrity 字段先归零再计算）。
+    #[must_use]
+    pub fn payload_hash(&self) -> u64 {
+        let mut copy = self.clone();
+        copy.integrity = 0;
+        let json = serde_json::to_vec(&copy).unwrap_or_default();
+        crate::seed::stable_hash64(b"snapshot-payload/v1", &json)
+    }
+
+    /// 完成校验和计算（capture 末尾调用）。
+    pub fn seal(&mut self) {
+        self.integrity = self.payload_hash();
+    }
+
+    /// 校验快照一致性（§81/§106/§299/§300 门）。
     ///
     /// # Errors
-    /// [`RestoreError`]：版本不支持 / world_id 不匹配。
+    /// [`RestoreError`]：版本不支持 / world_id 不匹配 / 校验和不符。
     pub fn validate(&self) -> Result<(), RestoreError> {
+        // §106：版本门优先于完整性（不可用的代不必先谈校验和）。
         if self.snapshot_version != SNAPSHOT_VERSION {
             return Err(RestoreError::UnsupportedSnapshot(self.snapshot_version));
         }
         if !generation_supported(self.generation_version) {
             return Err(RestoreError::UnsupportedGeneration(self.generation_version));
+        }
+        if self.integrity != 0 && self.integrity != self.payload_hash() {
+            return Err(RestoreError::Corrupt);
         }
         // world_id 一致性：快照未被手改（§18 身份稳定）。
         let expect = world_identity(
@@ -135,6 +185,8 @@ impl DreamscapeSnapshot {
 /// Dreamscape 会话（§77/§78）：世界持久 + 逻辑时间推进 + 显式再生。
 #[derive(Debug, Clone)]
 pub struct DreamscapeSession {
+    /// §101：Frozen = 环境不自动演化（advance 跳过）。
+    pub frozen: bool,
     pub seed: DreamscapeSeed,
     pub genome: Genome,
     pub biome: Biome,
@@ -164,6 +216,7 @@ impl DreamscapeSession {
         );
         let environment = EnvironmentState::initial(&seed, tick);
         Self {
+            frozen: false,
             seed,
             genome,
             biome,
@@ -179,6 +232,9 @@ impl DreamscapeSession {
     /// 推进逻辑时间（§30）：环境演化 + 事件日志补记 + 长 idle mutation
     /// （§28：仅 LongIdle 触发，去重）。
     pub fn advance(&mut self, delta_ticks: u64) {
+        if self.frozen {
+            return; // §101：Frozen 不演化
+        }
         let now = self.environment.tick + delta_ticks;
         self.environment.advance(&self.seed, delta_ticks);
         // 事件日志补记（确定性模拟；日志只增不改，§93）。
@@ -206,6 +262,15 @@ impl DreamscapeSession {
             );
             apply_mutation(&mut self.genome, &record);
             self.mutation_log.push(record);
+        }
+        // §219：历史上限（旧的裁掉；当前 genome 即压缩态 §220）。
+        if self.mutation_log.len() > MAX_MUTATION_LOG {
+            let excess = self.mutation_log.len() - MAX_MUTATION_LOG;
+            self.mutation_log.drain(..excess);
+        }
+        if self.event_log.len() > MAX_EVENT_LOG {
+            let excess = self.event_log.len() - MAX_EVENT_LOG;
+            self.event_log.drain(..excess);
         }
         self.last_mutation_tick = now;
     }
@@ -286,6 +351,7 @@ impl DreamscapeSession {
             event_log: snapshot.event_log.clone(),
             camera: snapshot.camera,
             last_mutation_tick: snapshot.saved_at_tick,
+            frozen: false,
         })
     }
 }
@@ -450,5 +516,71 @@ mod tests {
         let a = DreamscapeSession::new(DreamscapeSeed::from_input(DEFAULT_SEED_INPUT), 0);
         let b = DreamscapeSession::new(DreamscapeSeed::from_input(DEFAULT_SEED_INPUT), 7);
         assert_eq!(a.world_id, b.world_id, "首启缺省世界稳定（§77）");
+    }
+}
+
+#[cfg(test)]
+mod integrity_tests {
+    use super::*;
+
+    #[test]
+    fn integrity_detects_tampering() {
+        // §299/§300：读后校验；载荷被手改 → Corrupt。
+        let mut s = DreamscapeSession::new(DreamscapeSeed::from_input("seal"), 0);
+        s.advance(500);
+        let snap = s.snapshot();
+        assert_eq!(snap.validate(), Ok(()));
+        let mut json = serde_json::to_value(&snap).unwrap();
+        json["saved_at_tick"] = serde_json::json!(999_999);
+        let tampered: DreamscapeSnapshot = serde_json::from_value(json).unwrap();
+        assert_eq!(tampered.validate(), Err(RestoreError::Corrupt));
+    }
+
+    #[test]
+    fn old_snapshot_without_integrity_still_loads() {
+        // §229/§230：缺字段（旧格式）→ 显式默认；integrity=0 视为无校验和。
+        let s = DreamscapeSession::new(DreamscapeSeed::from_input("legacy"), 100);
+        let mut v = serde_json::to_value(s.snapshot()).unwrap();
+        let _ = v.as_object_mut().unwrap().remove("integrity");
+        let legacy: DreamscapeSnapshot = serde_json::from_value(v).unwrap();
+        assert_eq!(legacy.validate(), Ok(()));
+        assert_eq!(
+            DreamscapeSession::restore(&legacy).unwrap().world_id,
+            s.world_id
+        );
+    }
+
+    #[test]
+    fn unknown_fields_ignored() {
+        // §229：未来新增字段 → 旧版本忽略。
+        let s = DreamscapeSession::new(DreamscapeSeed::from_input("future"), 0);
+        let mut v = serde_json::to_value(s.snapshot()).unwrap();
+        v["future_field"] = serde_json::json!({"anything": 1});
+        let parsed: DreamscapeSnapshot = serde_json::from_value(v).unwrap();
+        assert_eq!(parsed.world_id, s.world_id);
+    }
+
+    #[test]
+    fn history_bounded() {
+        // §219：长期运行日志不无限增长。
+        let mut s = DreamscapeSession::new(DreamscapeSeed::from_input("bound"), 0);
+        for _ in 0..400 {
+            s.advance(crate::genome::IDLE_MUTATION_AFTER_TICKS + 10);
+        }
+        assert!(s.mutation_log.len() <= MAX_MUTATION_LOG);
+        assert!(s.event_log.len() <= MAX_EVENT_LOG);
+    }
+
+    #[test]
+    fn frozen_env_does_not_evolve() {
+        // §101：Frozen 不演化。
+        let mut s = DreamscapeSession::new(DreamscapeSeed::from_input("frozen"), 100);
+        s.frozen = true;
+        let t0 = s.environment.tick;
+        s.advance(10_000);
+        assert_eq!(s.environment.tick, t0);
+        s.frozen = false;
+        s.advance(10_000);
+        assert_eq!(s.environment.tick, t0 + 10_000);
     }
 }

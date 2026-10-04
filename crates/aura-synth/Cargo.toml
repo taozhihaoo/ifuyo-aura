@@ -9,10 +9,8 @@ description = "ifuyo Aura Dreamscape 世界生成核心（seed/genome/environmen
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-siphasher = "1"
-
-[dev-dependencies]
 serde_json = "1"
+siphasher = "1"
 
 [lints]
 workspace = true

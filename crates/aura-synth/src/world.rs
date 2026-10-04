@@ -146,6 +146,53 @@ pub struct World {
     pub objects: Vec<PlacedObject>,
 }
 
+/// 世界校验错误（§167/§182）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorldInvalid {
+    ObjectCount,
+    LandmarkCount,
+    NotFinite,
+    OutOfBounds,
+    BadId,
+}
+
+/// 校验世界（§167：finite 坐标/数量/边界/无 NaN/合法 id；§300 写前读后调用）。
+///
+/// # Errors
+/// [`WorldInvalid`]。
+pub fn validate_world(w: &World) -> Result<(), WorldInvalid> {
+    if w.objects.len() > MAX_OBJECTS + MAX_PARTICLES {
+        return Err(WorldInvalid::ObjectCount);
+    }
+    if w.landmarks.len() > MAX_LANDMARKS {
+        return Err(WorldInvalid::LandmarkCount);
+    }
+    let finite = |v: f32| v.is_finite();
+    for o in &w.objects {
+        if !finite(o.x) || !finite(o.z) || !finite(o.scale) || !finite(o.rotation) {
+            return Err(WorldInvalid::NotFinite);
+        }
+        if o.x.abs() > WORLD_BOUND * 2.0 || o.z.abs() > WORLD_BOUND * 2.0 {
+            return Err(WorldInvalid::OutOfBounds);
+        }
+    }
+    for l in &w.landmarks {
+        if !finite(l.x) || !finite(l.z) || !finite(l.radius) {
+            return Err(WorldInvalid::NotFinite);
+        }
+        if l.id == 0 {
+            return Err(WorldInvalid::BadId);
+        }
+        if l.x.abs() > WORLD_BOUND || l.z.abs() > WORLD_BOUND {
+            return Err(WorldInvalid::OutOfBounds);
+        }
+    }
+    if !finite(w.terrain.amplitude) || !finite(w.terrain.frequency) {
+        return Err(WorldInvalid::NotFinite);
+    }
+    Ok(())
+}
+
 /// 简单 spatial hash（§54）：cell → 索引集合。
 #[derive(Debug, Default)]
 struct SpatialHash {
@@ -526,4 +573,62 @@ mod tests {
 
     use crate::biome::Biome;
     use crate::genome::GenomeField;
+}
+
+#[cfg(test)]
+mod validity_tests {
+    use super::*;
+    use crate::biome::Biome;
+    use crate::genome::Genome;
+
+    fn world_for(tag: &str) -> World {
+        let seed = DreamscapeSeed::from_input(tag);
+        let genome = Genome::from_seed(&seed);
+        let biome = Biome::select(&seed, &genome);
+        World::generate(&seed, &genome, &biome)
+    }
+
+    #[test]
+    fn valid_world_passes() {
+        let w = world_for("valid-check");
+        assert_eq!(validate_world(&w), Ok(()));
+    }
+
+    #[test]
+    fn nan_and_out_of_bounds_rejected() {
+        let mut w = world_for("bad-check");
+        w.objects.push(PlacedObject {
+            family: crate::biome::ObjectFamily::Stone,
+            x: f32::NAN,
+            z: 0.0,
+            scale: 1.0,
+            rotation: 0.0,
+            nonce: 999,
+        });
+        assert_eq!(validate_world(&w), Err(WorldInvalid::NotFinite));
+        w.objects.pop();
+        w.objects.push(PlacedObject {
+            family: crate::biome::ObjectFamily::Stone,
+            x: 1e30,
+            z: 0.0,
+            scale: 1.0,
+            rotation: 0.0,
+            nonce: 999,
+        });
+        assert_eq!(
+            validate_world(&w),
+            Err(WorldInvalid::OutOfBounds),
+            "§169 巨型坐标拒绝"
+        );
+        w.objects.pop();
+        w.landmarks.push(Landmark {
+            id: 0, // 非法 id
+            kind: LandmarkKind::Arch,
+            x: 0.0,
+            z: 0.0,
+            radius: 2.0,
+            rotation: 0.0,
+        });
+        assert_eq!(validate_world(&w), Err(WorldInvalid::BadId));
+    }
 }
