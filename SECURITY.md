@@ -136,3 +136,16 @@ api_key/password/token/client_secret/Authorization/Cookie/BEGIN PRIVATE KEY 全�
 - 前端 validation-first：节点/状态/邻居 DTO 逐字段守卫；非有限位置节点丢弃（§190/§191 不让 renderer NaN）。
 - 构建线程隔离：后台线程 panic 不落 snapshot（generation 检查）；取消幂等。
 - 无网络：地图全链路（构建/查询/渲染）零网络路径。
+### Music Map（M9 下篇 §364–§373/§549）
+
+- Vector Validation（§370）：空/维度不符/非有限/零向量嵌入全部排除出 dataset（§32–§34 测试矩阵）。
+- Graph Validation（§367）：持久化图恢复必过 validate_graph 七检查（自环/未知节点/非有限权重/重复/对称/边预算 §61）——测试覆盖 self-loop 与未知节点拒绝。
+- Dataset Versioning（§281/§282）：model_id/model_version/analysis_version/dim 任一变化 → dataset hash 变 → 旧持久化 validate 失败 → 重建。
+- Derived Store Isolation（§185/§373）：map.json 在 app_data/map/，损坏即删重建，零写入 M3 tracks。
+- IPC Bounds（§366）：k clamp(1,50)、limit clamp(1,20000)、视口非法回退全图；过滤为结构化数值（无自由字符串注入面）。
+- Viewport/k Bounds（§364）：服务端 norm_axis 钳制 + NaN 回退。
+- NaN/Infinity Handling（§370/§371）：restore 拒绝非有限位置/簇统计；前端逐节点 finite 守卫丢弃坏节点。
+- Map Store Recovery（§187/§285）：损坏 map.json 启动即删除（测试锁定），状态 Pending/Stale，不 crash 主应用。
+- Build Generation（§166/§287）：旧 build 迟到不得覆盖（代号语义测试）。
+- No Network Dependency（§362/§363/§490）：地图构建/查询/搜索全链路零网络路径；搜索复用本地 M3 FTS5。
+- 参数化 SQL（§372）：所有 TrackId 查询经 rusqlite 参数绑定（M3/M8 层），map store 为 JSON 文件无 SQL。

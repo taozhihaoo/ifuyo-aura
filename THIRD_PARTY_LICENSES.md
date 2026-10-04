@@ -27,3 +27,7 @@ MIT OR Apache-2.0，见 [LICENSE-MIT](LICENSE-MIT) / [LICENSE-APACHE](LICENSE-AP
 ## M8（2026-10-05）
 
 M8 新增运行时依赖：**无第三方 DSP/FFT/ML runtime/模型**（D-095：自有 radix-2 FFT、自有谱统计嵌入）。新增 crates 均为本仓库 workspace 内（aura-analysis）或已在上篇记录的 serde/siphasher/rusqlite/aura-core（MIT/Apache-2.0）。测试 fixture 全部程序生成（§261 无第三方音频素材）。无隐藏模型许可（§255）。
+
+## M9（2026-10-05）
+
+M9 新增第三方依赖：**siphasher 1.x**（MIT OR Apache-2.0；dataset hash 用，M9 上篇引入、Cargo.lock 锁定；deny bans/licenses/sources 全绿）。M9 下篇零新增依赖（§494/§495：渲染用平台 Canvas2D，无第二渲染库、无大型图框架）。全部其余 crates 均为本仓库 workspace 内（aura-map 等）或此前已记录的 serde/serde_json/rusqlite/tauri 栈（MIT/Apache-2.0）。

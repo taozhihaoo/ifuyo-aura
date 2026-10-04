@@ -10,7 +10,7 @@
 
 ## 当前状态（M6）
 
-产品愿景包含听感星图（Music Map）与生成音乐引擎（Dreamscape）——它们在后续里程碑（M7–M9）到来。
+Music Map 根据本地音频分析结果，把音乐库组织成可探索的相似关系空间（§546：本地 M8 嵌入 → cosine 相似度 → kNN 图 → 确定性聚类与 2D 布局；不做任何"AI 理解品味"式宣称，全部数据本地生成）。
 下表是**当前真实状态**（§310，不宣称未实现功能）：
 
 | Feature | Status |
@@ -27,7 +27,7 @@
 | Command Palette（Ctrl+K） | ✅ |
 | Aurora 视觉（WebGL fbm，播放响应） | ✅ |
 | Win11 Mica（Win10 solid fallback） | ✅ |
-| Music Map（相似度地图：构建/Canvas 渲染/搜索/过滤） | ✅（M9；下篇门禁） |
+| Music Map（相似度地图：构建/Canvas 渲染/搜索/过滤） | ✅ |
 | Dreamscape（程序化世界：seed/演化/稀有事件/快照 + Three.js 渲染） | ✅ |
 | Analysis（LUFS/Tempo/Key/Spectral/MFCC 本地确定性分析） | ✅ |
 | SMTC / 托盘 / 媒体键 | M10 |

@@ -92,3 +92,18 @@ ifuyo Aura 的音频来源分级与实现状态。政策依据见 [CONTENT_POLIC
 
 - **零第三方代码/模型/权重**（D-095/§254/§255：无隐藏模型许可问题）。
 - 全部离线可运行（§328 offline audit PASS——分析链路无网络路径）。
+
+## M9 Music Map 算法与依赖来源（§381）
+
+| 名称 | 类型 | 来源/依据 | 版本 | 许可 | 用途 | 核验日期 | 商业状态 | 已知限制 |
+|---|---|---|---|---|---|---|---|---|
+| siphasher | 第三方 crate（crates.io） | https://github.com/stouset/siphasher（SipHash-1-3 128-bit 实现） | 1.x | MIT/Apache-2.0 双许可 | dataset hash（D-108 §26） | 2026-10-05 | 可商用再分发 | 无 |
+| SipHash | 算法参考 | Aumasson–Bernstein *SipHash: a fast short-input PRF*（公开论文） | — | 算法为公开学术事实（实现为第三方 crate，非自有代码） | dataset hash 抗碰撞基础 | 2026-10-05 | 同上 | 短输入 PRF，非密码学安全边界 |
+| cosine 相似度 | 自有代码 | aura-analysis/similarity.rs（M8 §125–§129 合同复用） | analysis_version=1 | 本项目双许可 | 相似度内核（D-109） | 2026-10-05 | 完全自有 | exact scan ≤25k（D-111，ANN=B 级未引入） |
+| label propagation（确定性 LPA） | 算法参考 | Raghavan et al. *Near linear time algorithm to detect community structures*（公开论文思想）+ 自有确定性化（升序遍历/最小标签 tie-break/canonical 重编号） | CLUSTER_ALGO_VERSION=1 | 自有实现，无第三方代码 | 簇检测（D-113） | 2026-10-05 | 完全自有 | 无语义标签（§104） |
+| PCA（幂迭代+符号规范） | 算法参考 | 公开线性代数方法（幂迭代/QR 正交化），自有实现 | LAYOUT_ALGO_VERSION=1 | 自有代码 | 布局初始化（D-114 §73–§75） | 2026-10-05 | 完全自有 | 前 2 主成分近似 |
+| 弹簧-网格松弛 | 自有代码 | 经典 force-directed 思想 + 自有 grid 斥力/冻结种子（§77/§82） | 同上 | 本项目双许可 | 布局松弛（D-114/D-120） | 2026-10-05 | 完全自有 | 局部极小；预算 150 iter/25k 节点 |
+| Canvas2D 渲染 | 平台 API | Web/WebView 标准 Canvas 2D context | — | 平台标准（无第三方库 §494/§495） | 地图渲染器（D-119） | 2026-10-05 | 无许可负担 | 无 WebGL 依赖（§194 天然 fallback） |
+
+- **M9 无新增运行时第三方 crate**（siphasher 于 M9 上篇引入并锁定 Cargo.lock，本次核验其许可证与 MSRV/Windows/binary size（§378 清单）均通过；deny gate 绿）。
+- ANN/graph/layout/clustering 全部自有实现（§380 不"因业界常用"引入未审计实现；§495 无 giant graph framework）。

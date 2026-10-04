@@ -83,3 +83,11 @@ Subsonic 等服务的凭据只能存入 **Windows Credential Manager**，不进�
 - 地图 = derived data，全部可由本地 M3/M8 数据重建；map.json 存 app_data/map/（不进音乐文件夹 §184），损坏即删除重建，不触碰 M3 库（§185）。
 - 节点元数据不落第二份持久化副本——渲染时从本地库现读；零遥测/零上传/零网络（构建、查询、渲染全链路）。
 - 视图状态（zoom/pan）存 webview localStorage（本机 UI 偏好），按 dataset hash 键控，不含个人信息。
+## M9 下篇确认（§358–§363/§547）
+
+Music Map 明确零上传清单：**audio、embeddings、analysis 结果、map 数据（位置/簇/图）、地图交互（选择/搜索/过滤/视图）**——全部只存本机，不出网络。
+
+- 无云向量库（§360）：无 Pinecone/hosted vector DB/cloud similarity service，相似度全部本地 exact 计算。
+- 断网完整可用（§361）：已有 M8 分析存在时，构建/浏览/搜索/过滤/播放全链路离线工作。
+- 无遥测（§358）：不记录 map usage/selected tracks/similarity queries/cluster interactions/screenshots/performance metrics（§491 grep 零命中）。
+- map.json（位置/簇/边 + 版本校验和）存 app_data/map/，可随时删除，下次构建全量重建（derived data）。

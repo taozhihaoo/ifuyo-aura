@@ -254,7 +254,8 @@ dataset（兼容合同/dataset hash）→ similarity（cosine/top-K）→ graph�
 ### Music Map 应用层与前端（M9 中篇）
 
 - **shell**（src-tauri/src/map_ipc.rs）：MapHost 宿主——惰性 restore、冻结采集（只取 M8 Completed 行 §239）、后台 build 线程（generation/去重/取消）、map.json 原子写（app_data/map/，derived data）；8 个 typed IPC 命令（status/overview/nodes/clusters/neighbors/track/request_map_build/cancel_map_build §228）。
-- **前端**（ui/src/features/map/）：mapStore（8 字段白名单 §145）+ MapDataModel（typed arrays + 空间 hash 非响应式 §146/§156）+ MusicMapView（单 Canvas2D：LOD 三级/视口 culling/标签优先级+碰撞/选中邻域边/按需渲染）+ MapDetailPanel（§124 字段 + Similar Tracks 真实 top-K §126）+ MapToolbar（搜索-to-focus §129–§132/过滤 chips §218/配色 legend §210/视图命令 §138/构建状态 §235–§236）。
+- **前端**（ui/src/features/map/）：mapStore（8 字段白名单 §145）+ MapDataModel（typed arrays + 空间 hash 非响应式 §146/§156）+ MusicMapView（单 Canvas2D：LOD 三级/视口 culling/标签优先级+碰撞/选中邻域边/按需渲染/dpr cap §326/键盘控制 §317/双击播放 §314）+ MapDetailPanel（§124 字段 + Similar Tracks 真实 top-K §126 + Open in Library §312）+ MapToolbar（搜索-to-focus §129–§132 经 LibrarySearchRunner 竞态守卫 §345/过滤 chips §218/配色 legend §210/视图命令 §138/构建状态 §235–§236）+ mapBus（Library/palette→Map 焦点与命令总线 §311/§411）。
+- **增量与性能**（下篇）：choose_build_kind 30% 阈值选增量/全量；增量以上一代位置为冻结种子（§82/D-120）；性能证据（release 实测 1k/4k/10k 全链 + 内存账面 + >25k 显式拒绝）见 docs/PERF.md M9 节。
 
 ## 构建与工程
 
