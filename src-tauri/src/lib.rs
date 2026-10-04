@@ -4,6 +4,7 @@
 use tauri::Manager;
 
 pub mod audio;
+pub mod dreamscape;
 pub mod ipc;
 pub mod library;
 
@@ -39,12 +40,15 @@ pub fn run() {
                 aura_sources::http::HttpClient::new(http_cfg, std::sync::Arc::clone(&blocklist))
                     .map_err(|e| format!("http client init failed: {e}"))?,
             );
+            let dreamscape = dreamscape::DreamscapeHost::open(&data_dir)
+                .map_err(|e| format!("dreamscape init failed: {e}"))?;
             app.manage(ipc::AppState {
                 audio: std::sync::Arc::new(audio),
                 library: std::sync::Arc::new(library),
                 app: handle,
                 http,
                 blocklist,
+                dreamscape,
             });
             // §19：Win11 Mica（设置开关，失败自动保持 solid fallback §20）。
             #[cfg(target_os = "windows")]
@@ -90,6 +94,15 @@ pub fn run() {
             ipc::track_id_by_path,
             ipc::play_input,
             ipc::library_stats,
+            dreamscape::dreamscape_state,
+            dreamscape::dreamscape_advance,
+            dreamscape::dreamscape_manifest,
+            dreamscape::dreamscape_regenerate,
+            dreamscape::dreamscape_export_seed,
+            dreamscape::dreamscape_import_seed,
+            dreamscape::dreamscape_save_snapshot,
+            dreamscape::dreamscape_restore_snapshot,
+            dreamscape::dreamscape_set_camera,
         ]) // probe-isolated
         .run(tauri::generate_context!())
         .expect("error while running ifuyo Aura");

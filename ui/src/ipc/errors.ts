@@ -14,6 +14,10 @@ const CODE_TO_KEY: Record<string, string> = {
   SCAN_RUNNING: 'error.scanRunning',
   SETTINGS_WRITE: 'error.settingsWrite',
   CANCELLED: 'error.cancelled',
+  INVALID_SEED: 'error.invalidSeed',
+  DREAMSCAPE_VERSION_UNAVAILABLE: 'error.dreamscapeVersion',
+  DREAMSCAPE_CORRUPT: 'error.dreamscapeCorrupt',
+  DREAMSCAPE_NO_SNAPSHOT: 'error.dreamscapeNoSnapshot',
   INTERNAL: 'error.internal',
 };
 

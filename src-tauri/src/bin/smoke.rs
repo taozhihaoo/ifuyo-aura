@@ -26,6 +26,7 @@ fn main() {
     let tmp = std::env::temp_dir().join(format!("aura-m6-smoke-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     let tmp_ref = tmp.clone();
+    let tmp_ds = tmp.clone();
 
     let mut app = tauri::Builder::default()
         .any_thread()
@@ -54,12 +55,15 @@ fn main() {
                 aura_sources::http::HttpClient::new(http_cfg, Arc::clone(&blocklist))
                     .map_err(|e| format!("http client init failed: {e}"))?,
             );
+            let dreamscape = aura_shell_lib::dreamscape::DreamscapeHost::open(&tmp_ds)
+                .map_err(|e| format!("dreamscape init failed: {e}"))?;
             app.manage(AppState {
                 audio: Arc::new(audio),
                 library: Arc::new(library),
                 app: handle,
                 http,
                 blocklist,
+                dreamscape,
             });
             Ok(())
         })

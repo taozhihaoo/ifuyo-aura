@@ -19,7 +19,7 @@ pub struct AppError {
 }
 
 impl AppError {
-    fn new(code: &str, message: impl Into<String>, recoverable: bool) -> Self {
+    pub(crate) fn new(code: &str, message: impl Into<String>, recoverable: bool) -> Self {
         Self {
             code: code.into(),
             message: message.into(),
@@ -28,9 +28,9 @@ impl AppError {
     }
 }
 
-type CmdResult<T> = Result<T, AppError>;
+pub(crate) type CmdResult<T> = Result<T, AppError>;
 
-fn from_err(code: &str, e: impl std::fmt::Display, recoverable: bool) -> AppError {
+pub(crate) fn from_err(code: &str, e: impl std::fmt::Display, recoverable: bool) -> AppError {
     AppError::new(code, e.to_string(), recoverable)
 }
 
@@ -43,6 +43,8 @@ pub struct AppState {
     /// D-070；scheme 白名单/凭据拒绝/封锁表始终生效）。
     pub http: Arc<aura_sources::http::HttpClient>,
     pub blocklist: Arc<aura_sources::platform_block::PlatformBlocklist>,
+    /// Dreamscape 会话宿主（M7 上篇；逻辑态持久化在 app_data）。
+    pub dreamscape: crate::dreamscape::DreamscapeHost,
 }
 
 /// 应用基础信息（M0 契约保留）。
