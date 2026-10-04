@@ -10,6 +10,7 @@
 
 pub mod biome;
 pub mod env;
+pub mod events;
 pub mod genome;
 pub mod rng;
 pub mod seed;
