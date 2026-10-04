@@ -33,6 +33,13 @@ vi.mock('../ipc/client', () => ({
     setMica: vi.fn(async () => undefined),
     listenScanProgress: vi.fn(async () => vi.fn()),
     listenLibraryChanged: vi.fn(async () => vi.fn()),
+    dreamscapeOpen: vi.fn(async () => null),
+    dreamscapeClose: vi.fn(async () => null),
+    dreamscapeManifest: vi.fn(async () => {
+      throw { code: 'DREAMSCAPE_CORRUPT', message: 'x', recoverable: false };
+    }),
+    dreamscapeState: vi.fn(async () => null),
+    dreamscapeAdvance: vi.fn(async () => null),
   },
 }));
 
@@ -61,15 +68,26 @@ afterEach(() => {
 });
 
 describe('App 键盘矩阵（§183）', () => {
-  it('Ctrl+K 开 palette；Esc 关（且关 queue/settings）', () => {
+  it('Esc 逐层退出：palette 优先，再抽层（§183/§198）', () => {
     render(createElement(App));
     keyDown('k', { ctrlKey: true });
     expect(useUiStore.getState().commandPaletteOpen).toBe(true);
     useUiStore.setState({ queueOpen: true, settingsOpen: true });
     keyDown('Escape');
+    // 第一层：只关 palette（抽层保持）。
     expect(useUiStore.getState().commandPaletteOpen).toBe(false);
+    expect(useUiStore.getState().queueOpen).toBe(true);
+    keyDown('Escape');
+    // 第二层：关抽层。
     expect(useUiStore.getState().queueOpen).toBe(false);
     expect(useUiStore.getState().settingsOpen).toBe(false);
+  });
+
+  it('Esc 在 Dreamscape 视图返回 Now Playing（§198/§285）', () => {
+    render(createElement(App));
+    act(() => useUiStore.setState({ view: 'dreamscape' }));
+    keyDown('Escape');
+    expect(useUiStore.getState().view).toBe('now-playing');
   });
 
   it('输入态不拦截字符；Space 在非输入态切换播放（§258）', () => {

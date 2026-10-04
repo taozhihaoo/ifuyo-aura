@@ -10,6 +10,7 @@ import { Sidebar } from './shell/Sidebar';
 import { NowPlayingPage } from './features/nowplaying/NowPlayingPage';
 import { LibraryPage } from './features/library/LibraryPage';
 import { MapPage } from './features/map/MapPage';
+import { DreamscapeView } from './features/dreamscape/DreamscapeView';
 import { CommandPalette } from './features/palette/CommandPalette';
 import { AuroraCanvas } from './visual/AuroraCanvas';
 import { SettingsPanel } from './features/settings/SettingsPanel';
@@ -106,10 +107,16 @@ export default function App() {
         }, 50);
       }
       if (e.key === 'Escape') {
-        // §183：Esc 必须能退出任何浮层（palette 关闭另有 input 级处理）。
-        useUiStore.getState().setQueueOpen(false);
-        useUiStore.getState().setSettingsOpen(false);
-        useUiStore.getState().setPaletteOpen(false);
+        // §183/§198：Esc 逐层退出（palette → dreamscape → 抽层）。
+        const st = useUiStore.getState();
+        if (st.commandPaletteOpen) {
+          st.setPaletteOpen(false);
+        } else if (st.view === 'dreamscape') {
+          st.setView('now-playing'); // §285：明确退出方式
+        } else {
+          st.setQueueOpen(false);
+          st.setSettingsOpen(false);
+        }
       }
     };
     window.addEventListener('keydown', onKey);
@@ -141,8 +148,15 @@ export default function App() {
               <MapPage />
             </FeatureBoundary>
           )}
+          {view === 'dreamscape' && (
+            <FeatureBoundary name="dreamscape" message={t('error.boundaryDreamscape')} retryLabel={t('common.retry')}>
+              <DreamscapeView />
+            </FeatureBoundary>
+          )}
         </main>
-        <AuroraCanvas />
+        {/* §130/§131：Dreamscape 激活时不挂 Aurora（单高负载 WebGL 规则）。 */}
+        {view !== 'dreamscape' && <AuroraCanvas />}
+        {view === 'dreamscape' && <div className="aurora-fallback" aria-hidden />}
       </div>
       <CommandPalette />
       <SettingsPanel />

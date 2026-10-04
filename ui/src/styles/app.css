@@ -398,3 +398,30 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   padding: 0;
   color: rgba(255, 255, 255, 0.8);
 }
+
+/* ---- Dreamscape（§203/§275/§280）---- */
+.dreamscape {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+}
+.dreamscape-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.dreamscape-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.dreamscape-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.85rem;
+  pointer-events: none;
+}

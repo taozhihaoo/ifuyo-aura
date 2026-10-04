@@ -32,7 +32,11 @@ export function DreamscapeView() {
     void (async () => {
       try {
         void ipc.dreamscapeOpen().catch(() => undefined); // §257 幂等
-        if (!renderer.create(canvas)) return;
+        if (!renderer.create(canvas)) {
+          // §275/§278：GL 不可用 = 立即 fallback，不悬挂 loading。
+          setStatus('fallback');
+          return;
+        }
         const manifest = await ipc.dreamscapeManifest(); // validation-first（§253）
         if (!alive) return;
         if (!renderer.loadWorld(manifest)) return;

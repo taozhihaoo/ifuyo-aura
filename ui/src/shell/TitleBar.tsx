@@ -26,14 +26,22 @@ export function TitleBar() {
         ifuyo <span className="brand-accent">Aura</span>
       </div>
       <nav className="titlebar-nav" aria-label="Primary">
-        {(['now-playing', 'library', 'map'] as const).map((v) => (
+        {(['now-playing', 'library', 'map', 'dreamscape'] as const).map((v) => (
           <button
             key={v}
             className={`nav-btn${view === v ? ' active' : ''}`}
             onClick={() => setView(v)}
             aria-current={view === v ? 'page' : undefined}
           >
-            {t(v === 'now-playing' ? 'nav.nowPlaying' : v === 'library' ? 'nav.library' : 'nav.map')}
+            {t(
+              v === 'now-playing'
+                ? 'nav.nowPlaying'
+                : v === 'library'
+                  ? 'nav.library'
+                  : v === 'map'
+                    ? 'nav.map'
+                    : 'dreamscape.title',
+            )}
           </button>
         ))}
       </nav>

@@ -58,10 +58,15 @@ export class DreamscapeRenderer {
     this.onStats = cb;
   }
 
-  /** §129 create：一次性 GL 上下文（§257 open×N 不创建第二个 renderer）。 */
+  /** §129/§277 create：GL 不可用（无 WebGL/上下文创建失败）→ false，
+   *  调用方进入 fallback；不抛异常。 */
   create(canvas: HTMLCanvasElement): boolean {
     if (!this.lifecycle.transition('created')) return false;
-    this.gl = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'low-power' });
+    try {
+      this.gl = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'low-power' });
+    } catch {
+      return false;
+    }
     this.applyPixelRatio();
     this.scene = new Scene();
     this.camera = new PerspectiveCamera(55, 1, 0.1, 600);
