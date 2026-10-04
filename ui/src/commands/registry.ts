@@ -25,6 +25,10 @@ export interface CommandContext {
   toggleMiniPlayer: () => void;
   focusLibrarySearch: () => void;
   isPlaying: () => boolean;
+  openDreamscape: () => void;
+  regenerateDreamscape: () => void;
+  copyDreamscapeSeed: () => void;
+  saveDreamscapeSnapshot: () => void;
 }
 
 /** 命令表：声明式注册（§99），无 if/else 链。 */
@@ -44,6 +48,10 @@ export function buildCommands(ctx: CommandContext, t: (key: string) => string): 
     { id: 'settings.loudness', titleKey: 'settings.loudness', keywords: 'loudness normalization', execute: ctx.toggleLoudness },
     { id: 'view.mini', titleKey: 'view.miniPlayer', keywords: 'mini player window', execute: ctx.toggleMiniPlayer },
     { id: 'library.focus-search', titleKey: 'library.search', keywords: 'search focus', shortcut: 'Ctrl+F', execute: ctx.focusLibrarySearch },
+    { id: 'dreamscape.open', titleKey: 'dreamscape.title', keywords: 'dreamscape world enter open', execute: ctx.openDreamscape },
+    { id: 'dreamscape.regenerate', titleKey: 'dreamscape.regenerate', keywords: 'dreamscape regenerate new world', execute: ctx.regenerateDreamscape },
+    { id: 'dreamscape.copy-seed', titleKey: 'dreamscape.copySeed', keywords: 'dreamscape seed copy', execute: ctx.copyDreamscapeSeed },
+    { id: 'dreamscape.save-snapshot', titleKey: 'dreamscape.saveSnapshot', keywords: 'dreamscape snapshot save', execute: ctx.saveDreamscapeSnapshot },
   ].map((c) => ({ ...c, title: t(c.titleKey) }));
 }
 

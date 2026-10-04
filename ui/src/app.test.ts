@@ -82,6 +82,10 @@ describe('command registry (§99–101)', () => {
     toggleMiniPlayer: () => undefined,
     focusLibrarySearch: () => undefined,
     isPlaying: () => false,
+    openDreamscape: () => undefined,
+    regenerateDreamscape: () => undefined,
+    copyDreamscapeSeed: () => undefined,
+    saveDreamscapeSnapshot: () => undefined,
   };
   const t = (k: string) => k;
   const cmds = buildCommands(ctx, t);

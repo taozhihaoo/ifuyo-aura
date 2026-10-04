@@ -85,6 +85,30 @@ export function CommandPalette() {
         window.setTimeout(() => document.getElementById('library-search')?.focus(), 50);
       },
       isPlaying: () => snapshot?.state === 'playing',
+      // ---- Dreamscape（§197；§103 再生仅显式；§104 只复制安全 seed）----
+      openDreamscape: () => setView('dreamscape'),
+      regenerateDreamscape: () => {
+        // §103：用户显式再生。输入 = 当前本地时间串（D-088：可再现于
+        // 同一分钟；需要精确世界请用「导入 seed」）。
+        const stamp = new Date().toISOString().slice(0, 16);
+        void ipc
+          .dreamscapeRegenerate(stamp)
+          .then(() => setView('dreamscape'))
+          .catch((e) => setNotice(errorToI18nKey(e)));
+      },
+      copyDreamscapeSeed: () => {
+        void ipc
+          .dreamscapeExportSeed()
+          .then((seed) => navigator.clipboard.writeText(seed))
+          .then(() => setNotice('dreamscape.seedCopied'))
+          .catch(() => setNotice('dreamscape.copyFailed'));
+      },
+      saveDreamscapeSnapshot: () => {
+        void ipc
+          .dreamscapeSaveSnapshot()
+          .then(() => setNotice('dreamscape.snapshotSaved'))
+          .catch((e) => setNotice(errorToI18nKey(e)));
+      },
     }),
     [setView, setQueueOpen, setSettingsOpen, setMiniPlayerOpen, snapshot?.state],
   );
