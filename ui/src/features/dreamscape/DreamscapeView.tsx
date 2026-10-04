@@ -31,6 +31,7 @@ export function DreamscapeView() {
 
     void (async () => {
       try {
+        void ipc.dreamscapeOpen().catch(() => undefined); // §257 幂等
         if (!renderer.create(canvas)) return;
         const manifest = await ipc.dreamscapeManifest(); // validation-first（§253）
         if (!alive) return;
@@ -63,6 +64,7 @@ export function DreamscapeView() {
       window.clearInterval(stateTimer);
       document.removeEventListener('visibilitychange', onVis);
       renderer.dispose(); // §293：cancel/stop/dispose/unsubscribe
+      void ipc.dreamscapeClose().catch(() => undefined); // §257 幂等
       rendererRef.current = null;
       setStatus('idle');
     };

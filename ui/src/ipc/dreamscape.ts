@@ -127,6 +127,8 @@ export function isSceneManifest(v: unknown): v is SceneManifest {
 
 /** 会话状态 DTO（dreamscape_state 命令）。 */
 export interface DreamscapeStateDto {
+  /** §262 revision：UI 只接受最新状态。 */
+  revision: number;
   worldId: string;
   seedHuman: string;
   generationVersion: number;

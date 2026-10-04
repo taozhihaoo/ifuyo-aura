@@ -19,6 +19,10 @@ const SNAPSHOT_FILE: &str = "dreamscape.json";
 pub struct DreamscapeHost {
     pub session: Mutex<DreamscapeSession>,
     path: PathBuf,
+    /// §262 revision：状态变更单调递增；UI 只接受最新（§259/§260 陈旧代保护）。
+    revision: std::sync::atomic::AtomicU64,
+    /// §257 幂等：open/close 重复调用不报错（渲染器在 UI 侧单例）。
+    opened: std::sync::atomic::AtomicBool,
 }
 
 impl DreamscapeHost {
@@ -40,15 +44,27 @@ impl DreamscapeHost {
         Ok(Self {
             session: Mutex::new(session),
             path,
+            revision: std::sync::atomic::AtomicU64::new(1),
+            opened: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
-    /// 写快照（原子替换；只含逻辑态 §127）。
+    /// §262：状态修订号（每次变更 +1）。
+    fn bump(&self) -> u64 {
+        self.revision
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1
+    }
+
+    /// 写快照（§225 原子替换 temp→rename；§295 非 per-mutation 写盘，
+    /// 由命令边界/退出路径调用；只含逻辑态 §127）。
     ///
     /// # Errors
     /// 序列化/写入失败。
     pub fn persist(&self, session: &DreamscapeSession) -> Result<(), String> {
-        let snap = session.snapshot();
+        let mut snap = session.snapshot();
+        snap.seal();
+
         let json = serde_json::to_vec_pretty(&snap).map_err(|e| e.to_string())?;
         let tmp = self.path.with_extension("json.tmp");
         std::fs::write(&tmp, &json).map_err(|e| e.to_string())?;
@@ -67,6 +83,8 @@ fn load_snapshot(path: &Path) -> Result<DreamscapeSession, String> {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DreamscapeStateDto {
+    /// §262 revision：UI 只接受最新状态（陈旧回调丢弃）。
+    pub revision: u64,
     pub world_id: String,
     pub seed_human: String,
     pub generation_version: u16,
@@ -85,6 +103,7 @@ pub struct DreamscapeStateDto {
 
 fn to_dto(s: &DreamscapeSession) -> DreamscapeStateDto {
     DreamscapeStateDto {
+        revision: 0,
         world_id: format!("{:016x}", s.world_id),
         seed_human: s.export_seed(),
         generation_version: aura_synth::generation_version(),
@@ -102,6 +121,12 @@ fn to_dto(s: &DreamscapeSession) -> DreamscapeStateDto {
     }
 }
 
+fn to_dto_rev(s: &DreamscapeSession, revision: u64) -> DreamscapeStateDto {
+    let mut dto = to_dto(s);
+    dto.revision = revision;
+    dto
+}
+
 fn restore_err(e: RestoreError) -> AppError {
     match e {
         // §106：World version unavailable（明确，不静默换世界）。
@@ -112,14 +137,80 @@ fn restore_err(e: RestoreError) -> AppError {
     }
 }
 
-/// 当前 Dreamscape 状态（M7 上篇：typed DTO 通道，§24）。
+/// 当前 Dreamscape 状态（typed DTO 通道 + §262 revision）。
 #[tauri::command]
 pub fn dreamscape_state(
     state: tauri::State<'_, crate::ipc::AppState>,
 ) -> CmdResult<DreamscapeStateDto> {
     let host = &state.dreamscape;
     let s = host.session.lock().expect("dreamscape lock");
-    Ok(to_dto(&s))
+    Ok(to_dto_rev(
+        &s,
+        host.revision.load(std::sync::atomic::Ordering::SeqCst),
+    ))
+}
+
+/// §256/§257 open：幂等——重复 open 不报错、不建第二渲染器
+/// （渲染器单例在 UI 侧；此处仅置位 + 返回状态）。
+#[tauri::command]
+pub fn dreamscape_open(
+    state: tauri::State<'_, crate::ipc::AppState>,
+) -> CmdResult<DreamscapeStateDto> {
+    let host = &state.dreamscape;
+    host.opened.store(true, std::sync::atomic::Ordering::SeqCst);
+    let s = host.session.lock().expect("dreamscape lock");
+    Ok(to_dto_rev(
+        &s,
+        host.revision.load(std::sync::atomic::Ordering::SeqCst),
+    ))
+}
+
+/// §256/§257 close：幂等——重复 close 不报错；§293 渲染器 dispose
+/// 由 UI 卸载路径负责，此处只置位（不销毁世界状态 §75）。
+#[tauri::command]
+pub fn dreamscape_close(
+    state: tauri::State<'_, crate::ipc::AppState>,
+) -> CmdResult<DreamscapeStateDto> {
+    let host = &state.dreamscape;
+    host.opened
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    let s = host.session.lock().expect("dreamscape lock");
+    Ok(to_dto_rev(
+        &s,
+        host.revision.load(std::sync::atomic::Ordering::SeqCst),
+    ))
+}
+
+/// §256/§141 set_quality：UI 渲染档位偏好（渲染器消费；后端校验合法值，
+/// 幂等——同值重复设置无副作用）。
+#[tauri::command]
+pub fn dreamscape_set_quality(
+    state: tauri::State<'_, crate::ipc::AppState>,
+    quality: String,
+) -> CmdResult<()> {
+    let _ = state;
+    match quality.as_str() {
+        "low" | "medium" | "high" | "auto" => Ok(()),
+        other => Err(AppError::new(
+            "INTERNAL",
+            format!("invalid quality: {other}"),
+            false,
+        )),
+    }
+}
+
+/// §100/§101/§256 set_environment：用户显式环境控制——冻结/解冻
+/// （B 级手动 time-of-day/weather 预设留待后续；Auto/Frozen 已可用）。
+#[tauri::command]
+pub fn dreamscape_set_environment(
+    state: tauri::State<'_, crate::ipc::AppState>,
+    frozen: bool,
+) -> CmdResult<DreamscapeStateDto> {
+    let host = &state.dreamscape;
+    let rev = host.bump();
+    let mut s = host.session.lock().expect("dreamscape lock");
+    s.frozen = frozen;
+    Ok(to_dto_rev(&s, rev))
 }
 
 /// 推进逻辑时间（1 tick = 1 逻辑分钟，§30；调用频率由下篇集成决定）。
@@ -129,9 +220,10 @@ pub fn dreamscape_advance(
     ticks: u64,
 ) -> CmdResult<DreamscapeStateDto> {
     let host = &state.dreamscape;
+    let rev = host.bump();
     let mut s = host.session.lock().expect("dreamscape lock");
     s.advance(ticks.min(24 * 60 * 365)); // 单次上限：一年逻辑时间
-    let dto = to_dto(&s);
+    let dto = to_dto_rev(&s, rev);
     let _ = host.persist(&s);
     Ok(dto)
 }
@@ -153,10 +245,11 @@ pub fn dreamscape_regenerate(
     input: String,
 ) -> CmdResult<DreamscapeStateDto> {
     let host = &state.dreamscape;
+    let rev = host.bump();
     let mut s = host.session.lock().expect("dreamscape lock");
     let tick = s.environment.tick;
     s.regenerate(&input, tick);
-    let dto = to_dto(&s);
+    let dto = to_dto_rev(&s, rev);
     let _ = host.persist(&s);
     Ok(dto)
 }
@@ -176,11 +269,12 @@ pub fn dreamscape_import_seed(
     input: String,
 ) -> CmdResult<DreamscapeStateDto> {
     let host = &state.dreamscape;
+    let rev = host.bump();
     let mut s = host.session.lock().expect("dreamscape lock");
     let tick = s.environment.tick;
     s.import_seed(&input, tick)
         .map_err(|_| AppError::new("INVALID_SEED", "invalid dreamscape seed", false))?;
-    let dto = to_dto(&s);
+    let dto = to_dto_rev(&s, rev);
     let _ = host.persist(&s);
     Ok(dto)
 }
@@ -206,9 +300,10 @@ pub fn dreamscape_restore_snapshot(
         serde_json::from_slice(&bytes).map_err(|e| from_err("DREAMSCAPE_CORRUPT", e, true))?;
     snap.validate().map_err(restore_err)?;
     let restored = DreamscapeSession::restore(&snap).map_err(restore_err)?;
+    let rev = host.bump();
     let mut s = host.session.lock().expect("dreamscape lock");
     *s = restored;
-    Ok(to_dto(&s))
+    Ok(to_dto_rev(&s, rev))
 }
 
 /// 相机逻辑态写入（§78；数值由下篇相机控制器产生）。

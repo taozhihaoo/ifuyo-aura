@@ -103,6 +103,10 @@ pub fn run() {
             dreamscape::dreamscape_save_snapshot,
             dreamscape::dreamscape_restore_snapshot,
             dreamscape::dreamscape_set_camera,
+            dreamscape::dreamscape_open,
+            dreamscape::dreamscape_close,
+            dreamscape::dreamscape_set_quality,
+            dreamscape::dreamscape_set_environment,
         ]) // probe-isolated
         .run(tauri::generate_context!())
         .expect("error while running ifuyo Aura");

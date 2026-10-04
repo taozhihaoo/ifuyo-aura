@@ -49,6 +49,13 @@ export const ipc = {
     ),
   // ---- Dreamscape（M7；§255/§263：命令 + 按需拉取，无轮询循环）----
   dreamscapeState: () => call<DreamscapeStateDto>('dreamscape_state'),
+  // §256/§257：幂等 open/close（重复调用无副作用）。
+  dreamscapeOpen: () => call<DreamscapeStateDto>('dreamscape_open'),
+  dreamscapeClose: () => call<DreamscapeStateDto>('dreamscape_close'),
+  dreamscapeSetQuality: (quality: 'low' | 'medium' | 'high' | 'auto') =>
+    call<void>('dreamscape_set_quality', { quality }),
+  dreamscapeSetEnvironment: (frozen: boolean) =>
+    call<DreamscapeStateDto>('dreamscape_set_environment', { frozen }),
   dreamscapeAdvance: (ticks: number) => call<DreamscapeStateDto>('dreamscape_advance', { ticks }),
   // §253：manifest 经 validation-first 守卫，畸形数据不进渲染层。
   dreamscapeManifest: async (): Promise<SceneManifest> => {
