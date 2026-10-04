@@ -125,6 +125,20 @@ export const ipc = {
   // §236 用户显式构建；§164 取消。
   requestMapBuild: () => call<number>('request_map_build'),
   cancelMapBuild: () => call<void>('cancel_map_build'),
+  // ---- M10 Windows Integration 桥（§65/§153/§23/§24）----
+  // queue 边界上报（SMTC/托盘 enablement 数据源）。
+  reportQueueState: (hasPrevious: boolean, hasNext: boolean) =>
+    call<void>('report_queue_state', { hasPrevious, hasNext }),
+  listenIntegrationCommand: (cb: (cmd: 'next' | 'previous') => void) =>
+    import('@tauri-apps/api/event').then(({ listen }) =>
+      listen<{ cmd: string }>('integration://command', (ev) => {
+        if (ev.payload.cmd === 'next' || ev.payload.cmd === 'previous') cb(ev.payload.cmd);
+      }),
+    ),
+  listenIntegrationNavigate: (cb: (view: string) => void) =>
+    import('@tauri-apps/api/event').then(({ listen }) =>
+      listen<{ view: string }>('integration://navigate', (ev) => cb(ev.payload.view)),
+    ),
 };
 
 export function isDreamscapeStateDto(v: unknown): v is DreamscapeStateDto {

@@ -123,6 +123,26 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [setPaletteOpen, setView]);
 
+  // M10 §162–§166：托盘/系统集成的导航桥（窗口 focus 已由 Rust 侧完成；
+  // 这里只切视图 / 打开 Mini——全部复用 M6 既有 entry point）。
+  useEffect(() => {
+    let un: (() => void) | null = null;
+    void ipc
+      .listenIntegrationNavigate((view) => {
+        if (view === 'mini') {
+          useUiStore.getState().setMiniPlayerOpen(true);
+        } else if (['now-playing', 'library', 'map', 'dreamscape'].includes(view)) {
+          useUiStore.getState().setView(view as Parameters<typeof setView>[0]);
+        }
+      })
+      .then((off) => {
+        un = off;
+      });
+    return () => {
+      un?.();
+    };
+  }, []);
+
   if (isMini) {
     return <MiniPlayer />;
   }

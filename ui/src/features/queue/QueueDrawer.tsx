@@ -112,6 +112,29 @@ export function QueueDrawer() {
   const { items, currentIndex } = useQueue();
   const { t } = useTranslation();
 
+  // M10 §65/§153：queue 边界上报（SMTC/托盘 Next/Previous enablement）。
+  useEffect(() => {
+    void ipc
+      .reportQueueState(hasPrevious(), hasNext())
+      .catch(() => undefined);
+  }, [items, currentIndex]);
+
+  // M10 §23/§24：SMTC/托盘 next/previous → 复用应用层 queue 语义。
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    void ipc
+      .listenIntegrationCommand((cmd) => {
+        if (cmd === 'next') void playNext();
+        else void playPrevious();
+      })
+      .then((off) => {
+        unlisten = off;
+      });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
   // Esc 关闭（全局快捷键也处理；这里保证 focus 返回）。
   useEffect(() => {
     if (open) {
