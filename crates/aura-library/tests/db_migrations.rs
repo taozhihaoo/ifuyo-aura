@@ -1,13 +1,18 @@
 //! 迁移与数据库打开测试（§52/§53/§74）：fresh / upgrade / re-run / failure
 //! rollback / reopen / WAL / 只读 / 损坏不 panic / FTS5 可用性。
 
+use aura_library::db::migrations::SCHEMA_VERSION;
 use aura_library::db::{migrations, Database};
 
 #[test]
 fn fresh_database_reaches_latest_schema() {
     let db = Database::open_in_memory().unwrap();
     assert_eq!(db.schema_version().unwrap(), migrations::SCHEMA_VERSION);
-    assert_eq!(migrations::SCHEMA_VERSION, 1, "M3 只有一版 schema");
+    assert_eq!(
+        migrations::SCHEMA_VERSION,
+        2,
+        "v1(M3) + v2(M8 上篇 track_analysis 重建)"
+    );
 }
 
 #[test]
@@ -24,12 +29,12 @@ fn fresh_file_database_and_reopen() {
 
     {
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 1);
+        assert_eq!(db.schema_version().unwrap(), SCHEMA_VERSION);
     }
     // reopen：版本保持。
     {
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 1);
+        assert_eq!(db.schema_version().unwrap(), SCHEMA_VERSION);
         // WAL 生效（§19）。
         let mode: String = db
             .connection()
@@ -57,7 +62,7 @@ fn upgrade_from_version_zero_preserves_state() {
     }
     {
         let db = Database::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 1);
+        assert_eq!(db.schema_version().unwrap(), SCHEMA_VERSION);
         // 迁移不得破坏既有数据。
         let n: String = db
             .connection()

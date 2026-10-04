@@ -7,6 +7,7 @@
 
 pub mod domain;
 pub mod key;
+pub mod store;
 
 pub use domain::{
     AnalysisError, AnalysisStatus, Embedding, FeatureAvailability, KeyAnalysis, KeyMode,
@@ -14,3 +15,4 @@ pub use domain::{
     ANALYSIS_VERSION, EMBEDDING_MODEL_ID, EMBEDDING_MODEL_VERSION,
 };
 pub use key::analysis_key;
+pub use store::{AnalysisStore, StoreError};

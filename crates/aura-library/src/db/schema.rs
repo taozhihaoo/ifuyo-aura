@@ -150,3 +150,54 @@ CREATE TABLE queue_log (
     payload TEXT NOT NULL
 );
 "#;
+
+/// V2（M8 上篇 §26/§27/§15/§31/§32）：track_analysis 重建——content
+/// identity 绑定（§15/§19）、analysis_key 唯一（§23）、每特征
+/// availability + 算法版本（§17/§32）、MFCC/嵌入为带元数据的 BLOB
+/// （§27/§28）。占位表从未写入生产数据，直接重建。
+pub const V2: &str = r#"
+DROP TABLE track_analysis;
+
+CREATE TABLE track_analysis (
+    track_id              INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    content_identity      TEXT NOT NULL,
+    analysis_key          TEXT NOT NULL UNIQUE,
+    analysis_version      INTEGER NOT NULL,
+    status                TEXT NOT NULL,
+    bpm                   REAL,
+    bpm_confidence        REAL,
+    first_beat_offset_s   REAL,
+    tempo_algo_version    INTEGER,
+    tempo_availability    TEXT NOT NULL,
+    musical_key           TEXT,
+    key_mode              TEXT,
+    key_confidence        REAL,
+    camelot_key           TEXT,
+    key_algo_version      INTEGER,
+    key_availability      TEXT NOT NULL,
+    lufs                  REAL,
+    lra                   REAL,
+    true_peak_dbtp        REAL,
+    loudness_algo_version INTEGER,
+    loudness_availability TEXT NOT NULL,
+    rms                   REAL,
+    peak                  REAL,
+    centroid_hz           REAL,
+    rolloff_hz            REAL,
+    brightness            REAL,
+    spectral_algo_version INTEGER,
+    spectral_availability TEXT NOT NULL,
+    mfcc_blob             BLOB,
+    mfcc_algo_version     INTEGER,
+    mfcc_availability     TEXT NOT NULL,
+    embedding_blob        BLOB,
+    embedding_dim         INTEGER,
+    embedding_model_id    TEXT,
+    embedding_model_version INTEGER,
+    embedding_availability TEXT NOT NULL,
+    analyzed_at_ms        INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX idx_track_analysis_content ON track_analysis(content_identity);
+CREATE INDEX idx_track_analysis_status ON track_analysis(status);
+"#;
