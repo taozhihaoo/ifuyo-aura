@@ -78,6 +78,30 @@ pub fn analyze_stream(
     cancel: &CancelToken,
     clock_ms: impl Fn() -> i64,
 ) -> Result<TrackAnalysis, AnalysisError> {
+    analyze_stream_with(
+        stream,
+        track_id,
+        content_identity,
+        provider,
+        cancel,
+        clock_ms,
+        &mut |_, _, _| {},
+    )
+}
+
+/// 带 provider/进度回调的完整管线（§105/§106：stage + 帧进度）。
+///
+/// # Errors
+/// [`AnalysisError`]。
+pub fn analyze_stream_with(
+    stream: Box<dyn aura_core::decoder::AudioByteStream>,
+    track_id: i64,
+    content_identity: &str,
+    provider: &dyn EmbeddingProvider,
+    cancel: &CancelToken,
+    clock_ms: impl Fn() -> i64,
+    progress: &mut dyn FnMut(Stage, u64, u64),
+) -> Result<TrackAnalysis, AnalysisError> {
     let mut out = TrackAnalysis::skeleton(track_id, content_identity);
     out.status = AnalysisStatus::Running;
 
@@ -135,12 +159,8 @@ pub fn analyze_stream(
         processed += n;
         buf.clear();
         if processed.is_multiple_of(CHUNK_SAMPLES as u64 * 8) {
-            // 进度点（§105）；不产生 IPC（§113 由上层决定频率）。
-            let _ = AnalysisProgress {
-                stage: Stage::Decoding,
-                processed_frames: processed,
-                total_frames,
-            };
+            // 进度点（§105/§113：回调由调用方决定是否上报，不强制 IPC）。
+            progress(Stage::Decoding, processed, total_frames);
         }
     }
     drop(buf);

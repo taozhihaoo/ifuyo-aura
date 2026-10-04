@@ -17,6 +17,7 @@ pub mod mfcc;
 pub mod params;
 pub mod pipeline;
 pub mod query;
+pub mod runtime;
 pub mod scheduler;
 pub mod similarity;
 pub mod spectral;
@@ -46,6 +47,10 @@ pub use params::{
 pub use pipeline::{analyze_stream, AnalysisProgress, CancelToken, Stage};
 pub use query::{
     canonical_key_name, query_track_ids, recover_running_to_pending, AnalysisFilter, RangeFilter,
+};
+pub use runtime::{
+    commit_result, dedup_active, result_is_current, run_job_isolated, ActiveJob, AnalysisService,
+    WorkerState, MAX_BATCH,
 };
 pub use scheduler::{
     AnalysisRepository, AnalysisScheduler, InMemoryRepository, Job, Priority, MAX_RETRIES,

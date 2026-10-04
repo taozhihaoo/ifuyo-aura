@@ -226,10 +226,7 @@ mod tests {
         assert_eq!(canonical_key_name("A minor").as_deref(), Some("A Minor"));
         assert_eq!(canonical_key_name("A Minor").as_deref(), Some("A Minor"));
         assert_eq!(canonical_key_name("C major").as_deref(), Some("C Major"));
-        assert_eq!(
-            canonical_key_name("Db major").as_deref(),
-            Some("Cs Major")
-        );
+        assert_eq!(canonical_key_name("Db major").as_deref(), Some("Cs Major"));
         assert_eq!(canonical_key_name("Fs minor").as_deref(), Some("Fs Minor"));
         assert_eq!(canonical_key_name("X"), None);
     }
