@@ -73,6 +73,8 @@ pub struct MapStatusDto {
     pub track_count: usize,
     pub cluster_count: usize,
     pub build_id: u64,
+    /// §471/§473：上一次成功构建的真实用时（ms；None = 未构建）。
+    pub build_duration_ms: Option<u64>,
     pub message: Option<String>,
 }
 
@@ -243,6 +245,8 @@ struct Inner {
     persisted: Option<PersistedMap>,
     active: Option<ActiveBuild>,
     last_build_id: u64,
+    /// §471：上次成功构建真实用时（ms）。
+    last_build_ms: Option<u64>,
     /// 本运行已做过一次 restore 评估（避免每次 status 重扫库）。
     assessed: bool,
 }
@@ -287,6 +291,7 @@ impl MapHost {
                 persisted,
                 active: None,
                 last_build_id: 0,
+                last_build_ms: None,
                 assessed: false,
             })),
             generation: Arc::new(BuildGeneration::new()),
@@ -481,6 +486,7 @@ pub fn get_map_status(state: State<'_, AppState>) -> CmdResult<MapStatusDto> {
             track_count: s.dataset.entries.len(),
             cluster_count: s.clusters.len(),
             build_id: inner.last_build_id,
+            build_duration_ms: inner.last_build_ms,
             message: inner.message.clone(),
         },
         None => MapStatusDto {
@@ -489,6 +495,7 @@ pub fn get_map_status(state: State<'_, AppState>) -> CmdResult<MapStatusDto> {
             track_count: 0,
             cluster_count: 0,
             build_id: inner.last_build_id,
+            build_duration_ms: inner.last_build_ms,
             message: inner.message.clone(),
         },
     })
@@ -629,6 +636,37 @@ pub fn request_map_build(state: State<'_, AppState>) -> CmdResult<u64> {
         (ds, hash)
     };
     let mut inner = host.inner.lock().map_err(|_| lock_err())?;
+    // §168/§171/§172：变化比例选增量/全量；增量时以上一代位置为种子
+    // （§82–§85/§176/§177 空间记忆），迭代预算收紧。
+    let (seeds, params) = match &inner.snapshot {
+        Some(snap) => {
+            let old_ids: std::collections::HashSet<i64> =
+                snap.dataset.entries.iter().map(|e| e.track_id).collect();
+            let total = ds.entries.len();
+            let added = ds
+                .entries
+                .iter()
+                .filter(|e| !old_ids.contains(&e.track_id))
+                .count();
+            let removed = old_ids
+                .iter()
+                .filter(|id| snap.positions.contains_key(id))
+                .count()
+                .saturating_sub(total.saturating_sub(added));
+            let changed = added.max(removed);
+            match aura_map::choose_build_kind(changed, total) {
+                aura_map::BuildKind::IncrementalUpdate => (
+                    Some(snap.positions.clone()),
+                    BuildParams {
+                        max_iterations: 40,
+                        ..BuildParams::default()
+                    },
+                ),
+                aura_map::BuildKind::FullRebuild => (None, BuildParams::default()),
+            }
+        }
+        None => (None, BuildParams::default()),
+    };
     if let Some(a) = &inner.active {
         if a.dataset_hash == hash && !a.cancel.is_cancelled() {
             return Ok(a.build_id); // §165 相同 dataset 去重
@@ -658,15 +696,11 @@ pub fn request_map_build(state: State<'_, AppState>) -> CmdResult<u64> {
         .name("map-build".into())
         .spawn(move || {
             // §238：后台低优先（独立线程；audio 线程不受影响）。
-            let out = aura_map::build_map(
-                &ds,
-                &hash,
-                BuildParams::default(),
-                build_id,
-                &gen,
-                &cancel,
-                None,
-            );
+            // §471/§473：真实构建用时（不伪造）。
+            let started = std::time::Instant::now();
+            let out =
+                aura_map::build_map(&ds, &hash, params, build_id, &gen, &cancel, seeds.as_ref());
+            let build_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
             let mut inner = match inner_arc.lock() {
                 Ok(i) => i,
                 Err(_) => return,
@@ -689,6 +723,7 @@ pub fn request_map_build(state: State<'_, AppState>) -> CmdResult<u64> {
                         write_atomic(&json_path, &o.persisted);
                         inner.snapshot = Some(snap);
                         inner.message = None;
+                        inner.last_build_ms = Some(build_ms);
                     } else {
                         // §245/§246：Stale 数据不标记 Ready。
                         inner.message = Some("dataset changed during build".into());
@@ -726,4 +761,31 @@ pub fn cancel_map_build(state: State<'_, AppState>) -> CmdResult<()> {
         inner.message = Some("build cancelled".into());
     }
     Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// §285/§187：损坏的 map.json → open() 不 crash、清除文件、状态 Pending。
+    #[test]
+    fn corrupt_map_json_removed_on_open() {
+        let dir = std::env::temp_dir().join(format!("aura-map-test-{}", std::process::id()));
+        let map_dir = dir.join("map");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::create_dir_all(&map_dir);
+        std::fs::write(map_dir.join("map.json"), b"{ not json at all").unwrap();
+
+        let host = MapHost::open(&dir).expect("open 不因损坏失败");
+        let inner = host.inner.lock().unwrap();
+        assert!(inner.persisted.is_none(), "损坏持久化被清除");
+        assert_eq!(inner.status, MapBuildStatus::Pending);
+        drop(inner);
+        assert!(!map_dir.join("map.json").exists(), "损坏文件已删除");
+
+        // 无文件 → 正常打开（首次运行）。
+        let host2 = MapHost::open(&dir).unwrap();
+        let inner2 = host2.inner.lock().unwrap();
+        assert!(inner2.persisted.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
