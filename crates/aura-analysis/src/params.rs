@@ -24,6 +24,13 @@ pub const MAX_FEATURE_SAMPLES: usize =
 /// beat grid 上限（§59 max beat count）。
 pub const MAX_BEATS: usize = 20_000;
 
+/// chroma 专用 FFT 长度（§79：每算法 FFT 尺寸集中定义于此）：
+/// 4096 @ 22050 = 5.4Hz/bin——低频半音（261/277Hz 差 15.6Hz ≈ 2.9 bins）
+/// 可分辨，降低 pitch-class 串扰。
+pub const CHROMA_FFT_LEN: usize = 4096;
+/// chroma hop。
+pub const CHROMA_HOP_LEN: usize = 2048;
+
 /// Hann 窗（样本级；与 M7 synth 的实现同公式，此处独立用于频谱帧）。
 #[must_use]
 pub fn hann(i: usize, n: usize) -> f32 {

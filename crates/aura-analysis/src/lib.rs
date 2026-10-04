@@ -10,6 +10,7 @@ pub mod domain;
 pub mod embedding;
 pub mod fft;
 pub mod key;
+pub mod key_detect;
 pub mod local_stream;
 pub mod loudness;
 pub mod params;
@@ -28,6 +29,7 @@ pub use embedding::{
 };
 pub use fft::{fft_forward, magnitude_half};
 pub use key::analysis_key;
+pub use key_detect::{analyze_key, camelot, chroma, KeyResult, KEY_ALGO_VERSION};
 pub use loudness::{amplitude_for_target_lufs, analyze_loudness, true_peak_dbtp};
 pub use params::{
     hann, resample_linear, ANALYSIS_CHANNELS, ANALYSIS_SAMPLE_RATE, CHUNK_SAMPLES, FRAME_LEN,
