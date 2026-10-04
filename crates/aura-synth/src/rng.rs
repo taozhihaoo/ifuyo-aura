@@ -41,6 +41,21 @@ impl Rng {
         }
     }
 
+    /// 从 master seed + 流名 + 桶号派生（同桶同序列；用于逐日决策等
+    /// 确定性 O(1) 跳转，§21 精神：命名流 + 结构化派生）。
+    #[must_use]
+    pub fn from_stream_bucket(master: &DreamscapeSeed, stream: &str, bucket: u64) -> Self {
+        let mut data = Vec::with_capacity(18 + stream.len());
+        data.extend_from_slice(&master.value.to_le_bytes());
+        data.extend_from_slice(&master.seed_version.to_le_bytes());
+        data.extend_from_slice(stream.as_bytes());
+        data.extend_from_slice(&bucket.to_le_bytes());
+        let state = stable_hash64(b"rng-bucket/v1", &data);
+        Self {
+            state: if state == 0 { 1 } else { state },
+        }
+    }
+
     /// 下一个 u64（SplitMix64）。
     #[must_use]
     pub fn next_u64(&mut self) -> u64 {
