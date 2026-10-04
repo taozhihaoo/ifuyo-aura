@@ -184,6 +184,7 @@ dependencies = [
 name = "aura-shell"
 version = "0.1.0"
 dependencies = [
+ "aura-analysis",
  "aura-core",
  "aura-library",
  "aura-sources",
