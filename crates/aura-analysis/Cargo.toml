@@ -11,6 +11,7 @@ description = "ifuyo Aura 音乐分析基建：domain/identity/persistence/embed
 serde = { version = "1", features = ["derive"] }
 siphasher = "1"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
+aura-core = { version = "0.1.0", path = "../aura-core" }
 
 [dev-dependencies]
 serde_json = "1"

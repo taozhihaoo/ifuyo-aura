@@ -5,11 +5,14 @@
 //!
 //! Phase 0 骨架已被 M8 上篇替换（§11 职责边界内）。
 
+pub mod decode;
 pub mod domain;
 pub mod embedding;
 pub mod key;
+pub mod local_stream;
 pub mod store;
 
+pub use decode::{decode_file_to_mono, decode_to_mono, DecodedMono};
 pub use domain::{
     AnalysisError, AnalysisStatus, Embedding, FeatureAvailability, KeyAnalysis, KeyMode,
     LoudnessAnalysis, MfccFeatures, MusicalKey, SpectralFeatures, TempoAnalysis, TrackAnalysis,
