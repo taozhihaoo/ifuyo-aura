@@ -423,3 +423,31 @@ Phase 0 的 `body{display:grid;place-items:center}` 使 app-root 收缩居中—
 ## D-097 analysis_key 派生（2026-10-05，M8 上篇）
 
 §23：`analysis_key = SipHash13(固定域密钥, content_identity ‖ 0xff ‖ analysis_version ‖ embedding_model_id ‖ 0xff ‖ embedding_model_version)` 的 64-bit hex。判定结果是否仍对应现状的唯一权威；content 变化（§20）或版本升级（§18）都会使旧键失效→Stale。
+
+## D-098 规范分析采样率与重采样（2026-10-05，M8 中篇）
+
+22050 Hz：Nyquist 11kHz 覆盖节奏/调性/倒谱所需频段，内存与 DFT 成本减半；重采样用线性插值（分析用途对混叠不敏感，记录为已知限制；下篇可升 polyphase）。声道策略 §88：mono fold-down (L+R)/2；反相位 → 静音语义（测试锁定 §174）。窗口参数集中 params.rs（Hann 1024/512 频谱帧；chroma 专用 4096/2048——5.4Hz/bin 可分低频半音）。
+
+## D-099 LUFS 实现（2026-10-05，M8 中篇）
+
+ITU-R BS.1770-4：K-weighting 两节 biquad（shelf 1.68k +4dB、HP 38Hz，RBJ 双线性随 fs 重算）；门控 400ms/100ms hop，绝对门 -70 + 相对门 -10 LU；LRA 3s/1s P10–P95 相对门 -20。True peak：4× 过采样 zero-stuff + 33-tap sinc×Hann（**相位子滤波器各自归一**——首版按总和归一实测衰减 4×，测试捕获修正）。静音（全块低于绝对门）→ None（below measurable，§72 不产生 -0 LUFS）。fixture 公式自洽：amplitude_for_target_lufs(L)=√(2·10^((L+0.691)/10))（mono），-12/-16/-20/-23 ±0.5 LU。
+
+## D-100 Tempo 选择规则（2026-10-05，M8 中篇）
+
+onset = spectral flux 半波整流 → ±1 帧盒式模糊（抗分数周期取整抖动）→ **分数周期 comb**（1/8 帧步长、线性插值 shift 相关，谐波 Σw_k·score(2^k·p) w=1/k）——整数 lag 自相关对「每秒整数倍点击」（如 180 BPM @43fps = 43 帧真周期）不可见，分数周期直接求解。§52 折叠：真基频族由 comb 胜出（谐波和多一正项），标签折叠进偏好窗 [70,180)（行业常速段）——60→120、30→120、240→120、180→120 为规则内正确结果（§52 允许自定规则，测试显式锁定）。confidence = comb 峰/包络能量 [0,1]。§54：静音→Unavailable、短于 2s→TooShort、噪声→低置信。
+
+## D-101 Key 检测与置信语义（2026-10-05，M8 中篇）
+
+chroma：4096-FFT（5.4Hz/bin）+ 输入去均值（Hann DC 放大泄漏）+ 跳过 <55Hz + m¹ 累积（m² 指数方差使噪声 chroma 假尖锐，实测 peak/mean 7.3）。24 假设（Krumhansl–Kessler maj/min 旋转）Pearson 最大。confidence = 最优相关强度 × 与次优分离度（×4 经验缩放），[0,1]。§64 门：chroma Shannon 熵 > 2.30（max 2.485）→ Unavailable（音阶 run 实测 2.0–2.2，白噪声 2.37）。Camelot（§65）：号=关系大调五度圈位（A minor→C major→8A）；**首版按调名字母直查错位（A minor 得 11A）**，修正为小调 +3 半音取关系大调。§66：canonical 升号（枚举仅含 Cs）。fixture 教训：孤立三和弦无法区分相对调（KK 剖面对 7 音平坦 chroma 区分度弱）——相对调用例用三和弦（tonic/third/fifth+八度），熵门用音阶 run。
+
+## D-102 Energy 定义（2026-10-05，M8 中篇）
+
+energy = RMS dBFS 线性映射 [-60, 0] → [0,1]（感知响度代理：-60dBFS 以下 0、0dBFS 1）。**不是**谱能量也不是振幅绝对值（§77 语义显式）。Brightness = Centroid / Nyquist [0,1]（§78 finite/bounded/deterministic）。
+
+## D-103 MFCC 配置（2026-10-05，M8 中篇）
+
+pre-emphasis 0.97；帧 1024/hop 512（规范参数 §79）；FFT 1024；26 mel 三角滤波器 20Hz–Nyquist（HTK 式）；ln floor 1e-10（§85 log(0) 防护）；DCT-II 归一 → 13 系数（§82）；存储 mean+variance 摘要（§83）。确定性：纯定序运算，×10 逐位一致（§187）。
+
+## D-104 调度器与仓库（2026-10-05，M8 中篇）
+
+AnalysisRepository trait（save/load/mark_stale/list_pending）+ InMemory 实现（§140/§141）；SQLite 桥接由 shell/应用层（AnalysisStore 已满足合同，§139 不让特征提取知 SQL）。AnalysisScheduler：单 worker 顺序（§97 有界）；优先级两级 User>Background（§96）；同 track 去重保高优先；取消幂等（§102）；重试有界 MAX_RETRIES=1（§109/§110）。M8 下篇接 shell 任务队列/并发 worker（§155 退出协议）。

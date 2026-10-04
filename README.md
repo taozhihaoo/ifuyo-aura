@@ -29,7 +29,7 @@
 | Win11 Mica（Win10 solid fallback） | ✅ |
 | Music Map（图引擎/空间布局） | M9 |
 | Dreamscape（程序化世界：seed/演化/稀有事件/快照 + Three.js 渲染） | ✅ |
-| Analysis（基建已建；特征引擎） | 🚧 M8 中篇 |
+| Analysis（LUFS/Tempo/Key/Spectral/MFCC 本地确定性分析） | ✅ |
 | SMTC / 托盘 / 媒体键 | M10 |
 
 ## 截图（来自当前真实构建）
@@ -51,6 +51,7 @@
 
 - Aurora FPS 绝对值未在真实 GPU 桌面环境采样（机制已内建：`canvas[data-fps]`）；Mica 视觉效果需 Win11 实机确认（API + fallback 已就绪）。
 - Dreamscape 为第一版视觉（无阴影/后处理特效栈）；full-screen 模式、手动天气预设、多世界 slots 未实现。数小时桌面 soak 未在本环境执行。
+- 音乐分析：合成 fixture 全过；真实音乐 BPM/Key 精度未做基准评估（算法为经典统计法，非 ML）。
 - 数小时级桌面 soak 未在本开发环境执行（远程虚拟显示）；本地复测脚本见 `docs/PERF.md`。
 - 安装包（NSIS bundle）未签名；M6 已实际产出 unsigned 产物（`tauri build`）。
 

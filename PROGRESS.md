@@ -291,3 +291,27 @@ M7-B = PASS（真实渲染+集成+测试；B 级如实列出，见下）
 - BPM/Key/LUFS/Spectral/MFCC 算法 = 中篇；worker/queue/cancellation 集成 = 下篇
 - SpectralStatsProvider 的 DFT 为 O(N²)（离线可接受；中篇换 FFT 并升算法版本）
 - 多声道 >2 无 downmix（M1 能力边界，明确报错不偷渡）
+
+## M8 中篇（2026-10-05）——特征分析引擎（§50–204）
+
+状态 = PASS（五族真实算法 + 管线 + 调度/合同；运行时/集成/发布门禁在下篇 §205–390）
+
+### Implemented
+
+- 规范预处理：22050Hz/mono/(L+R)÷2/线性重采样（D-098）；内部分析 FFT（radix-2，§80 自实现）
+- LUFS：BS.1770-4 K-weighting/双门控/LRA/true peak 4× 过采样（D-099）；静音 below-measurable=None
+- Tempo：flux onset→分数周期谐波 comb→[70,180) 折叠（D-100）；beat grid 帧位置有界
+- Key：chroma 4096-FFT→KK 24 假设 Pearson→熵门（D-101）；Camelot（关系大小调映射修正）
+- Spectral/MFCC：RMS/Peak/Centroid/Rolloff/Brightness/Energy（D-102）；pre-emph/mel26/DCT/13 系数（D-103）
+- 管线：单遍共享解码/取消/进度/clock 注入/特征隔离（§92–§108/§134–136）
+- 调度/合同：Scheduler（优先级/取消/有界重试）+ Repository trait + InMemory + TrackAnalysisSummary + cosine 原语（D-104）
+
+### Tests
+
+- aura-analysis 88 lib + integration_m8 10（silence/noise/相位/采样率矩阵/×10 确定性/batch/summary/clock/损坏音频）；workspace 全绿
+- fixture 全部合成（§55/§73/§191–§195）；§196 真实 provider 运行（SpectralStatsProvider 非 mock）
+
+### Known Limitations
+
+- 真实音乐 BPM/Key 精度未评估（synthetic fixture 全过；§196 无第三方模型——自有谱统计嵌入即真实运行）
+- 数小时 soak = 下篇 §246；MFCC DCT O(k·n)（26×513，可接受）；重采样线性插值（D-098 已知限制）

@@ -1,5 +1,14 @@
 # Changelog
 
+## M8 中篇（2026-10-05）
+
+### Added
+- 特征引擎：LUFS（BS.1770-4）/Tempo（分数周期谐波 comb+beat grid）/Key（chroma+KK+Camelot）/Spectral/MFCC——全部真实算法+合成 fixture 验证
+- 规范预处理（22050/mono/线性重采样）+ 内部 radix-2 FFT
+- 分析管线：单遍共享解码/取消/进度/clock 注入/特征隔离
+- 调度器（优先级/取消/有界重试）+ 仓库 trait + InMemory + TrackAnalysisSummary + cosine 相似度原语
+- 文档：D-098..D-104、ARCHITECTURE 算法节、PROGRESS/CHANGELOG
+
 ## M8 上篇（2026-10-05）
 
 ### Added

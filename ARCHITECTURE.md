@@ -237,6 +237,15 @@ src/
 - **M2 契约**（§5）：LoudnessAnalysis → TrackLoudness 的 DTO 由应用层转换（M2 不依赖 aura-analysis）；M7/M9 消费 contract 见 domain/embedding（§205/§49）。
 - **禁止**（§3/§4/§38）：无网络、无 fake analysis、无 Map/推荐；中篇承载 BPM/Key/LUFS/Spectral/MFCC 算法，下篇承载 worker/queue/集成门禁。
 
+### 特征分析引擎（M8 中篇）
+
+aura-analysis 增：fft / params / loudness / tempo / key_detect / spectral / mfcc / pipeline / scheduler / similarity / summary。
+
+- **规范预处理**（§86–§89，D-098）：mono fold-down (L+R)/2 → 线性重采样 22050 → 分析缓冲（窗口 ≤120s 有界；loudness 全轨流式 O(时长/10)）。
+- **算法**：LUFS（BS.1770-4 K-weighting+双门控+LRA+true peak 4× 过采样，D-099）；Tempo（spectral flux→分数周期谐波 comb→[70,180) 折叠，D-100）；Key（chroma 4096-FFT→KK 剖面 24 假设 Pearson→熵门，D-101）；Spectral（RMS/Peak/Centroid/Rolloff/Brightness/Energy dBFS 映射，D-102）；MFCC（pre-emph/mel26/DCT-II/13 系数/ln floor，D-103）。
+- **管线**（§92–§94）：单遍共享解码（spectral+loudness 全轨流式；tempo/key/mfcc/embedding 用 120s 窗口）→ 特征隔离（§134–136 各自 Failed/Unavailable）→ Completed 校验 → 仓库。取消检查点在 chunk/特征边界（§102/§103）；clock 注入（§107/§108）。
+- **调度/合同**（§95–§129）：AnalysisScheduler（优先级/取消/有界重试）+ AnalysisRepository trait（InMemory 测试 / SQLite 桥接）+ TrackAnalysisSummary（§117 单位显式 §118、None=未分析 §119/§120）+ cosine 相似度原语（§125–§129 错误分支：维度/NaN/零向量/版本不兼容）。
+
 ## 构建与工程
 
 - Cargo workspace：7 个 aura crates + `src-tauri`（M0-3 起为正式 member，tauri 2.12）。
