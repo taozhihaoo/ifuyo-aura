@@ -11,7 +11,10 @@
 pub mod biome;
 pub mod env;
 pub mod events;
+pub mod generator;
 pub mod genome;
+pub mod manifest;
+pub mod region;
 pub mod rng;
 pub mod seed;
 pub mod world;

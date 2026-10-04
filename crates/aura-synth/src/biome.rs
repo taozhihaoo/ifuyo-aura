@@ -13,7 +13,7 @@ use crate::rng::{streams, Rng};
 use crate::seed::{stable_hash64, DreamscapeSeed};
 
 /// 物件族（§57：族集合由 biome 决定；几何形态在下篇渲染层）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ObjectFamily {
     Flora,
     Stone,

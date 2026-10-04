@@ -45,6 +45,12 @@ impl Terrain {
         }
     }
 
+    /// 地形种子（manifest 透出，渲染层确定性重建高度场）。
+    #[must_use]
+    pub const fn height_seed(&self) -> u64 {
+        self.terrain_seed
+    }
+
     /// 晶格伪随机值（确定性：同 (ix,iz) 同值，与查询顺序无关）。
     fn lattice(&self, ix: i32, iz: i32) -> f32 {
         let mut buf = Vec::with_capacity(12);
