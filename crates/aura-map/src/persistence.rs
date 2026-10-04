@@ -21,6 +21,10 @@ pub struct PersistedMap {
     pub model_version: u16,
     pub embedding_dimension: u32,
     pub k: usize,
+    /// kNN 边随位置一并持久化（§174 恢复免重算图）。
+    pub edges: Vec<crate::graph::MapEdge>,
+    pub graph_algo_version: u16,
+    pub cluster_algo_version: u16,
     pub positions: BTreeMap<i64, MapPosition>,
     pub clusters: Vec<MapCluster>,
     pub isolated: Vec<i64>,
@@ -47,6 +51,9 @@ pub fn persist(
         model_version: ds.compatibility.model_version,
         embedding_dimension: ds.compatibility.dimension,
         k: g.k,
+        edges: g.edges.clone(),
+        graph_algo_version: g.graph_algo_version,
+        cluster_algo_version: crate::clustering::CLUSTER_ALGO_VERSION,
         positions: positions.clone(),
         clusters: clusters.to_vec(),
         isolated: g.isolated.clone(),
@@ -79,11 +86,59 @@ pub fn validate(p: &PersistedMap, expected_dataset_hash: &str, ds: &MapDataset) 
     p.format_version == PERSIST_FORMAT_VERSION
         && p.map_algo_version == ds.map_algo_version
         && p.analysis_version == ds.analysis_version
+        && p.graph_algo_version == crate::graph::GRAPH_ALGO_VERSION
+        && p.cluster_algo_version == crate::clustering::CLUSTER_ALGO_VERSION
         && p.model_id == ds.compatibility.model_id
         && p.model_version == ds.compatibility.model_version
         && p.embedding_dimension == ds.compatibility.dimension
         && p.dataset_hash == expected_dataset_hash
         && p.checksum == payload_checksum(p)
+}
+
+/// §174/§175：dataset 未变时从持久化直接恢复完整快照（图/聚类/位置
+/// 不重算）；§189 Ready 语义在此复核（图校验 + §190 有限数值）。
+///
+/// # Errors
+/// 校验不过（版本/hash/checksum/图/NaN）→ [`String`]（调用方按 §187
+/// 删除重建，不影响 M3）。
+pub fn restore_map(
+    p: &PersistedMap,
+    expected_dataset_hash: &str,
+    ds: &MapDataset,
+) -> Result<crate::build::MapBuildOutput, String> {
+    if !validate(p, expected_dataset_hash, ds) {
+        return Err("persisted map failed validation (version/hash/checksum)".to_string());
+    }
+    let g = crate::graph::MapGraph {
+        nodes: ds.entries.iter().map(|e| e.track_id).collect(),
+        edges: p.edges.clone(),
+        isolated: p.isolated.clone(),
+        k: p.k,
+        graph_algo_version: p.graph_algo_version,
+    };
+    crate::graph::validate_graph(&g, g.k).map_err(|e| format!("graph invalid: {e:?}"))?;
+    // §190/§193：非有限位置/簇统计不得进入渲染层。
+    for pos in p.positions.values() {
+        if !pos.x.is_finite() || !pos.y.is_finite() {
+            return Err("non-finite position".to_string());
+        }
+    }
+    for c in &p.clusters {
+        if let Some((cx, cy)) = c.centroid {
+            if !cx.is_finite() || !cy.is_finite() || !c.radius.unwrap_or(0.0).is_finite() {
+                return Err("non-finite cluster stats".to_string());
+            }
+        }
+    }
+    Ok(crate::build::MapBuildOutput {
+        dataset: ds.clone(),
+        graph: g,
+        clusters: p.clusters.clone(),
+        positions: p.positions.clone(),
+        persisted: p.clone(),
+        status: crate::build::MapBuildStatus::Ready,
+        build_id: 0,
+    })
 }
 
 #[cfg(test)]
@@ -167,5 +222,17 @@ mod tests {
         let bad = b"{ not json";
         let parsed: Result<PersistedMap, _> = serde_json::from_slice(bad);
         assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn restore_without_recompute() {
+        // §174：dataset 未变 → 直接恢复 Ready 快照（图/簇/位置保真）。
+        let (ds, g, _c, positions, persisted) = fixture();
+        let out = restore_map(&persisted, &ds.dataset_hash, &ds).unwrap();
+        assert_eq!(out.status, crate::build::MapBuildStatus::Ready, "§189");
+        assert_eq!(out.graph.edges, g.edges, "图边保真");
+        assert_eq!(out.positions, positions, "位置保真");
+        // §175：dataset hash 不符 → 拒绝（重建路径）。
+        assert!(restore_map(&persisted, "other-hash", &ds).is_err());
     }
 }
