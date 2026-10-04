@@ -171,3 +171,26 @@ cargo run -p aura-shell --bin smoke   # startup-to-ready / snapshot 行
 | Auto 质量 | 升档 >50fps×3s / 降档 <22fps×2s / 冷却 4s（§143） | engine 单测锁定 |
 
 复测命令见 perf_generation.rs 头注释。诚实声明（§204）：真实测量；渲染 FPS 绝对值因远程虚拟显示不记录（机制内建 data-fps）。
+
+## M8 分析（2026-10-05）
+
+- 构建：debug profile（`cargo test -p aura-analysis --test perf_analysis -- --ignored --nocapture`）——**debug 数字偏慢**，release 会显著更快；记录真实状态 §204。
+- 硬件/OS 同 M6 节。
+
+| 项 | 实测（debug） | 说明 |
+| --- | --- | --- |
+| BPM time（30s 音） | 1.11 s | flux onset+分数周期 comb |
+| Key time（30s 音） | 0.94 s | chroma 4096-FFT + 24 假设 Pearson |
+| LUFS time（30s 音） | 2.67 s | K-weight 滤波+门控 |
+| MFCC time（30s 音） | 1.13 s | mel26+DCT |
+| Embedding time（30s 音） | 26.2 s | **O(N²) DFT 谱统计嵌入——已知热点**（中篇记录；下篇/后续换 FFT 可数量级加速，升 model_version） |
+| 端到端 30s 音 | 32.4 s | 合成节奏 WAV 全链 |
+| 端到端 180s 音 | 123.1 s | 线性于时长（§303）；内存 O(1)（窗口+hop 累加） |
+| 入队 10k | 222.9 ms | 调度器去重+优先级 |
+| dequeue 延迟 | 248.5 µs | |
+| 存储每首 | ≈532 B（mfcc 104B + 嵌入 136B + 标量≈300B） | §218/§219/§220：10k ≈ 5.1 MB——远低于"数 MB/首"红线 |
+| 批量查询 | 100/1000 行 ms 级（§221） | InMemory SQL |
+
+复测命令：`cargo test -p aura-analysis --test perf_analysis -- --ignored --nocapture`
+
+诚实声明（§204/§326）：全部真实测量；debug profile 数字不用于宣称 release 性能（§326 无营销指标）。Embedding 的 O(N²) DFT 是已识别热点，修复路径=换 FFT+升 model_version（D-095）。

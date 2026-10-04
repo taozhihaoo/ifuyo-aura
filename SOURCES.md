@@ -80,3 +80,15 @@ ifuyo Aura 的音频来源分级与实现状态。政策依据见 [CONTENT_POLIC
 - Podcast RSS / HLS / WMF AAC 为 B 级，本阶段未实现（resolver 对 .m3u8 给出明确 tier-B 提示）。
 - AAC 电台流 → `UnsupportedCodec`（等 B 级 WMF 路径）。
 - 自动重连未实现（§111：后续版本）。
+
+## M8 分析算法来源（§256）
+
+| 名称 | 类型 | 来源/依据 | 版本 | 许可 | 用途 | 核验日期 | 商业状态 | 已知限制 |
+|---|---|---|---|---|---|---|---|---|
+| ITU-R BS.1770-4 | 标准参考 | ITU-R 公开标准（建议书文本公开可读） | BS.1770-4 | 标准文本（实现为自有代码，无第三方代码） | LUFS/LRA/true peak 算法依据 | 2026-10-05 | 实现自有、无许可负担 | true peak 为 4× 过采样近似（非认证测量仪） |
+| Krumhansl–Kessler 剖面 | 学术参考 | Krumhansl, *Cognitive Foundations of Musical Pitch*（公开文献数值表） | 经典版 | 剖面数值为公开学术事实（自有代码实现） | key 检测 24 假设相关 | 2026-10-05 | 同上 | 孤立三和弦/相对调区分度有限（D-101） |
+| HTK mel 滤波器公式 | 公式参考 | HTK Book 公开的 hz↔mel 公式 | — | 公式为公开学术事实（自有代码实现） | MFCC mel 频带 | 2026-10-05 | 同上 | — |
+| aura-spectral-stats | 自有嵌入模型 | 本仓库 aura-analysis/embedding.rs（谱统计+DCT） | model_version=1 | 本项目双许可 | 本地 embedding | 2026-10-05 | 完全自有 | 统计式而非学习式（§4 无伪造语义——真实信号统计） |
+
+- **零第三方代码/模型/权重**（D-095/§254/§255：无隐藏模型许可问题）。
+- 全部离线可运行（§328 offline audit PASS——分析链路无网络路径）。

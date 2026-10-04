@@ -71,3 +71,10 @@ Subsonic 等服务的凭据只能存入 **Windows Credential Manager**，不进�
 - Dreamscape 全程序化：无在线天气/日出 API（§237/§302）、无在线资产下载（§303）、seed 不出本机（§238）。
 - 断网完整可用（§301）：世界生成/演化/快照全链路无网络。
 - 快照存 app_data（§223），仅逻辑态，可随时删除不影响音乐库。
+
+## M8 确认（§235–§239/§365）
+
+- 分析 entirely local：raw audio/metadata/vectors/results/diagnostics 零上传（§235）。
+- 零遥测：无 analysis/model usage/embedding/cloud error telemetry（§236/§379 grep 零命中）。
+- 日志：不记录 raw PCM/完整向量/敏感路径（§237/§239——当前无任何运行时日志输出）。
+- diagnostics 仅本地（§238）：summary/状态经 IPC 按需查询（§315 command/query 而非 push）。

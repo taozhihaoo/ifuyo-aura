@@ -315,3 +315,26 @@ M7-B = PASS（真实渲染+集成+测试；B 级如实列出，见下）
 
 - 真实音乐 BPM/Key 精度未评估（synthetic fixture 全过；§196 无第三方模型——自有谱统计嵌入即真实运行）
 - 数小时 soak = 下篇 §246；MFCC DCT O(k·n)（26×513，可接受）；重采样线性插值（D-098 已知限制）
+
+## M8 下篇（2026-10-05）——运行时、集成与发布质量（§205–390）
+
+M8-A = PASS（上篇基建 + 中篇算法 + 下篇运行时/合同全部落地）
+M8-B = PASS（真实运行时与合同；长 soak 如实声明未执行）
+
+### Implemented（下篇）
+
+- 查询/恢复：query_track_ids（参数化 SQL、NULL 不匹配 §225、数值范围 §227/§228、key canonical §226、limit 钳制 §241）+ recover_running_to_pending（§211）
+- 运行时（D-105）：AnalysisService（batch 去重/有界 §206/§241）、dedup_active（§207）、commit_result stale 保护（§208–§210）、run_job_isolated panic 边界（§244/§245）、WorkerState 生命周期（§213/§212）
+- M7 合同（D-106）：AnalysisVisualSummary（none/from_analysis，§231/§232）；M6 状态/summary IPC 三命令（§233/§117）
+- 合成生成器 generator.rs（§261–§264 确定性 fixture + 元数据）
+- PERF：分段耗时/端到端/10k 库 soak/队列 10k/存储预算 532B/首（§302–§309）
+
+### Tests
+
+- aura-analysis 103 lib + integration_m8 10 + perf_analysis 5（ignored 显式跑）；shell 3；workspace 527+（多轮全绿）
+
+### Known Limitations
+
+- 数小时 analysis/playback soak 未执行（远程环境限制，§352/§353 如实声明）；100-track 顺序分析已测
+- Embedding O(N²) DFT 热点（debug 实测 26s/30s 音；换 FFT 可加速，升 model_version）
+- 真实音乐 BPM/Key 精度未基准评估（synthetic 全过；§299 无 99.9% 宣称）

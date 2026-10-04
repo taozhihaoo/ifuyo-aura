@@ -124,3 +124,10 @@ devtools 未显式启用（tauri v2 默认 release 关闭）；无调试日志�
 
 ### 凭据扫描（§318）
 api_key/password/token/client_secret/Authorization/Cookie/BEGIN PRIVATE KEY 全仓扫描： Dreamscape 相关零命中；无 .env。
+
+### Analysis（M8 下篇 §240–§251/§327）
+- Input validation：TrackId 参数化（库内存在性校验）；batch ≤500（§241）；advance 单次上限；相机值钳制。
+- Worker isolation：单 job panic 被 catch_unwind 捕获转错误（§244/§245）；embedding 失败隔离（§246 不污染其它特征）。
+- DB 失败语义（§247–§250）：SQLite 事务回滚；分析失败不破坏 M3 tracks/playlists/stats/artwork；Running→Pending 重启恢复（§211）。
+- 无网络（§328 offline audit PASS）：分析全链路零网络路径；模型=自有代码无下载（§204）。
+- BLOB 限制：嵌入 BLOB 读回 dim×4 校验（§29），越界拒绝。
