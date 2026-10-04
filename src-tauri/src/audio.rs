@@ -224,6 +224,11 @@ impl AudioHandle {
     }
 
     #[must_use]
+    /// 当前输出采样率（SMTC 帧↔秒换算用，§32）。
+    pub fn sample_rate(&self) -> u64 {
+        self.sample_rate.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     pub fn revision(&self) -> u64 {
         self.revision.load(Ordering::Relaxed)
     }

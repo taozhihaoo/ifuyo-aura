@@ -229,6 +229,12 @@ pub fn create(app: &AppHandle, initial_locale: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// §226 diagnostics：托盘是否已初始化。
+#[must_use]
+pub fn is_initialized() -> bool {
+    TRAY.get().is_some_and(|p| p.initialized)
+}
+
 /// §94：语言切换 → 只改文本（图标不重建）。未知 locale → 保持现状。
 pub fn set_locale(locale: &str) {
     let Some(p) = TRAY.get() else { return };

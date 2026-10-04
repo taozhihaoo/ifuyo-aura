@@ -47,6 +47,8 @@ pub struct AppState {
     pub dreamscape: crate::dreamscape::DreamscapeHost,
     /// Music Map 会话宿主（M9 中篇；derived data §65 持久化在 app_data）。
     pub map: crate::map_ipc::MapHost,
+    /// M10 Windows Integration 共享槽（meta/queue/icy/diagnostics）。
+    pub integration: crate::integration::Shared,
 }
 
 /// 应用基础信息（M0 契约保留）。
@@ -144,7 +146,22 @@ pub fn play_track(state: State<'_, AppState>, track_id: i64) -> CmdResult<()> {
         .library
         .track_path(track_id)
         .map_err(|e| from_err("TRACK_UNAVAILABLE", e, true))?;
-    play_input(state, path).map(|_| ())
+    // §41/§42：应用层提供 M3 真实 metadata（SMTC 不自查 SQLite）。
+    let meta = state.library.service.lock().ok().and_then(|service| {
+        service
+            .get_track(aura_library::types::TrackId(track_id))
+            .ok()
+            .flatten()
+            .map(|t| crate::integration::CurrentTrackMeta {
+                track_id: Some(track_id),
+                title: t.title.clone(),
+                artist: t.artist.clone(),
+                album: t.album.clone(),
+                album_artist: t.album_artist.clone(),
+                artwork_id: t.artwork_id.map(|a| a.0),
+            })
+    });
+    play_input_impl(state, path, meta).map(|_| ())
 }
 
 /// §275/§276/§194：Open File / Open URL 统一入口。
@@ -153,8 +170,19 @@ pub fn play_track(state: State<'_, AppState>, track_id: i64) -> CmdResult<()> {
 /// Local Source 分支处理（存在性/扩展名校验在 Rust 侧，§192）。
 #[tauri::command]
 pub fn play_input(state: State<'_, AppState>, input: String) -> CmdResult<String> {
+    play_input_impl(state, input, None)
+}
+
+fn play_input_impl(
+    state: State<'_, AppState>,
+    input: String,
+    known_meta: Option<crate::integration::CurrentTrackMeta>,
+) -> CmdResult<String> {
     let resolved = aura_sources::resolver::resolve_input(&input, &state.http, &state.blocklist)
         .map_err(from_source_err)?;
+    // §53：radio 的 ICY 事件通道（播放成功后挂入 integration worker）。
+    let mut icy_rx: Option<std::sync::mpsc::Receiver<aura_sources::model::StreamMetadataEvent>> =
+        None;
     use aura_sources::model::SourceKind;
     let title = resolved
         .meta
@@ -183,10 +211,10 @@ pub fn play_input(state: State<'_, AppState>, input: String) -> CmdResult<String
             path
         }
         SourceKind::InternetRadio => {
-            let (net_stream, _icy_events) =
-                aura_sources::radio::open_resolved(&state.http, &resolved)
-                    .map_err(from_source_err)?
-                    .into_parts();
+            let (net_stream, events) = aura_sources::radio::open_resolved(&state.http, &resolved)
+                .map_err(from_source_err)?
+                .into_parts();
+            icy_rx = Some(events);
             let url = resolved
                 .streams
                 .first()
@@ -256,6 +284,25 @@ pub fn play_input(state: State<'_, AppState>, input: String) -> CmdResult<String
             stream.url
         }
     };
+    // §41/§56：应用层提供快照 metadata——play_track 已带 M3 行；
+    // 直连/电台用 resolver 真实值（icy_name/station），缺失不猜。
+    let meta = known_meta.unwrap_or_else(|| crate::integration::CurrentTrackMeta {
+        track_id: None,
+        title: resolved
+            .meta
+            .track
+            .title
+            .clone()
+            .or_else(|| resolved.meta.stream.icy_name.clone()),
+        artist: resolved.meta.track.artist.clone(),
+        album: None,
+        album_artist: None,
+        artwork_id: None,
+    });
+    *state.integration.meta.lock().expect("meta") = Some(meta);
+    *state.integration.icy.lock().expect("icy") = icy_rx;
+    state.integration.notify(crate::integration::Event::Refresh);
+
     // 装载成功即播放（与此前 play_track 行为一致）。
     state
         .audio
@@ -429,6 +476,25 @@ pub fn track_artwork(state: State<'_, AppState>, track_id: i64) -> CmdResult<Opt
         "data:{mime};base64,{}",
         base64::engine::general_purpose::STANDARD.encode(bytes)
     )))
+}
+
+/// §65/§153：前端上报 queue 边界（SMTC/托盘 enablement 数据源）。
+#[tauri::command]
+pub fn report_queue_state(
+    state: State<'_, AppState>,
+    has_previous: bool,
+    has_next: bool,
+) -> CmdResult<()> {
+    state.integration.report_queue(has_previous, has_next);
+    Ok(())
+}
+
+/// §225–§227：本地系统集成 diagnostics（只读；不影响状态）。
+#[tauri::command]
+pub fn get_integration_diagnostics(
+    state: State<'_, AppState>,
+) -> CmdResult<crate::integration::IntegrationDiagnostics> {
+    Ok(state.integration.diag.lock().expect("diag").clone())
 }
 
 /// §284/§285：库统计（M3 真实计数；Map 展示用，不伪造数字）。

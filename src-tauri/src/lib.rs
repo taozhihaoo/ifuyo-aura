@@ -71,15 +71,25 @@ pub fn run() {
             if let Err(e) = integration::tray::create(&handle, &lang) {
                 eprintln!("tray unavailable: {e}");
             }
+            let integration = integration::Shared::new();
             app.manage(ipc::AppState {
                 audio: std::sync::Arc::new(audio),
                 library: std::sync::Arc::new(library),
-                app: handle,
+                app: handle.clone(),
                 http,
                 blocklist,
                 dreamscape,
                 map,
+                integration: integration.clone(),
             });
+            // §118 初始化顺序：… → Windows Integration worker → SMTC → Tray。
+            let st = app.state::<ipc::AppState>();
+            integration::worker::spawn(
+                handle.clone(),
+                st.audio.clone(),
+                st.library.clone(),
+                integration,
+            );
             // §19：Win11 Mica（设置开关，失败自动保持 solid fallback §20）。
             #[cfg(target_os = "windows")]
             {
@@ -148,6 +158,8 @@ pub fn run() {
             map_ipc::get_map_track,
             map_ipc::request_map_build,
             map_ipc::cancel_map_build,
+            ipc::report_queue_state,
+            ipc::get_integration_diagnostics,
         ]) // probe-isolated
         .run(tauri::generate_context!())
         .expect("error while running ifuyo Aura");

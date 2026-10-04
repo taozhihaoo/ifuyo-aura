@@ -12,7 +12,10 @@
 //! - §133–§137：字符串限长（char 边界，保留 Unicode）+ 无伪 metadata。
 
 pub mod single_instance;
+#[cfg(windows)]
+pub mod smtc;
 pub mod tray;
+pub mod worker;
 
 use std::path::Path;
 
@@ -257,6 +260,94 @@ pub fn frames_to_seconds(frames: u64, sample_rate: u64) -> f64 {
         return 0.0;
     }
     (frames as f64) / (sample_rate as f64)
+}
+
+// ---------- 系统命令（§7/§8/§72/§73/§155） ----------
+
+/// 外部系统命令（SMTC 按钮）；Next/Previous 桥接前端 queue（§23/§24）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemCommand {
+    Play,
+    Pause,
+    Stop,
+    Next,
+    Previous,
+}
+
+// ---------- 共享槽（应用层 IPC 写入；worker 读取） ----------
+
+/// 当前曲目元数据快照来源（play_track/play_input 在命令线程写入；
+/// §41：SMTC 适配器绝不自查 SQLite——由应用层提供）。
+#[derive(Debug, Clone, Default)]
+pub struct CurrentTrackMeta {
+    pub track_id: Option<i64>,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub album_artist: Option<String>,
+    pub artwork_id: Option<i64>,
+}
+
+pub type SharedMeta = std::sync::Arc<std::sync::Mutex<Option<CurrentTrackMeta>>>;
+/// (has_previous, has_next)（§65/§66 前端 queue 上报）。
+pub type SharedQueue = std::sync::Arc<std::sync::Mutex<(bool, bool)>>;
+/// M4 ICY 事件接收端（radio 播放时挂入；§53–§56）。
+pub type SharedIcy = std::sync::Arc<
+    std::sync::Mutex<Option<std::sync::mpsc::Receiver<aura_sources::model::StreamMetadataEvent>>>,
+>;
+
+/// §225–§227 本地 diagnostics（不作 source of truth）。
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrationDiagnostics {
+    pub smtc_available: bool,
+    pub smtc_state: String,
+    pub last_revision: u64,
+    pub last_error: Option<String>,
+    pub tray_initialized: bool,
+}
+pub type SharedDiag = std::sync::Arc<std::sync::Mutex<IntegrationDiagnostics>>;
+
+/// 应用层共享槽集合（AppState 持有；smoke 可空转）。
+#[derive(Clone, Default)]
+pub struct Shared {
+    pub meta: SharedMeta,
+    pub queue: SharedQueue,
+    pub icy: SharedIcy,
+    pub diag: SharedDiag,
+    /// worker 事件入口（spawn 后接入；IPC 用它推动即时刷新）。
+    pub events: std::sync::Arc<std::sync::Mutex<Option<std::sync::mpsc::Sender<Event>>>>,
+}
+
+impl Shared {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// §65/§153：前端上报 queue 边界。
+    pub fn report_queue(&self, has_previous: bool, has_next: bool) {
+        *self.queue.lock().expect("queue") = (has_previous, has_next);
+        self.notify(Event::Refresh);
+    }
+
+    pub fn notify(&self, ev: Event) {
+        if let Ok(tx) = self.events.lock() {
+            if let Some(tx) = tx.as_ref() {
+                let _ = tx.send(ev);
+            }
+        }
+    }
+}
+
+/// worker 入站事件（单通道；SMTC 回调只投递 §74）。
+#[derive(Debug, Clone, Copy)]
+pub enum Event {
+    /// 显式触发一次刷新（queue/locale/外部请求）。
+    Refresh,
+    Cmd(SystemCommand),
+    /// SMTC PositionChanged（秒；worker 侧验证 §69/§232）。
+    Seek(f64),
 }
 
 /// §150 Artwork 竞态门：异步封面加载完成后凭 generation 校验，旧代

@@ -18,6 +18,17 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-single-instance = "2"
+
+# §16/§237 最小 feature 面（SMTC WinRT：媒体会话 + 流 + 基础）。
+[target.'cfg(windows)'.dependencies]
+windows-future = "0.3"
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Media",
+    "Storage_Streams",
+    "Win32_Foundation",
+    "Win32_System_WinRT",
+] }
 aura-library = { version = "0.1.0", path = "../crates/aura-library" }
 aura-synth = { version = "0.1.0", path = "../crates/aura-synth" }
 aura-analysis = { version = "0.1.0", path = "../crates/aura-analysis" }

@@ -67,6 +67,7 @@ fn main() {
                 blocklist,
                 dreamscape,
                 map,
+                integration: aura_shell_lib::integration::Shared::new(),
             });
             Ok(())
         })
