@@ -11,6 +11,7 @@ pub mod embedding;
 pub mod fft;
 pub mod key;
 pub mod local_stream;
+pub mod loudness;
 pub mod params;
 pub mod store;
 
@@ -26,6 +27,7 @@ pub use embedding::{
 };
 pub use fft::{fft_forward, magnitude_half};
 pub use key::analysis_key;
+pub use loudness::{amplitude_for_target_lufs, analyze_loudness, true_peak_dbtp};
 pub use params::{
     hann, resample_linear, ANALYSIS_CHANNELS, ANALYSIS_SAMPLE_RATE, CHUNK_SAMPLES, FRAME_LEN,
     HOP_LEN, MAX_ANALYSIS_SECONDS, MAX_BEATS, MAX_FEATURE_SAMPLES,
