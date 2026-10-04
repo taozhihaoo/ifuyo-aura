@@ -185,6 +185,7 @@ CREATE TABLE track_analysis (
     centroid_hz           REAL,
     rolloff_hz            REAL,
     brightness            REAL,
+    energy                REAL,
     spectral_algo_version INTEGER,
     spectral_availability TEXT NOT NULL,
     mfcc_blob             BLOB,
