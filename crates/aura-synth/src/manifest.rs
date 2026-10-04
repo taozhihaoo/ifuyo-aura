@@ -18,6 +18,7 @@ pub const MANIFEST_VERSION: u16 = 1;
 
 /// 地形参数补丁（渲染层据此确定性重建高度场，§49 精神）。
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TerrainPatch {
     pub amplitude: f32,
     pub frequency: f32,
@@ -26,6 +27,7 @@ pub struct TerrainPatch {
 
 /// 抽象光态（§40 → manifest 透出，渲染层映射 Three.js）。
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LightState {
     pub sun_intensity: f32,
     pub ambient_intensity: f32,
@@ -34,6 +36,7 @@ pub struct LightState {
 
 /// 大气状态。
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AtmosphereState {
     pub fog: f32,
     pub wind: f32,
@@ -43,6 +46,7 @@ pub struct AtmosphereState {
 
 /// landmark 节点。
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LandmarkNode {
     pub id: u64,
     pub kind: LandmarkKind,
@@ -55,6 +59,7 @@ pub struct LandmarkNode {
 
 /// 实例组（SoA；渲染层 → InstancedMesh，§61）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InstanceGroup {
     pub family: ObjectFamily,
     pub x: Vec<f32>,
@@ -100,6 +105,7 @@ impl InstanceGroup {
 
 /// 场景清单（§110）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SceneManifest {
     pub manifest_version: u16,
     /// 世界稳定身份（§18）。

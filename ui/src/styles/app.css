@@ -399,10 +399,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   color: rgba(255, 255, 255, 0.8);
 }
 
-/* ---- Dreamscape（§203/§275/§280）---- */
-.dreamscape {
+/* ---- Dreamscape（§203/§275/§280；绝对满幅消除 flex 歧义 §282）---- */
+.app-main {
   position: relative;
-  height: 100%;
+}
+.dreamscape {
+  position: absolute;
+  inset: 0;
   overflow: hidden;
 }
 .dreamscape-canvas {

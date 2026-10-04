@@ -1,7 +1,7 @@
 // DreamscapeRenderer（§128–§132/§144–§153/§265–§267）：Three.js 装配 +
 // 纯逻辑 engine 驱动。生命周期：create → loadWorld → render ⇄ pause →
 // dispose；context lost → paused → restored 重建（§151）。
-import { Scene, PerspectiveCamera, WebGLRenderer, Clock } from 'three';
+import { Scene, PerspectiveCamera, WebGLRenderer, Clock, Color } from 'three';
 import {
   AutoQuality,
   GenerationGate,
@@ -68,6 +68,7 @@ export class DreamscapeRenderer {
       return false;
     }
     this.applyPixelRatio();
+    this.applyCanvasSize(canvas);
     this.scene = new Scene();
     this.camera = new PerspectiveCamera(55, 1, 0.1, 600);
     // §151：context loss → paused；restored → 重建 GPU 资源。
@@ -110,6 +111,13 @@ export class DreamscapeRenderer {
     this.manifest = manifest;
     this.built = buildScene(manifest, this.settings, this.disposables);
     scene.add(this.built.root);
+    // 天空底色 = palette 基调暗化（§41；替代默认黑）。
+    scene.background = new Color().setHSL(
+      (((manifest.palette.baseHue % 360) + 360) % 360) / 360,
+      manifest.palette.saturation * 0.6,
+      manifest.palette.luminance * 0.25,
+    );
+    this.applyCanvasSize(gl.domElement);
     this.applyEnvironment(manifest, 1);
     // 初始相机位（§65 passive；有界 §68）。
     const lm = manifest.landmarks[0];
@@ -262,6 +270,13 @@ export class DreamscapeRenderer {
       this.built = buildScene(this.manifest, s, this.disposables);
       scene.add(this.built.root);
     }
+  }
+
+  /** 初始/被动尺寸同步（§148 resize 由调用方 coalesce；此处只读一次布局）。 */
+  private applyCanvasSize(canvas: HTMLCanvasElement): void {
+    const w = canvas.clientWidth || 800;
+    const h = canvas.clientHeight || 600;
+    this.resize(w, h);
   }
 
   private applyPixelRatio(): void {

@@ -35,6 +35,7 @@ pub fn stable_hash64(domain: &[u8], data: &[u8]) -> u64 {
 
 /// 内部确定性 seed（§12）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DreamscapeSeed {
     pub value: u64,
     pub seed_version: u16,

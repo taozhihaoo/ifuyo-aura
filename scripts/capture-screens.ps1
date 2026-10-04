@@ -73,6 +73,29 @@ function Capture-Small-Window([string]$OutFile) {
     Write-Host "mini window not found (skip 04)"
 }
 
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class MouseCap {
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT p);
+    public struct POINT { public int X, Y; }
+}
+"@
+
+function Click-At([IntPtr]$Hwnd, [int]$ClientX, [int]$ClientY) {
+    # 客户区坐标 → 屏幕坐标（ClientToScreen）。
+    $p = New-Object MouseCap+POINT
+    $p.X = $ClientX; $p.Y = $ClientY
+    [MouseCap]::ClientToScreen($Hwnd, [ref]$p) | Out-Null
+    [MouseCap]::SetCursorPos($p.X, $p.Y) | Out-Null
+    Start-Sleep -Milliseconds 120
+    [MouseCap]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)  # LEFTDOWN
+    [MouseCap]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)  # LEFTUP
+    Start-Sleep -Milliseconds 200
+}
+
 function Focus-Main([object]$Proc) {
     $ws.AppActivate($Proc.Id) | Out-Null
     Start-Sleep -Milliseconds 300
@@ -83,7 +106,8 @@ $proc = Start-Process -FilePath $Exe -PassThru
 try {
     Capture-Window "ifuyo Aura" (Join-Path $OutDir "01-now-playing.png")
 
-    Focus-Main $proc; $ws.SendKeys("%2")            # Alt+2 → Library
+    Focus-Main $proc
+    Click-At $proc.MainWindowHandle 193 20            # 音乐库（§262 按钮点击替代 IME 敏感的 SendKeys）
     Capture-Window "ifuyo Aura" (Join-Path $OutDir "02-library.png")
 
     Focus-Main $proc; $ws.SendKeys("^k")            # Ctrl+K → Palette
@@ -92,10 +116,21 @@ try {
 
     Focus-Main $proc; $ws.SendKeys("^q")            # Ctrl+Q → Queue
     Capture-Window "ifuyo Aura" (Join-Path $OutDir "07-queue.png")
-    Focus-Main $proc; $ws.SendKeys("^q")
+    Focus-Main $proc; $ws.SendKeys("{ESC}")
 
-    Focus-Main $proc; $ws.SendKeys("%3")            # Alt+3 → Map
+    Focus-Main $proc
+    Click-At $proc.MainWindowHandle 279 20            # Map
     Capture-Window "ifuyo Aura" (Join-Path $OutDir "05-map-shell.png")
+
+    # 梦境导航按钮（M7；等待生成 + 首帧）。
+    Focus-Main $proc
+    Click-At $proc.MainWindowHandle 334 20
+    Start-Sleep -Milliseconds 5000
+    Capture-Window "ifuyo Aura" (Join-Path $OutDir "10-dreamscape-default.png")
+
+    # 环境推进数逻辑时后再截（§320 12-environment；光/雾经本地插值渐变）。
+    Start-Sleep -Seconds 6
+    Capture-Window "ifuyo Aura" (Join-Path $OutDir "12-dreamscape-environment.png")
 
     # Ctrl+M → Mini（palette 输入会被中文 IME 拦截，D-078）。
     Focus-Main $proc; $ws.SendKeys("^m")

@@ -79,10 +79,10 @@ export default function App() {
         if (snap?.state === 'playing') ipc.pause().catch(() => undefined);
         else ipc.play().catch(() => undefined);
       }
-      // §260：Alt+1/2/3 主导航（记录于 DECISIONS D-078）。
-      if (e.altKey && ['1', '2', '3'].includes(e.key)) {
+      // §260：Alt+1/2/3/4 主导航（记录于 DECISIONS D-078）。
+      if (e.altKey && ['1', '2', '3', '4'].includes(e.key)) {
         e.preventDefault();
-        const views = ['now-playing', 'library', 'map'] as const;
+        const views = ['now-playing', 'library', 'map', 'dreamscape'] as const;
         const target = views[Number(e.key) - 1];
         if (target) setView(target);
         return;
@@ -154,9 +154,9 @@ export default function App() {
             </FeatureBoundary>
           )}
         </main>
-        {/* §130/§131：Dreamscape 激活时不挂 Aurora（单高负载 WebGL 规则）。 */}
+        {/* §130/§131：Dreamscape 激活时不挂 Aurora（单高负载 WebGL 规则）；
+            Dreamscape 自带画布与 CSS fallback，无需占位背景。 */}
         {view !== 'dreamscape' && <AuroraCanvas />}
-        {view === 'dreamscape' && <div className="aurora-fallback" aria-hidden />}
       </div>
       <CommandPalette />
       <SettingsPanel />

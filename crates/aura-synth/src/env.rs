@@ -273,8 +273,9 @@ impl EnvironmentState {
     }
 }
 
-/// 受约束 palette（§41/§42）。
+/// 受约束 palette（§41/§42；camelCase 以对齐 manifest IPC DTO）。
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Palette {
     /// 基调色相（度）。
     pub base_hue: f32,
@@ -484,7 +485,7 @@ mod tests {
         assert!(back.fog <= FOG_MAX);
         assert!((0.0..=1.0).contains(&back.ambient_intensity));
         let mut pal: Palette = serde_json::from_str(
-            r#"{"base_hue":0.0,"accent_hue":0.0,"saturation":0.9,"luminance":0.1,"accent_frequency":0.9}"#,
+            r#"{"baseHue":0.0,"accentHue":0.0,"saturation":0.9,"luminance":0.1,"accentFrequency":0.9}"#,
         )
         .unwrap();
         pal.sanitize();

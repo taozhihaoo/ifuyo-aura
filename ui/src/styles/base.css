@@ -19,8 +19,8 @@ body {
   color: rgba(255, 255, 255, 0.92);
   font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', system-ui, sans-serif;
   font-size: 14px;
-  display: grid;
-  place-items: center;
+  /* §282：app-root 占满视口（Phase 0 的 grid 居中会让内容收缩居中，
+     Dreamscape 画布与主布局被压缩——已在真实构建截图暴露）。 */
 }
 
 .phase-card {
