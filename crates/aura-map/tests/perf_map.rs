@@ -7,9 +7,7 @@ use std::time::Instant;
 use aura_analysis::domain::Embedding;
 use aura_analysis::domain::EMBEDDING_MODEL_ID;
 use aura_map::dataset::MapEntry;
-use aura_map::{
-    build_knn_graph, compute_layout, detect_clusters, validate_graph, MapDataset,
-};
+use aura_map::{build_knn_graph, compute_layout, detect_clusters, validate_graph, MapDataset};
 
 fn emb(v: Vec<f32>) -> Embedding {
     Embedding::normalized(v, EMBEDDING_MODEL_ID, 1)
@@ -53,12 +51,20 @@ fn map_build_perf_4k_nodes() {
 
     let t = Instant::now();
     let g = build_knn_graph(&ds, 12, 0.0).unwrap();
-    println!("kNN graph (N=4k)  : {:?} (edges={})", t.elapsed(), g.edges.len());
+    println!(
+        "kNN graph (N=4k)  : {:?} (edges={})",
+        t.elapsed(),
+        g.edges.len()
+    );
     assert!(g.edges.len() <= ds.entries.len() * 32, "§58 边预算");
 
     let t = Instant::now();
     let clusters = detect_clusters(&g, 20);
-    println!("clustering        : {:?} (clusters={})", t.elapsed(), clusters.clusters.len());
+    println!(
+        "clustering        : {:?} (clusters={})",
+        t.elapsed(),
+        clusters.clusters.len()
+    );
 
     let t = Instant::now();
     let layout = compute_layout(&ds, &g).unwrap();
