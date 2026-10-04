@@ -246,6 +246,11 @@ aura-analysis 增：fft / params / loudness / tempo / key_detect / spectral / mf
 - **管线**（§92–§94）：单遍共享解码（spectral+loudness 全轨流式；tempo/key/mfcc/embedding 用 120s 窗口）→ 特征隔离（§134–136 各自 Failed/Unavailable）→ Completed 校验 → 仓库。取消检查点在 chunk/特征边界（§102/§103）；clock 注入（§107/§108）。
 - **调度/合同**（§95–§129）：AnalysisScheduler（优先级/取消/有界重试）+ AnalysisRepository trait（InMemory 测试 / SQLite 桥接）+ TrackAnalysisSummary（§117 单位显式 §118、None=未分析 §119/§120）+ cosine 相似度原语（§125–§129 错误分支：维度/NaN/零向量/版本不兼容）。
 
+### Music Map 内核（M9 上篇）
+
+`crates/aura-map`（§13/§14：aura-analysis ↓ aura-map ↓ application ↓ IPC ↓ Renderer）：
+dataset（兼容合同/dataset hash）→ similarity（cosine/top-K）→ graph（kNN 对称化/校验）→ clustering（确定性 LPA）→ layout（PCA+grid 松弛）→ persistence（JSON+校验和）。查询 API：neighbors/viewport/cluster_members。
+
 ## 构建与工程
 
 - Cargo workspace：7 个 aura crates + `src-tauri`（M0-3 起为正式 member，tauri 2.12）。

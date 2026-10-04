@@ -451,3 +451,14 @@ pre-emphasis 0.97；帧 1024/hop 512（规范参数 §79）；FFT 1024；26 mel 
 ## D-104 调度器与仓库（2026-10-05，M8 中篇）
 
 AnalysisRepository trait（save/load/mark_stale/list_pending）+ InMemory 实现（§140/§141）；SQLite 桥接由 shell/应用层（AnalysisStore 已满足合同，§139 不让特征提取知 SQL）。AnalysisScheduler：单 worker 顺序（§97 有界）；优先级两级 User>Background（§96）；同 track 去重保高优先；取消幂等（§102）；重试有界 MAX_RETRIES=1（§109/§110）。M8 下篇接 shell 任务队列/并发 worker（§155 退出协议）。
+
+## D-108..D-115 Music Map 内核（2026-10-05，M9 上篇）
+
+- **D-108 dataset**：兼容合同 = 首个有效嵌入定义（dim/model_id/model_version/analysis_version 全等）；不兼容 → 计数排除（§29–§31 无投影）。TrackId 升序 canonical 进入管线（§27）；dataset hash = SipHash(排序后 track_id‖analysis_key‖model‖dim‖versions)（§26）。
+- **D-109 相似度**：严格复用 M8 cosine 合同（§35/§36，f64 累计→f32）；零向量 → Err（§33 不悄悄 0.0）；NaN/Inf → Err（§34）。
+- **D-110 top-K**：similarity DESC + TrackId ASC tie-break（§42）；k 钳制 ≤1000（§43）。
+- **D-111 搜索策略**：exact scan ≤25k 节点；超出 → DatasetTooLarge（ANN 为 B 级 §46，引入前记录审计）。
+- **D-112 kNN 图**：K=12 默认、阈值 sim>0（§55 cosine 负值不成边）；canonical 无向单条存储（a<b §63）；去重（§62）；边预算 ≤2NK（§58）；孤立节点允许（§60）；validate_graph 七检查（§61）。
+- **D-113 聚类**：确定性 label propagation（节点 id 升序异步更新、计数最大+标签最小 tie-break、收敛即停）；canonical 重编号 = size DESC → min track_id ASC（§101/§102）；孤立节点自成单簇。Cluster 不伪造语义标签（§104）。
+- **D-114 布局**：确定性 PCA 初始化（幂迭代 24 轮、无随机起点、符号规范=最大绝对载荷为正 §74/§75）→ grid 斥力（半径 0.12、32×32 bins §77）+ 边引力（similarity 加权）→ [-1,1]² clamp；预算 150 迭代/25k 节点（§78）。增量 = neighbor_centroid 初始化 + 局部松弛（§82–§85）。
+- **D-115 持久化**：JSON + BTreeMap 位置（HashMap 序列化顺序不稳定导致校验和抖动——测试捕获）；payload 校验和（checksum 归零 FNV）；validate = format/map/analysis 版本 + dataset hash + checksum 全过（§67/§335–§340），任一不符 → 丢弃重建（derived data §65，不碰 M3）。

@@ -338,3 +338,15 @@ M8-B = PASS（真实运行时与合同；长 soak 如实声明未执行）
 - 数小时 analysis/playback soak 未执行（远程环境限制，§352/§353 如实声明）；100-track 顺序分析已测
 - Embedding O(N²) DFT 热点（debug 实测 26s/30s 音；换 FFT 可加速，升 model_version）
 - 真实音乐 BPM/Key 精度未基准评估（synthetic 全过；§299 无 99.9% 宣称）
+
+## M9 上篇（2026-10-05）——相似度内核、kNN 图、布局与聚类（§0–108）
+
+状态 = PASS（内核层落地；渲染/交互 = 中篇 §109–269，门禁 = 下篇 §270–554）
+
+### Implemented
+- crates/aura-map（§13）：dataset 适配（兼容合同/向量校验/dataset hash §25–§34）+ 相似度内核（cosine/top-K D-109/D-110）+ kNN 图（D-112）+ 确定性聚类 LPA（D-113）+ 确定性布局 PCA+grid（D-114）+ 持久化（D-115 checksum/合同校验）+ 查询 API（neighbors/viewport/cluster_members）
+- PERF（debug）：4k 节点 dataset 5ms、kNN 图 21s、聚类 106ms、布局 7.7s；存储=图 JSON
+
+### Known Limitations
+- exact scan ≤25k 节点（ANN = B 级 §44–§46 未引入，超界明确报错）
+- 渲染/交互/搜索定位/LOD = 中篇；小时级 soak = 下篇
