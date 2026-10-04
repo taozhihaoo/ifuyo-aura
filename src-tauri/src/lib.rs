@@ -14,7 +14,18 @@ pub mod map_ipc;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // §116/§118：单实例最先建立（先于 SMTC/托盘注册窗口期）。
+        .plugin(integration::single_instance::plugin())
         .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|window, event| {
+            // §97/§98/§174 默认策略：主窗 X = 正式退出（后台模式为 B 级，
+            // 未实现——不得悄悄后台驻留）。
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if window.label() == "main" {
+                    window.app_handle().exit(0);
+                }
+            }
+        })
         .setup(|app| {
             let handle = app.handle().clone();
             let data_dir = handle
@@ -47,6 +58,19 @@ pub fn run() {
                 .map_err(|e| format!("dreamscape init failed: {e}"))?;
             let map =
                 map_ipc::MapHost::open(&data_dir).map_err(|e| format!("map init failed: {e}"))?;
+            // §118 初始化顺序：… → Windows Integration → SMTC → Tray。
+            // §120：托盘失败只降级（Tray=unavailable），应用继续运行。
+            let lang = app
+                .state::<ipc::AppState>()
+                .library
+                .settings
+                .lock()
+                .expect("settings")
+                .language
+                .clone();
+            if let Err(e) = integration::tray::create(&handle, &lang) {
+                eprintln!("tray unavailable: {e}");
+            }
             app.manage(ipc::AppState {
                 audio: std::sync::Arc::new(audio),
                 library: std::sync::Arc::new(library),

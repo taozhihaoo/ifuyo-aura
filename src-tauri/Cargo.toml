@@ -16,7 +16,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = "2"
 aura-library = { version = "0.1.0", path = "../crates/aura-library" }
 aura-synth = { version = "0.1.0", path = "../crates/aura-synth" }
 aura-analysis = { version = "0.1.0", path = "../crates/aura-analysis" }

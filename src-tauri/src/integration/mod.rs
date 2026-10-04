@@ -11,6 +11,9 @@
 //!   仅 Playing；Paused/Stopped 停止。
 //! - §133–§137：字符串限长（char 边界，保留 Unicode）+ 无伪 metadata。
 
+pub mod single_instance;
+pub mod tray;
+
 use std::path::Path;
 
 /// §134 字符串上限（Windows API + UI 需求；D-124）。
@@ -378,7 +381,7 @@ mod tests {
     /// §69/§70/§27：seek 验证（finite/负值/未知时长/不可 seek/clamp）。
     #[test]
     fn seek_validation() {
-        let mut c = Coordinator::new();
+        let c = Coordinator::new();
         let s = snap(1, "A", "playing"); // seekable, 100s
         assert_eq!(c.validate_seek(&s, 30.0), SeekDecision::Seek(30.0));
         assert_eq!(

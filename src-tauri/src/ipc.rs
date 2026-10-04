@@ -569,7 +569,10 @@ pub fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> CmdRe
     state
         .library
         .save_settings(&settings)
-        .map_err(|e| from_err("SETTINGS_WRITE", e, true))
+        .map_err(|e| from_err("SETTINGS_WRITE", e, true))?;
+    // §93/§94：托盘菜单跟随应用语言（只改文本，不重建图标）。
+    crate::integration::tray::set_locale(&settings.language);
+    Ok(())
 }
 
 /// tests 引用保活。
