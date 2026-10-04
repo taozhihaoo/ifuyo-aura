@@ -1,6 +1,7 @@
 // Typed IPC client（§11）：invoke 封装 + AppError 归一。
 import { invoke } from '@tauri-apps/api/core';
 import { isAppError, type AppSettings, type PlayerSnapshot, type ScanProgress, type SortKey, type TrackSummary } from './types';
+import { isDreamscapeState, isSceneManifest, type DreamscapeStateDto, type SceneManifest } from './dreamscape';
 
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   try {
@@ -46,4 +47,24 @@ export const ipc = {
     import('@tauri-apps/api/event').then(({ listen }) =>
       listen('library-changed', () => cb()),
     ),
+  // ---- Dreamscape（M7；§255/§263：命令 + 按需拉取，无轮询循环）----
+  dreamscapeState: () => call<DreamscapeStateDto>('dreamscape_state'),
+  dreamscapeAdvance: (ticks: number) => call<DreamscapeStateDto>('dreamscape_advance', { ticks }),
+  // §253：manifest 经 validation-first 守卫，畸形数据不进渲染层。
+  dreamscapeManifest: async (): Promise<SceneManifest> => {
+    const m = await call<unknown>('dreamscape_manifest');
+    if (!isSceneManifest(m)) throw { code: 'DREAMSCAPE_CORRUPT', message: 'invalid manifest', recoverable: false };
+    return m;
+  },
+  dreamscapeRegenerate: (input: string) => call<DreamscapeStateDto>('dreamscape_regenerate', { input }),
+  dreamscapeExportSeed: () => call<string>('dreamscape_export_seed'),
+  dreamscapeImportSeed: (input: string) => call<DreamscapeStateDto>('dreamscape_import_seed', { input }),
+  dreamscapeSaveSnapshot: () => call<void>('dreamscape_save_snapshot'),
+  dreamscapeRestoreSnapshot: () => call<DreamscapeStateDto>('dreamscape_restore_snapshot'),
+  dreamscapeSetCamera: (yaw: number, pitch: number, distance: number) =>
+    call<void>('dreamscape_set_camera', { yaw, pitch, distance }),
 };
+
+export function isDreamscapeStateDto(v: unknown): v is DreamscapeStateDto {
+  return isDreamscapeState(v);
+}
