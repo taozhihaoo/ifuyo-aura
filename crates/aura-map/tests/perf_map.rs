@@ -148,5 +148,7 @@ fn large_dataset_100k_rejected() {
         matches!(err, aura_map::SimilarityError::DatasetTooLarge { .. }),
         "超预算必须显式报错：{err:?}"
     );
-    println!("25k+ dataset → graph rejected（DatasetTooLarge）；B 级 ANN/progressive 未引入，如实拒绝");
+    println!(
+        "25k+ dataset → graph rejected（DatasetTooLarge）；B 级 ANN/progressive 未引入，如实拒绝"
+    );
 }
