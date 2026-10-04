@@ -222,8 +222,6 @@ mod tests {
     /// 顺序音阶 run（§192 synthetic fixture）：任一时刻仅 1-2 音，
     /// 避免低频半音在 FFT 主瓣内重叠；主音置于首尾并加重。
 
-
-
     #[test]
     fn c_major_triad_detected() {
         let r = analyze_key(
@@ -240,8 +238,6 @@ mod tests {
             KeyResult::Unavailable => panic!("C major 应可检测"),
         }
     }
-
-
 
     #[test]
     fn a_minor_triad_detected() {
