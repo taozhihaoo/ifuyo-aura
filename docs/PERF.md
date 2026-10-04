@@ -194,3 +194,48 @@ cargo run -p aura-shell --bin smoke   # startup-to-ready / snapshot 行
 复测命令：`cargo test -p aura-analysis --test perf_analysis -- --ignored --nocapture`
 
 诚实声明（§204/§326）：全部真实测量；debug profile 数字不用于宣称 release 性能（§326 无营销指标）。Embedding 的 O(N²) DFT 是已识别热点，修复路径=换 FFT+升 model_version（D-095）。
+
+## M9 Music Map（下篇 §297/§298/§474–§478，2026-10-05）
+
+- 硬件（§475）：AMD Ryzen 7 7700（8C/16T）/ 31.2 GB RAM / AMD Radeon RX 7700 XT（+ iGPU）/ Windows 11（10.0.26200）/ **release profile** / rustc 1.99.0 / Node v24.19.0。
+- 数据集（§476/§477）：确定性合成 4 簇、嵌入维度 D=32（M8 实际维度；测试 fixture 34 维槽位）——`tests/perf_map.rs` xorshift 微扰，无生产随机源。
+- 复测：`cargo test -p aura-map --release --test perf_map -- --ignored --nocapture`
+
+### 后端全链（§474 Backend，release 实测）
+
+| 阶段 | 1k | 4k | 10k |
+| --- | --- | --- | --- |
+| dataset build（含向量校验/hash） | 0.5 ms | 2.3 ms | 5.8 ms |
+| kNN graph（exact scan，K=12） | 93.9 ms | 1.45 s | 9.74 s |
+| clustering（LPA 20 轮） | 2.2 ms | 8.5 ms | 23.6 ms |
+| layout（PCA+grid，150 iter） | 89 ms | 1.41 s | 9.15 s |
+| persistence（serde+checksum） | 1.4 ms | 4.6 ms | 14.7 ms |
+| restore（免重算恢复 §174） | 2.3 ms | 9.0 ms | 34.1 ms |
+| incremental relax（种子冻结 40 iter §277） | 26 ms | 0.40 s | 2.36 s |
+
+### 查询（§298，10k 节点）
+
+| 查询 | 实测 |
+| --- | --- |
+| top-k neighbor（K=8，exact） | 1.13 ms/call |
+| viewport query（BTreeMap 扫描） | 86.8 µs |
+| restore 后 detail/cluster 数据 | 内存查表（µs 级） |
+
+### 内存核算（§291/§295/§478，账面值）
+
+| N | 向量 (N×D×4) | 边 (≈12N×20B) | 位置 | 簇 |
+| --- | --- | --- | --- | --- |
+| 1k | 0.13 MB | 0.22 MB | ≈8 KB | ≈4 KB |
+| 10k | 1.3 MB | 2.2 MB | ≈80 KB | ≈40 KB |
+
+- §292 无四份复制：SQLite BLOB → 采集期一次性入 dataset（构建线程局部）→ 快照只存 positions/clusters（f32 对）；前端只持 positions typed arrays + 按需元数据，不重复持有向量。
+- 大库（§290/§393）：>25k 节点 build_knn_graph 显式 `DatasetTooLarge` 拒绝（测试锁定）——B 级 ANN/progressive 未引入，不伪造可扩展性。
+
+### 前端（§474 Frontend/§299）
+
+- 渲染 = Canvas2D 按需重绘（§197/§198：静止 0 rAF）；无逐帧渲染循环 → FPS 指标不适用（无持续动画；focus 动画 240ms 即停）。
+- 单帧重绘 10k 视口节点 = 空间 hash culling 后仅绘制可见子集（§143/§300 可视预算）；可视边 ≤30（§301）；far 缩放优先簇晕（§302）。
+- 帧时间/GPU 内存（§299 的浏览器级指标）：本环境无 WebGL 剖析管线——**如实标注未测**；dpr cap ≤2（§326）控制填充率。
+- progressive render（§304/§305）：首次打开 = status→overview→loadAll（真实加载驱动），无定时器假 loading。
+
+诚实声明：全部真实 release 测量；kNN graph 与 layout 为 O(N²·K) exact——10k≈9s debug 级别可用、25k 上限明确拒绝。后续 B 级路径（ANN/近似布局）引入前须按 §378 审计依赖并重测。

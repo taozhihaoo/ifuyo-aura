@@ -25,6 +25,7 @@ pub use clustering::{attach_spatial_stats, detect_clusters, MapCluster, CLUSTER_
 pub use dataset::{DatasetError, MapDataset, MapEntry, DATASET_ALGO_VERSION, MAP_ALGO_VERSION};
 pub use graph::{build_knn_graph, validate_graph, MapEdge, MapGraph, MAX_EDGES_FACTOR};
 pub use layout::{
-    compute_layout, neighbor_centroid, MapPosition, LAYOUT_ALGO_VERSION, MAX_ITERATIONS, MAX_NODES,
+    compute_layout, layout_seeded, layout_with_options, neighbor_centroid, MapPosition,
+    LAYOUT_ALGO_VERSION, MAX_ITERATIONS, MAX_NODES,
 };
 pub use similarity::{top_k_neighbors, SimilarityError, DEFAULT_K, MAX_K};
