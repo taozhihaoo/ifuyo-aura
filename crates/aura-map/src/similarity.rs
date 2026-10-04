@@ -32,6 +32,20 @@ pub enum SimilarityError {
     UnknownTrack,
 }
 
+impl std::fmt::Display for SimilarityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ZeroVector => write!(f, "zero vector has no similarity"),
+            Self::InvalidVector => write!(f, "invalid vector (non-finite)"),
+            Self::DimensionMismatch => write!(f, "dimension mismatch"),
+            Self::DatasetTooLarge { nodes } => {
+                write!(f, "dataset too large for exact scan: {nodes} nodes")
+            }
+            Self::UnknownTrack => write!(f, "unknown track"),
+        }
+    }
+}
+
 /// §40 纯函数相似度：cosine（M8 合同）。不依赖数据库。
 ///
 /// # Errors

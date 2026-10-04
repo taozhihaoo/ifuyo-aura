@@ -9,7 +9,7 @@
 //! - §74/§75 PCA 符号规范：最大绝对载荷项为正。
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::dataset::MapDataset;
 use crate::graph::MapGraph;
@@ -33,7 +33,8 @@ pub struct MapPosition {
 /// 布局结果。
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutResult {
-    pub positions: HashMap<i64, MapPosition>,
+    /// BTreeMap：序列化序稳定（§159 checksum / 持久化 §64–§67）。
+    pub positions: BTreeMap<i64, MapPosition>,
     pub iterations: usize,
 }
 
@@ -138,7 +139,7 @@ pub fn layout_with_options(
         }
     }
 
-    let map: HashMap<i64, MapPosition> = ds
+    let map: BTreeMap<i64, MapPosition> = ds
         .entries
         .iter()
         .enumerate()

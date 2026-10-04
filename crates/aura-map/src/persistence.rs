@@ -133,22 +133,9 @@ mod tests {
         let layout = crate::layout::compute_layout(&ds, &g).unwrap();
         let positions: BTreeMap<i64, MapPosition> =
             layout.positions.iter().map(|(k, v)| (*k, *v)).collect();
-        attach_spatial_stats_public(&mut clusters, &positions);
+        crate::clustering::attach_spatial_stats(&mut clusters, &positions);
         let persisted = persist(&ds, &g, &clusters, &positions);
         (ds, g, clusters, positions, persisted)
-    }
-
-    fn attach_spatial_stats_public(
-        clusters: &mut [MapCluster],
-        positions: &BTreeMap<i64, MapPosition>,
-    ) {
-        crate::clustering::attach_spatial_stats(
-            clusters,
-            &positions
-                .iter()
-                .map(|(k, v)| (*k, (v.x, v.y)))
-                .collect::<std::collections::HashMap<_, _>>(),
-        );
     }
 
     #[test]

@@ -11,7 +11,7 @@
 
 use crate::graph::MapGraph;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 pub const CLUSTER_ALGO_VERSION: u16 = 1;
 
@@ -125,12 +125,15 @@ pub fn detect_clusters(g: &MapGraph, max_iterations: usize) -> ClusteringResult 
 }
 
 /// 布局完成后回填 cluster centroid/radius（§106）。
-pub fn attach_spatial_stats(clusters: &mut [MapCluster], positions: &HashMap<i64, (f32, f32)>) {
+pub fn attach_spatial_stats(
+    clusters: &mut [MapCluster],
+    positions: &BTreeMap<i64, crate::layout::MapPosition>,
+) {
     for c in clusters {
         let pts: Vec<(f32, f32)> = c
             .track_ids
             .iter()
-            .filter_map(|id| positions.get(id).copied())
+            .filter_map(|id| positions.get(id).map(|p| (p.x, p.y)))
             .collect();
         if pts.is_empty() {
             continue;

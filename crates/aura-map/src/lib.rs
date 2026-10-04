@@ -8,6 +8,7 @@
 //! 同图/同聚类/同位置。空间关系全部来自真实 M8 embedding + 相似度
 //! 度量 + 布局算法（§7 禁 random/hash 位置）。
 
+pub mod build;
 pub mod clustering;
 pub mod dataset;
 pub mod graph;
@@ -16,6 +17,10 @@ pub mod persistence;
 pub mod query;
 pub mod similarity;
 
+pub use build::{
+    build_map, choose_build_kind, freeze_snapshot, BuildGeneration, BuildKind, BuildParams,
+    MapBuildError, MapBuildOutput, MapBuildStatus, FULL_REBUILD_THRESHOLD,
+};
 pub use clustering::{attach_spatial_stats, detect_clusters, MapCluster, CLUSTER_ALGO_VERSION};
 pub use dataset::{DatasetError, MapDataset, MapEntry, DATASET_ALGO_VERSION, MAP_ALGO_VERSION};
 pub use graph::{build_knn_graph, validate_graph, MapEdge, MapGraph, MAX_EDGES_FACTOR};
