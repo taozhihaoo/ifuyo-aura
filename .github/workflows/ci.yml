@@ -8,6 +8,11 @@
 
 name: CI
 
+# §41：最小权限——默认只读 contents；各 job 不接触生产 secrets
+# （签名 secrets 仅 release.yml 的 build job 使用，§62）。
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -48,10 +53,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: install cargo-deny
-        run: cargo install cargo-deny --locked
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
       - name: cargo deny check
         run: cargo deny check
+
+  audit:
+    name: dependency audit（§40/§58）
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: cargo audit（已知 warnings=paste/proc-macro-error/glib，见 docs/SUPPLY_CHAIN.md）
+        run: cargo audit
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: npm audit（生产依赖门；dev 工具链已知项分类见 docs/SUPPLY_CHAIN.md §40）
+        run: npm audit --omit=dev
+        working-directory: ui
 
   frontend:
     name: Frontend (typecheck / lint / test)
