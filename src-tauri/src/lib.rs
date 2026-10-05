@@ -38,8 +38,15 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
-            let audio =
-                audio::AudioHandle::start().map_err(|e| format!("audio init failed: {e}"))?;
+            // 曲目自然播完 → 前端事件（队列按播放模式自动前进，M12.6）。
+            let audio = audio::AudioHandle::start({
+                let handle = handle.clone();
+                move || {
+                    use tauri::Emitter;
+                    let _ = handle.emit("track-ended", ());
+                }
+            })
+            .map_err(|e| format!("audio init failed: {e}"))?;
             let library = library::LibraryState::open(&data_dir)?;
             let settings = library.settings.lock().expect("settings").clone();
             // 启动即应用持久化设置（§114/§155 启动优先级 3）。

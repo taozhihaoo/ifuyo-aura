@@ -197,13 +197,13 @@ fn play_input_impl(
                 .first()
                 .map(|s| s.url.clone())
                 .unwrap_or_else(|| input.clone());
-            let (decoder, duration_frames) = audio::open_decoder(std::path::Path::new(&path))
+            let (decoder, duration_seconds) = audio::open_decoder(std::path::Path::new(&path))
                 .map_err(|e| AppError::new("UNSUPPORTED_SOURCE", e.to_string(), true))?;
             state
                 .audio
                 .send(Control::LoadDecoder {
                     decoder,
-                    duration_frames,
+                    duration_seconds,
                     title,
                     display: path.clone(),
                 })
@@ -227,7 +227,7 @@ fn play_input_impl(
                 .audio
                 .send(Control::LoadDecoder {
                     decoder: Box::new(decoder),
-                    duration_frames: None, // Live：无确定时长（§57）
+                    duration_seconds: None, // Live：无确定时长（§57）
                     title,
                     display: url.clone(),
                 })
@@ -271,12 +271,18 @@ fn play_input_impl(
                 hint.as_deref(),
             )
             .map_err(|e| AppError::new("UNSUPPORTED_SOURCE", e.to_string(), true))?;
-            let duration_frames = aura_core::decoder::Decoder::duration_frames(&decoder);
+            let src_rate = f64::from(
+                aura_core::decoder::Decoder::format(&decoder)
+                    .sample_rate
+                    .get(),
+            );
+            let duration_seconds =
+                aura_core::decoder::Decoder::duration_frames(&decoder).map(|f| f as f64 / src_rate);
             state
                 .audio
                 .send(Control::LoadDecoder {
                     decoder: Box::new(decoder),
-                    duration_frames,
+                    duration_seconds,
                     title,
                     display: stream.url.clone(),
                 })

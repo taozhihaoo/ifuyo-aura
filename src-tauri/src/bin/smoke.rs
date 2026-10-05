@@ -38,7 +38,7 @@ fn main() {
         .setup(move |app| {
             let handle = app.handle().clone();
             let audio =
-                audio::AudioHandle::start().map_err(|e| format!("audio init failed: {e}"))?;
+                audio::AudioHandle::start(|| {}).map_err(|e| format!("audio init failed: {e}"))?;
             let library = library::LibraryState::open(&tmp_ref)
                 .map_err(|e| format!("library open failed: {e}"))?;
             let settings = library.settings.lock().expect("settings").clone();

@@ -68,7 +68,8 @@ pub enum Control {
     /// decoder 已在命令线程打开（错误可回传 UI，§184）；驱动线程只装载。
     LoadDecoder {
         decoder: Box<dyn aura_core::decoder::Decoder>,
-        duration_frames: Option<u64>,
+        /// 曲目时长（秒；源采样率已换算）。
+        duration_seconds: Option<f64>,
         title: Option<String>,
         /// 快照展示标识（本地路径或流 URL）。
         display: String,
@@ -97,9 +98,14 @@ pub struct AudioHandle {
 impl AudioHandle {
     /// 启动驱动线程：Engine @48k stereo；消费端移交 CPAL 默认设备（D-064）。
     ///
+    /// `on_track_ended` 在曲目自然播完（非用户停止）时于驱动线程调用
+    /// （宿主用于向前端发 `track-ended` 事件，驱动队列自动前进）。
+    ///
     /// # Errors
     /// Engine/CPAL/线程初始化失败 → [`aura_core::AudioError`]。
-    pub fn start() -> Result<Self, aura_core::AudioError> {
+    pub fn start(
+        on_track_ended: impl Fn() + Send + 'static,
+    ) -> Result<Self, aura_core::AudioError> {
         let (mut engine, poster) =
             aura_core::Engine::new(SampleRate::new(48_000)?, Channels::new(2)?, 16_384)?;
 
@@ -135,12 +141,12 @@ impl AudioHandle {
             .name("aura-audio-driver".into())
             .spawn(move || {
                 struct DriverState {
-                    duration_frames: Option<u64>,
+                    duration_seconds: Option<f64>,
                     sample_rate: u32,
                 }
                 let mut poster = poster;
                 let mut st = DriverState {
-                    duration_frames: None,
+                    duration_seconds: None,
                     sample_rate: 48_000,
                 };
                 // M12.5：淡出期间挂起的暂停/停止（1s 淡变完成后生效 §183）。
@@ -153,11 +159,11 @@ impl AudioHandle {
                         match msg {
                             Control::LoadDecoder {
                                 decoder,
-                                duration_frames,
+                                duration_seconds,
                                 title,
                                 display,
                             } => {
-                                st.duration_frames = duration_frames;
+                                st.duration_seconds = duration_seconds;
                                 let _ = engine.load_track(decoder);
                                 let _ = poster.post(AudioCommand::Stop);
                                 let mut snap = snap2.lock().expect("snap");
@@ -165,8 +171,7 @@ impl AudioHandle {
                                 snap.title = title;
                                 snap.state = "stopped".into();
                                 snap.position_seconds = 0.0;
-                                snap.duration_seconds =
-                                    st.duration_frames.map(|f| f as f64 / 48_000.0);
+                                snap.duration_seconds = st.duration_seconds;
                                 snap.revision += 1;
                                 rev2.store(snap.revision, Ordering::Relaxed);
                             }
@@ -240,6 +245,13 @@ impl AudioHandle {
                     }
 
                     engine.fill_and_process();
+                    // 曲目自然播完：Stop（归零语义，引擎不再假播放）+ 通知
+                    // 前端队列按播放模式自动前进（顺序/循环/随机）。
+                    if engine.take_track_finished() {
+                        let _ = poster.post(AudioCommand::Stop);
+                        on_track_ended();
+                        eprintln!("[fade-probe] driver: track finished -> stop + ended event");
+                    }
                     // 快照刷新 ~10Hz（§14）。
                     let pos_frames = shared_out.position.load(Ordering::Relaxed);
                     pos2.store(pos_frames, Ordering::Relaxed);
@@ -333,12 +345,13 @@ impl AudioHandle {
 }
 
 /// 本地文件 → StreamingDecoder（命令线程调用，错误可回传 UI）。
+/// 时长返回**秒**（源采样率换算——帧数是源空间，除以 48k 会算错非 48k 文件）。
 ///
 /// # Errors
 /// 文件不存在/不可读/codec 不支持（decoder probing 失败）。
 pub fn open_decoder(
     path: &Path,
-) -> Result<(Box<dyn aura_core::decoder::Decoder>, Option<u64>), String> {
+) -> Result<(Box<dyn aura_core::decoder::Decoder>, Option<f64>), String> {
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
@@ -347,7 +360,13 @@ pub fn open_decoder(
     let stream = LocalFileStream::open(path).map_err(|e| e.to_string())?;
     let decoder =
         StreamingDecoder::open(Box::new(stream), Some(&ext)).map_err(|e| e.to_string())?;
-    let duration = aura_core::decoder::Decoder::duration_frames(&decoder);
+    let src_rate = f64::from(
+        aura_core::decoder::Decoder::format(&decoder)
+            .sample_rate
+            .get(),
+    );
+    let duration =
+        aura_core::decoder::Decoder::duration_frames(&decoder).map(|f| f as f64 / src_rate);
     let boxed: Box<dyn aura_core::decoder::Decoder> = Box::new(decoder);
     Ok((boxed, duration))
 }
