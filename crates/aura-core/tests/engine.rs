@@ -84,23 +84,32 @@ fn play_pause_stop_state_machine() {
     assert_eq!(engine.position_frames(), (CHUNK * 4) as u64);
     assert!(engine.capture().iter().any(|s| s.abs() > 0.1));
 
-    // Pause：位置冻结、静音（先清掉 Play 阶段的捕获）
+    // Pause：切换块消费缓冲残余并 10ms 淡出（§突刺消爆音），位置仅
+    // 前进淡出量后冻结；随后静音。
     poster.post(AudioCommand::Pause).unwrap();
     engine.clear_capture();
+    // 切换块消费缓冲残余（≤4 块）并做 10ms 淡出；位置仅前进实际消费量。
     let _ = engine.render_for_frames(CHUNK as u64 * 4);
     assert_eq!(engine.state(), PlaybackState::Paused);
-    assert_eq!(
-        engine.position_frames(),
-        (CHUNK * 4) as u64,
-        "暂停期间位置不增长"
+    let pos_after_pause = engine.position_frames();
+    assert!(
+        pos_after_pause >= (CHUNK * 4) as u64 && pos_after_pause <= (CHUNK * 8) as u64,
+        "暂停位置=已播放+淡出消费（≤4 块）：{pos_after_pause}"
     );
-    assert!(engine.capture().iter().all(|s| *s == 0.0), "暂停必须静音");
+    let cap0 = engine.capture();
+    assert!(cap0[0] != 0.0, "切换块应从播放电平开始淡出（非硬切静音）");
+    // 淡出末端（480 帧后）必须静音。
+    assert!(cap0.iter().skip(960).all(|s| *s == 0.0), "淡出后必须静音");
 
-    // Resume：从暂停处继续
+    // Resume：从暂停处继续（淡入 + 缓冲续播，位置前进）
     poster.post(AudioCommand::Play).unwrap();
     engine.clear_capture();
     let _ = engine.render_for_frames(CHUNK as u64 * 4);
-    assert_eq!(engine.position_frames(), (CHUNK * 8) as u64);
+    let pos_resume = engine.position_frames();
+    assert!(
+        pos_resume > pos_after_pause,
+        "恢复后位置应前进：{pos_resume}"
+    );
 
     // Stop：位置归零（先清掉 Resume 阶段的捕获）
     poster.post(AudioCommand::Stop).unwrap();
@@ -109,6 +118,38 @@ fn play_pause_stop_state_machine() {
     assert_eq!(engine.state(), PlaybackState::Stopped);
     assert_eq!(engine.position_frames(), 0, "Stop 后位置归零（D-023）");
     assert!(engine.capture().iter().all(|s| *s == 0.0));
+}
+
+#[test]
+fn pause_boundary_fades_no_click() {
+    // M12 突刺回归：Playing→Paused 的切换块必须从上一采样值连续淡出
+    // （10ms 淡出），不得硬切到 0（硬切=爆音）。fade_frames=480 > 4×128
+    // 的渲染块，因此前 4 块覆盖完整淡出。
+    let (mut engine, mut poster) = engine_with(
+        Waveform::Sine {
+            freq_hz: 440.0,
+            amplitude: 0.8,
+        },
+        u64::from(RATE) * 2,
+    );
+    poster.post(AudioCommand::Play).unwrap();
+    let _ = engine.render_for_frames(CHUNK as u64 * 4);
+    let last_playing = *engine.capture().last().expect("playing capture 非空");
+    assert!(last_playing.abs() > 0.01, "正弦波尾样本非零");
+
+    poster.post(AudioCommand::Pause).unwrap();
+    engine.clear_capture();
+    let _ = engine.render_for_frames(CHUNK as u64 * 4);
+    let cap = engine.capture();
+    // 切换块首样本 ≈ 播放尾样本（连续，无硬切）。
+    let first = cap[0];
+    assert!(
+        (first - last_playing).abs() < 0.35,
+        "暂停切换块应从播放电平淡出：first={first} last={last_playing}"
+    );
+    // 淡出单调趋零（在前若干样本内不回升到播放电平）。
+    assert!(cap.iter().skip(960).all(|s| *s == 0.0), "淡出后必须静音");
+    assert!(cap.iter().all(|s| s.is_finite()));
 }
 
 #[test]

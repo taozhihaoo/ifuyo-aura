@@ -255,6 +255,10 @@ impl Decoder for StreamingDecoder {
         self.decoder.reset();
         self.eof = false;
         let actual = seeked.actual_ts.get().max(0) as u64;
+        eprintln!(
+            "[seek-probe] seek_to_frame({frame}) -> actual_ts={actual} pending_discard={}",
+            frame.saturating_sub(actual)
+        );
         self.pending_discard = frame.saturating_sub(actual);
         Ok(())
     }

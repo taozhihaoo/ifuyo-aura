@@ -88,6 +88,7 @@ impl ProducerHandle {
     /// bump 之后 producer 写入的数据自动属于新代。
     pub fn bump_generation(&mut self) -> Generation {
         let buffered = self.capacity_frames - self.free_frames();
+        eprintln!("[gen-probe] bump: buffered={buffered} frames");
         self.stale_frames.store(buffered as u64, Ordering::Release);
         let g = self
             .generation
@@ -168,6 +169,32 @@ impl ConsumerHandle {
     /// 丢弃残留旧代帧（精确数量，不波及 bump 后写入的新代数据）。
     fn discard_stale(&mut self) {
         let mut to_skip = self.stale_frames.swap(0, Ordering::AcqRel);
+        if to_skip > 0 {
+            let mut skipped = 0u64;
+            let ch = usize::from(self.channels.get());
+            let mut sink = [0.0f32; 4096];
+            let sink_frames = sink.len() / ch;
+            let mut probe_rest = to_skip;
+            while probe_rest > 0 {
+                let want = probe_rest.min(sink_frames as u64) as usize;
+                let (popped, _) = self.inner.pop_partial_slice(&mut sink[..want * ch]);
+                let n = (popped.len() / ch) as u64;
+                if n == 0 {
+                    break;
+                }
+                skipped += n;
+                probe_rest -= n;
+            }
+            eprintln!(
+                "[gen-probe] discard_stale: requested={to_skip} skipped={skipped} (首样本值≈{:.1})",
+                sink[0]
+            );
+            to_skip -= skipped;
+            if to_skip > 0 {
+                eprintln!("[gen-probe] discard_stale UNDER-DISCARD by {to_skip}");
+            }
+            return;
+        }
         if to_skip == 0 {
             return;
         }

@@ -119,6 +119,10 @@ pub struct OutputStage {
     last_eq_version: u32,
     /// limiter 开关（生产默认开；测试 provenance 可关，D-034）。
     limiter_enabled: bool,
+    /// 上一块渲染状态（检测 Playing↔非 Playing 切换，做短淡变消爆音 §突刺）。
+    last_state: PlaybackState,
+    /// 淡变长度（帧，10ms @当前采样率；§突刺消爆音）。
+    fade_frames: usize,
 }
 
 impl OutputStage {
@@ -132,6 +136,8 @@ impl OutputStage {
             local_eq: crate::dsp::EqCoeffs::passthrough(),
             last_eq_version: 0,
             limiter_enabled: true,
+            last_state: PlaybackState::Stopped,
+            fade_frames: sample_rate.get() as usize / 100, // 10ms
         }
     }
 
@@ -152,6 +158,11 @@ impl OutputStage {
         self.limiter_enabled = enabled;
     }
 
+    /// 10ms 淡变帧数（§突刺消爆音；按采样率换算）。
+    fn fade_frames(&self) -> usize {
+        self.fade_frames
+    }
+
     /// 渲染至多 `out.len()` 个采样：从 ring buffer 弹出 → underrun 补静音 →
     /// 平滑增益。返回实际渲染的帧数（含 underrun 静音帧）。
     ///
@@ -164,13 +175,41 @@ impl OutputStage {
         state: PlaybackState,
         eq_bus: Option<&crate::dsp::EqBus>,
     ) -> u64 {
-        // Stopped/Paused：输出静音，位置不动
+        // 非 Playing：切换块（last_state==Playing）消费缓冲残余并做 10ms
+        // 淡出（消除波形硬切爆音"突刺"），位置按实际消费推进——此后纯静音。
+        // §183：淡出后位置冻结。
         if state != PlaybackState::Playing {
-            out.fill(0.0);
-            return 0;
+            let ch = usize::from(self.channels.get());
+            let was_playing = self.last_state == PlaybackState::Playing;
+            self.last_state = state;
+            if !was_playing {
+                out.fill(0.0);
+                return 0;
+            }
+            let got = consumer.pop_frames_until_generation(out, &mut self.seen_generation) as usize;
+            let rendered = got * ch;
+            out[rendered..].fill(0.0);
+            // 10ms 线性淡出（覆盖 got 的前段；其余静音）。
+            let fade = self.fade_frames().min(got.max(1));
+            for i in 0..got {
+                let g = if i < fade {
+                    1.0 - (i as f32 / fade as f32)
+                } else {
+                    0.0
+                };
+                for c in 0..ch {
+                    out[i * ch + c] *= g;
+                }
+            }
+            shared.add_position(got as u64);
+            return got as u64;
         }
+        self.last_state = state;
 
         let frames = out.len() / usize::from(self.channels.get());
+        // 恢复淡入（暂停/停止 → 播放的切换块）：消除恢复瞬间的爆音。
+        let fade_in = self.last_state != PlaybackState::Playing;
+        self.last_state = state;
         let got = consumer.pop_frames_until_generation(out, &mut self.seen_generation);
         if (got as usize) < frames {
             // underrun：尾部保持/置为静音，计数一次
@@ -194,6 +233,17 @@ impl OutputStage {
         if track_gain != 1.0 {
             for s in out.iter_mut() {
                 *s *= track_gain;
+            }
+        }
+        // 恢复淡入（10ms 线性）：非 Playing → Playing 的切换块起始。
+        if fade_in {
+            let ch = usize::from(self.channels.get());
+            let fade = self.fade_frames().min(frames);
+            for f in 0..fade {
+                let g = f as f32 / fade as f32;
+                for c in 0..ch {
+                    out[f * ch + c] *= g;
+                }
             }
         }
         // EQ（§44 第三级；快照经 EqBus 原子发布，回调 load 无锁）

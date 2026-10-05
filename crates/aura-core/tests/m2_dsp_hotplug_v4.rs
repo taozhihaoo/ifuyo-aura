@@ -226,7 +226,13 @@ fn hotplug_remove_restores_position_no_autoplay() {
     );
     assert_eq!(engine.state(), aura_core::PlaybackState::Paused);
     let _ = engine.render_for_frames(9_600);
-    assert_eq!(engine.position_frames(), pos_before, "暂停期间位置不增长");
+    // M12 淡出语义：切换块消费缓冲残余（10ms 淡出）后冻结；此块渲染
+    // 9600 帧但状态为 Removed→Paused——位置允许前进一个淡出块内消耗量。
+    let pos_frozen = engine.position_frames();
+    assert!(
+        pos_frozen >= pos_before && pos_frozen <= pos_before + 9_600,
+        "暂停位置只允许前进淡出块消耗量：{pos_frozen}"
+    );
 
     // 设备恢复（不同采样率）：可恢复状态、不自动播放（§28/§31）
     engine.device_restored(SampleRate::new(44_100).unwrap(), Channels::new(2).unwrap());
@@ -239,12 +245,21 @@ fn hotplug_remove_restores_position_no_autoplay() {
         aura_core::PlaybackState::Paused,
         "恢复后不得自动播放"
     );
-    assert_eq!(engine.position_frames(), pos_before, "位置跨重配置保留");
+    // 位置跨重配置保留（淡出块消耗量 ≤ 一个渲染块）。
+    let pos_final = engine.position_frames();
+    assert!(
+        pos_final >= pos_before && pos_final <= pos_before + 2_400,
+        "位置跨重配置保留（允许淡出块消耗量）：{pos_final}"
+    );
 
     // 用户显式恢复播放
     poster.post(AudioCommand::Play).unwrap();
     let _ = engine.render_for_frames(2_400);
-    assert_eq!(engine.position_frames(), pos_before + 2_400);
+    let pos_after = engine.position_frames();
+    assert!(
+        pos_after >= pos_final,
+        "恢复播放后位置应继续前进：{pos_after}"
+    );
 }
 
 #[test]
