@@ -102,7 +102,7 @@
 | L2 播放矩阵 | `scripts/verify-playback.mjs` C01+P01-P09 | 10/10 PASS |
 | L2 库矩阵 | `scripts/verify-library.mjs` L01-L13 + `scripts/gen-fixtures.py`（7 fixtures 入库 tests/fixtures/） | 13/13 PASS |
 | L2 设置回环 | `scripts/verify-settings.mjs` S01-S05 | 5/5 PASS（修复后） |
-| Phase 4 soak | `scripts/soak.mjs` | 30 分钟实跑（结果见下） |
+| Phase 4 soak | `scripts/soak.mjs` | **30min/446 ops：RSS 40→42MB（噪声级）、句柄 437→437、零操作错误、进程全程存活=PASS** |
 | QA 隔离 | lib.rs `AURA_DATA_DIR` 钩子 + `scripts/lib/qa-app.mjs` | 扫描/设置测试零用户数据污染 |
 
 ### Phase 5 修复（矩阵/套件实跑抓出，均带回归）

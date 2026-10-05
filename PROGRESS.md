@@ -537,7 +537,7 @@ fmt/clippy 干净/workspace 全绿（dns_rebind 既有 flake 隔离重跑即绿�
 - **L2 播放矩阵**：scripts/verify-playback.mjs（C01+P01-P09）10/10
 - **L2 库矩阵**：scripts/gen-fixtures.py（ffmpeg lavfi：ID3v2.3/2.4+封面 mp3、无标签、8KB 长标签、Unicode🎵、FLAC PICTURE、OGG → tests/fixtures/×7）+ scripts/verify-library.mjs（L01-L13）13/13
 - **L2 设置回环**：scripts/verify-settings.mjs（S01-S05：读→改→写后回读→硬杀→重启回读）5/5
-- **Phase 4 soak**：scripts/soak.mjs（随机传输操作流+30s 采样 RSS/句柄→JSONL）
+- **Phase 4 soak**：scripts/soak.mjs（随机传输操作流+30s 采样 RSS/句柄→JSONL）——30min 实跑 **446 ops、RSS 40→42MB、句柄 437→437、零操作错误、进程存活**=无泄漏无崩溃
 - **QA 隔离**：lib.rs 增 AURA_DATA_DIR 环境变量覆盖（QA 全走临时资料目录）；scripts/lib/qa-app.mjs（spawn+CDP attach 探测，规避启动竞态空页 origin 报错）
 
 ### 实跑抓出的存量 bug（3 个，均带回归）
