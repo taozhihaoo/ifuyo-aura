@@ -472,3 +472,29 @@ fmt/clippy/workspace --locked 478+478（http_matrix 既有 flake 隔离 15/15）
 - 数小时 soak / Windows 10 实机 / DPI·多显示器·主题矩阵 = MANUAL VERIFICATION REQUIRED（同 M10/M11）
 - dev 工具链 vite6/vitest4 升级（含 1 critical dev-only）= DEFER 已分类（docs/SUPPLY_CHAIN.md）
 - GUI 级 IPC 滥用验证 = MANUAL（本环境输入注入受限；typed/权限层已 STATICALLY+RUNTIME 验证）
+
+## M12.5（2026-10-05）——传输淡变：播放/暂停/停止全命令 1s 淡入淡出（用户口头需求，消灭"突刺"）
+
+**状态 = PASS（单元 4/4 + CDP 端到端 3 场景 RUNTIME VERIFIED）**
+
+### Implemented
+- **淡变引擎**（aura-core output）：SharedOutputState 增 `fade_cmd`/`fade_progress_frames`/`fade_total_frames`/`fade_start_gain_bits`/`fade_gain_bits` 原子（driver→callback 命令、callback→driver 进度/当前增益）；OutputStage::render 末端线性增益缩放（起点增益=请求时定格、进度按帧域——交错采样按声道折算）
+- **相位钳位**：淡变完成后相位不清除——OUT 钳在增益 0（静音）、IN 钳在 1（直通）。防 driver 应用挂起暂停前的 ≤1 循环（100ms）间隙全增益回跳爆音；`clear_fade` 保留 total、progress 推满以维持钳位
+- **增益连续反转**：淡出中按播放（或淡入中按暂停）→ 新淡变从最近发布的块末增益出发（OUT: g→0 / IN: g→1），方向反转不产生增益跳变；IN 消费不设状态守卫（回调 state 快照可能滞后一拍）
+- **driver 编排**（src-tauri audio.rs）：暂停/停止在 Playing 时挂起（`pending_transport`），淡出完成（progress≥total 或淡出中 EOF→Stopped）后生效；Play 立即生效、在 `set_playback_state(Playing)` 之后请求淡入（want_fade_in 武装）；`[fade-probe]` stderr 探针日志
+- **测试**：transport_fade.rs×4（淡出线性+钳位静音+clear 保持、淡入至满+直通、中途反转衔接、cancel 立即恢复）
+
+### 验证（CDP 端到端，tauri build 独立产物 + --remote-debugging-port=9223）
+- stop 探针：淡出期间 state 仍 playing 位置 1.31→1.84 前进；1.5s 后 stopped 归零；重播 0.51s 从头起步（fading/stopped/replay 三断言 OK）
+- pause 探针：淡出→3.06s 冻结，其后 2.8s drift 0.000
+- 反转实测：淡出中 play → state 保持 playing 继续出声，driver 日志 `reversal fade-in requested`
+
+### Gates
+fmt/clippy 干净/aura-core 94 全绿/workspace 全绿（watcher `event_driven_rescan_preserves_identity` 既有 flake 隔离重跑即绿）/tauri build + NSIS 8.98MiB
+
+### Known Limitations
+- 淡变期间（1s）UI 状态显示 playing、位置继续前进（淡出听得见=真实时间语义，符合设计）
+- 设备采样率非 48k 时淡变时长按 48k 帧数换算（44.1k 设备 ≈1.088s，可感知差异可忽略；engine 固定 48k 输出侧一致）
+- 淡变增益为线性（非等响度曲线）；人耳听感如需更自然可后续升级 S 曲线/指数
+- WASAPI loopback 录音量化验证（淡出曲线数值实测）未做——工具链已备（scripts/capture_loopback.py，sounddevice 无 loopback 支持=工具边界）
+
