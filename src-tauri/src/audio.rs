@@ -87,6 +87,10 @@ pub struct AudioHandle {
     position_frames: Arc<AtomicU64>,
     sample_rate: Arc<AtomicU64>,
     revision: Arc<AtomicU64>,
+    /// CPAL 输出流所有权——**必须随句柄存活**。此前流绑定在 start()
+    /// 的局部变量上，返回即 drop，回调永不触发（表现为"播放中但位置
+    /// 不走"）；Mutex 仅用于满足 Arc<AudioHandle> 的 Sync 要求。
+    _output: Mutex<aura_core::output::device::CpalOutput>,
 }
 
 impl AudioHandle {
@@ -100,7 +104,7 @@ impl AudioHandle {
 
         // D-064：消费端移交外部真实输出；此后驱动线程只 fill+process。
         let (consumer, shared_out, eq_out) = engine.detach_consumer_for_external_output()?;
-        let _cpal = aura_core::output::device::CpalOutput::open_default(
+        let output = aura_core::output::device::CpalOutput::open_default(
             consumer,
             shared_out.clone(),
             eq_out,
@@ -207,6 +211,7 @@ impl AudioHandle {
             position_frames: position,
             sample_rate: rate,
             revision,
+            _output: Mutex::new(output),
         })
     }
 
