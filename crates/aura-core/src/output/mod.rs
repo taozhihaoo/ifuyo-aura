@@ -30,6 +30,9 @@ pub struct SharedOutputState {
     pub target_gain_bits: Arc<AtomicU32>,
     /// 音轨静态增益（loudness × preamp；f32 bits）。
     pub track_gain_bits: Arc<AtomicU32>,
+    /// 播放状态（控制面发布；设备回调据此决定静音/推进位置——暂停时
+    /// 位置必须停住 §183）。
+    playback_state_bits: Arc<AtomicU32>,
 }
 
 impl SharedOutputState {
@@ -40,6 +43,23 @@ impl SharedOutputState {
             underruns: Arc::new(AtomicU64::new(0)),
             target_gain_bits: Arc::new(AtomicU32::new(1.0f32.to_bits())),
             track_gain_bits: Arc::new(AtomicU32::new(1.0f32.to_bits())),
+            playback_state_bits: Arc::new(AtomicU32::new(state_bits(PlaybackState::Stopped))),
+        }
+    }
+
+    /// 控制面：发布当前播放状态（driver 线程低频写入）。
+    pub fn set_playback_state(&self, state: PlaybackState) {
+        self.playback_state_bits
+            .store(state_bits(state), Ordering::Release);
+    }
+
+    /// 回调侧：读取最近发布的播放状态。
+    #[must_use]
+    pub fn playback_state(&self) -> PlaybackState {
+        match self.playback_state_bits.load(Ordering::Acquire) {
+            b if b == state_bits(PlaybackState::Playing) => PlaybackState::Playing,
+            b if b == state_bits(PlaybackState::Paused) => PlaybackState::Paused,
+            _ => PlaybackState::Stopped,
         }
     }
 
@@ -65,8 +85,21 @@ impl SharedOutputState {
         self.position.fetch_add(frames, Ordering::Relaxed);
     }
 
+    /// 仅在确认 Playing 状态下由回调调用（暂停时位置必须停住 §183）。
+    pub fn add_position_playing(&self, frames: u64) {
+        self.position.fetch_add(frames, Ordering::Relaxed);
+    }
+
     pub fn add_underrun(&self) {
         self.underruns.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+fn state_bits(state: PlaybackState) -> u32 {
+    match state {
+        PlaybackState::Stopped => 0,
+        PlaybackState::Playing => 1,
+        PlaybackState::Paused => 2,
     }
 }
 
@@ -175,8 +208,9 @@ impl OutputStage {
         if self.limiter_enabled {
             crate::dsp::limit_block(out);
         }
-        // 位置按输出实际消费的帧数推进（underrun 静音帧也是被消费的时间）
-        shared.add_position(frames as u64);
+        // 位置按输出实际消费的帧数推进（underrun 静音帧也是被消费的时间；
+        // 本分支仅在 Playing 进入——Paused/Stopped 已在函数头静音返回）。
+        shared.add_position_playing(frames as u64);
         frames as u64
     }
 }

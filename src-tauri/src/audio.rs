@@ -182,7 +182,9 @@ impl AudioHandle {
                     // 快照刷新 ~10Hz（§14）。
                     let pos_frames = shared_out.position.load(Ordering::Relaxed);
                     pos2.store(pos_frames, Ordering::Relaxed);
-                    let new_state = match engine.state() {
+                    let engine_state = engine.state();
+                    shared_out.set_playback_state(engine_state); // §183：暂停时回调停止推进位置
+                    let new_state = match engine_state {
                         PlaybackState::Playing => "playing",
                         PlaybackState::Paused => "paused",
                         PlaybackState::Stopped => "stopped",

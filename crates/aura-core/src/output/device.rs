@@ -83,13 +83,10 @@ impl CpalOutput {
                 device.build_output_stream(
                     config,
                     move |data: &mut [f32], _info| {
-                        stage.render(
-                            data,
-                            &mut consumer,
-                            &shared_cb,
-                            crate::types::PlaybackState::Playing,
-                            Some(&eq_cb),
-                        );
+                        // §183：以共享状态（控制面发布）为准——暂停时静音
+                        // 且位置不推进。
+                        let state = shared_cb.playback_state();
+                        stage.render(data, &mut consumer, &shared_cb, state, Some(&eq_cb));
                     },
                     move |err| {
                         let _ = err;
@@ -114,11 +111,12 @@ impl CpalOutput {
                         for block in data.chunks_mut(scratch.len()) {
                             let frames = block.len() / ch.max(1);
                             let want = frames * ch;
+                            let state = shared_cb.playback_state();
                             let rendered = stage.render(
                                 &mut scratch[..want],
                                 &mut consumer,
                                 &shared_cb,
-                                crate::types::PlaybackState::Playing,
+                                state,
                                 Some(&eq_cb),
                             );
                             let _ = rendered;
