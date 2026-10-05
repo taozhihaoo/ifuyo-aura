@@ -29,8 +29,9 @@ function walk(dir) {
 }
 walk(bundleDir);
 
-// §22：installer 存在 + 命名规则 + 非零。
-const nsis = files.filter((f) => /^nsis\/ifuyo Aura_.+_x64-setup\.exe$/.test(f.rel));
+// §22：installer 存在 + 命名规则 + 非零（分隔符无关：\ 或 /）。
+const rel = (f) => f.rel.split(path.sep).join('/');
+const nsis = files.filter((f) => /^nsis[/\\]ifuyo Aura_.+_x64-setup\.exe$/.test(rel(f)));
 if (nsis.length === 0) fail(`未找到 NSIS installer（期望 ifuyo Aura_${version}_x64-setup.exe）`);
 const installer = nsis[0];
 if (!installer.rel.includes(`_${version}_`)) {
@@ -41,21 +42,22 @@ if (installer.size < 1_000_000) {
 }
 console.log(`release-verify installer: ${installer.rel} (${(installer.size / 1048576).toFixed(2)} MiB)`);
 
-// §22/§13：updater artifact（createUpdaterArtifacts 开启时生成 zip+sig）。
-const updaterZip = files.filter((f) => /\.nsis\.zip$/.test(f.rel));
-const updaterSig = files.filter((f) => /\.nsis\.zip\.sig$/.test(f.rel));
-const latestJson = files.filter((f) => /latest\.json$/.test(f.rel));
-if (updaterZip.length > 0) {
-  if (updaterSig.length !== updaterZip.length) {
-    fail(`updater zip 缺 .sig（updater signature present §22）：zip=${updaterZip.length} sig=${updaterSig.length}`);
-  }
-  console.log(`release-verify updater: ${updaterZip.length} zip + ${updaterSig.length} sig ✓`);
+// §13/§22：updater signature（Tauri v2：installer 直接附带 .sig；
+// 旧 zip 形态兼容）。
+const updaterExeSig = files.filter((f) => /-setup\.exe\.sig$/.test(rel(f)));
+const updaterZip = files.filter((f) => /\.nsis\.zip$/.test(rel(f)));
+const updaterZipSig = files.filter((f) => /\.nsis\.zip\.sig$/.test(rel(f)));
+const latestJson = files.filter((f) => /latest\.json$/.test(rel(f)));
+if (updaterExeSig.length > 0) {
+  console.log(`release-verify updater signature: ${updaterExeSig.length} .exe.sig ✓`);
+} else if (updaterZip.length > 0 && updaterZipSig.length === updaterZip.length) {
+  console.log(`release-verify updater: ${updaterZip.length} zip + ${updaterZipSig.length} sig ✓`);
 } else if (latestJson.length === 0) {
-  console.warn('release-verify WARNING — 无 updater artifact（createUpdaterArtifacts 未开启？）');
+  console.warn('release-verify WARNING — 无 updater signature/artifact（createUpdaterArtifacts 未开启？）');
 }
 
 // debug 二进制混入检查（§22）：bundle 内不应出现 .pdb/.dll。
-const pdb = files.filter((f) => /\.(pdb|dll)$/i.test(f.rel));
+const pdb = files.filter((f) => /\.(pdb|dll)$/i.test(rel(f)));
 if (pdb.length > 0) fail(`bundle 内出现非预期二进制：${pdb.map((f) => f.rel).join(', ')}`);
 
 // §92：开发者绝对路径残留抽查（NSIS installer 前若干 MB 文本扫描）。
