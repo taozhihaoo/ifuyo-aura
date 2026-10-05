@@ -28,7 +28,17 @@ export default function App() {
   const setView = useUiStore((s) => s.setView);
   const setPaletteOpen = useUiStore((s) => s.setPaletteOpen);
   const notice = useUiStore((s) => s.notice);
+  const noticeKind = useUiStore((s) => s.noticeKind);
+  const noticeSeq = useUiStore((s) => s.noticeSeq);
   const setNotice = useUiStore((s) => s.setNotice);
+  const locale = useSettingsStore((s) => s.locale);
+
+  // 操作反馈自动消失：success/info 3.5s；error 停留待手动关闭。
+  useEffect(() => {
+    if (!notice || noticeKind === 'error') return;
+    const timer = window.setTimeout(() => setNotice(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [notice, noticeKind, noticeSeq, setNotice]);
 
   // 启动优先级（§155）：shell → settings → player snapshot → library。
   useEffect(() => {
@@ -180,26 +190,29 @@ export default function App() {
       <div className="app-body">
         <Sidebar />
         <main className="app-main" role="main">
-          {view === 'now-playing' && (
-            <FeatureBoundary name="now-playing" message={t('error.boundaryNowPlaying')} retryLabel={t('common.retry')}>
-              <NowPlayingPage />
-            </FeatureBoundary>
-          )}
-          {view === 'library' && (
-            <FeatureBoundary name="library" message={t('error.boundaryLibrary')} retryLabel={t('common.retry')}>
-              <LibraryPage />
-            </FeatureBoundary>
-          )}
-          {view === 'map' && (
-            <FeatureBoundary name="map" message={t('error.boundaryMap')} retryLabel={t('common.retry')}>
-              <MapPage />
-            </FeatureBoundary>
-          )}
-          {view === 'dreamscape' && DREAMSCAPE_ENABLED && (
-            <FeatureBoundary name="dreamscape" message={t('error.boundaryDreamscape')} retryLabel={t('common.retry')}>
-              <DreamscapeView />
-            </FeatureBoundary>
-          )}
+          {/* key=view：切页重挂载触发内容淡入（M12.7 交互反馈） */}
+          <div className="view-fade" key={view}>
+            {view === 'now-playing' && (
+              <FeatureBoundary name="now-playing" message={t('error.boundaryNowPlaying')} retryLabel={t('common.retry')}>
+                <NowPlayingPage />
+              </FeatureBoundary>
+            )}
+            {view === 'library' && (
+              <FeatureBoundary name="library" message={t('error.boundaryLibrary')} retryLabel={t('common.retry')}>
+                <LibraryPage />
+              </FeatureBoundary>
+            )}
+            {view === 'map' && (
+              <FeatureBoundary name="map" message={t('error.boundaryMap')} retryLabel={t('common.retry')}>
+                <MapPage />
+              </FeatureBoundary>
+            )}
+            {view === 'dreamscape' && DREAMSCAPE_ENABLED && (
+              <FeatureBoundary name="dreamscape" message={t('error.boundaryDreamscape')} retryLabel={t('common.retry')}>
+                <DreamscapeView />
+              </FeatureBoundary>
+            )}
+          </div>
         </main>
         {/* §130/§131：Dreamscape 激活时不挂 Aurora（单高负载 WebGL 规则）；
             Dreamscape 自带画布与 CSS fallback，无需占位背景。 */}
@@ -209,8 +222,15 @@ export default function App() {
       <SettingsPanel />
       <QueueDrawer />
       {notice && (
-        <div className="notice-bar" role="alert">
-          <span>{translate(useSettingsStore.getState().locale, notice)}</span>
+        <div
+          key={noticeSeq}
+          className={`notice-bar notice-${noticeKind}`}
+          role={noticeKind === 'error' ? 'alert' : 'status'}
+        >
+          <span className="notice-icon" aria-hidden>
+            {noticeKind === 'success' ? '✓' : noticeKind === 'error' ? '⚠' : 'ℹ'}
+          </span>
+          <span className="notice-text">{translate(locale, notice)}</span>
           <button className="icon-btn" onClick={() => setNotice(null)} aria-label={t('common.ok')}>
             ✕
           </button>

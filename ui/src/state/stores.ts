@@ -11,6 +11,9 @@ export const DREAMSCAPE_ENABLED = false;
 
 export type ViewId = 'now-playing' | 'library' | 'map' | 'dreamscape';
 
+/** 全局反馈种类：success/info 自动消失，error 需手动关闭。 */
+export type NoticeKind = 'info' | 'success' | 'error';
+
 interface UiState {
   view: ViewId;
   commandPaletteOpen: boolean;
@@ -20,6 +23,10 @@ interface UiState {
   sidebarCollapsed: boolean;
   /** 全局用户反馈（i18n key，§187/§189；null = 无）。 */
   notice: string | null;
+  /** 反馈种类（决定图标/语义 role/是否自动消失）。 */
+  noticeKind: NoticeKind;
+  /** 递增序号：同文本再次触发时重放动画并重置自动消失计时。 */
+  noticeSeq: number;
   /** §269：Zustand 只存 open/status；manifest 走 renderer ref（§270）。 */
   dreamscapeOpen: boolean;
   dreamscapeStatus: 'idle' | 'loading' | 'ready' | 'fallback';
@@ -29,7 +36,7 @@ interface UiState {
   setSettingsOpen: (open: boolean) => void;
   setMiniPlayerOpen: (open: boolean) => void;
   toggleSidebar: () => void;
-  setNotice: (key: string | null) => void;
+  setNotice: (key: string | null, kind?: NoticeKind) => void;
   setDreamscapeOpen: (open: boolean) => void;
   setDreamscapeStatus: (s: 'idle' | 'loading' | 'ready' | 'fallback') => void;
 }
@@ -42,6 +49,8 @@ export const useUiStore = create<UiState>((set) => ({
   miniPlayerOpen: false,
   sidebarCollapsed: false,
   notice: null,
+  noticeKind: 'info',
+  noticeSeq: 0,
   dreamscapeOpen: false,
   dreamscapeStatus: 'idle',
   setView: (view) => set({ view }),
@@ -50,10 +59,15 @@ export const useUiStore = create<UiState>((set) => ({
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setMiniPlayerOpen: (miniPlayerOpen) => set({ miniPlayerOpen }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-  setNotice: (notice) => set({ notice }),
+  setNotice: (notice, kind = 'info') =>
+    set((s) => ({ notice, noticeKind: kind, noticeSeq: s.noticeSeq + 1 })),
   setDreamscapeOpen: (dreamscapeOpen) => set({ dreamscapeOpen }),
   setDreamscapeStatus: (dreamscapeStatus) => set({ dreamscapeStatus }),
 }));
+
+/** 便捷反馈：操作成功/失败的一句话提示（各处接线用）。 */
+export const toast = (key: string, kind: NoticeKind = 'info') =>
+  useUiStore.getState().setNotice(key, kind);
 
 /** domain state：播放（来自 Rust 快照，§8）。 */
 export interface PlayerDomain {

@@ -197,9 +197,12 @@
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  cursor: default;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--motion-fast) var(--ease-out);
 }
 .track-row:hover { background: var(--surface-low); }
+.track-row:active { background: var(--surface-high); }
 .tr-artwork { color: var(--color-text-muted); }
 .tr-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tr-artist, .tr-album { color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -454,7 +457,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   font-size: 0.95rem;
 }
 
-/* ---- 全局 notice（§187/§189）---- */
+/* ---- 全局 notice → toast（§187/§189；M12.7 交互反馈）---- */
 .notice-bar {
   position: fixed;
   bottom: 16px;
@@ -463,13 +466,25 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: rgba(20, 24, 34, 0.92);
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(20, 24, 34, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
   max-width: min(560px, 80vw);
-  z-index: 60;
+  z-index: 200;
+  animation: toast-in var(--motion-normal) var(--ease-out);
 }
+@keyframes toast-in {
+  from { transform: translate(-50%, 12px); opacity: 0; }
+}
+.notice-bar .notice-icon { font-size: 14px; }
+.notice-bar .notice-text { font-size: var(--font-size-sm); }
+.notice-success { border-color: rgba(122, 200, 122, 0.4); }
+.notice-success .notice-icon { color: #7ac87a; }
+.notice-error { border-color: rgba(217, 88, 88, 0.5); }
+.notice-error .notice-icon { color: #d95858; }
+.notice-info .notice-icon { color: var(--color-sky); }
 
 /* ---- map stats（§285）---- */
 .map-stats {
@@ -509,3 +524,158 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   font-size: 0.85rem;
   pointer-events: none;
 }
+
+/* ---- M12.7 交互反馈层：统一过渡/按压/悬停/禁用 ----
+   原则：一切可点元素有 hover/active/focus-visible 三态；按压即缩放；
+   transition 只动 background/color/transform/opacity/box-shadow（合成器友好）。 */
+.nav-btn, .side-btn, .win-btn, .icon-btn, .btn, .ctl-btn, .tr-act,
+.queue-play, .queue-remove, .ghost-btn, .primary-btn, .map-chip,
+.map-legend-item, .map-neighbor-row, .palette-item, .sort-select, .search-input {
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out);
+}
+.btn:active, .icon-btn:active, .nav-btn:active, .side-btn:active,
+.tr-act:active, .queue-play:active, .queue-remove:active,
+.ghost-btn:active, .primary-btn:active, .map-chip:active {
+  transform: scale(0.96);
+}
+.btn:disabled, .icon-btn:disabled, .ghost-btn:disabled, .primary-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* 传输条：主播放键悬浮光晕 + 按压；图标切换弹跳（配合 key 重挂载） */
+.ctl-btn { transition: background var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out); }
+.ctl-btn:hover { transform: scale(1.06); }
+.ctl-btn:active { transform: scale(0.92); }
+.ctl-btn.primary:hover {
+  box-shadow: 0 0 0 4px rgba(242, 120, 159, 0.15);
+  background: var(--surface-high);
+}
+.ctl-btn.primary.pop { animation: pop var(--motion-normal) var(--ease-out); }
+@keyframes pop {
+  0% { transform: scale(0.82); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+/* 滑块（seek/音量/设置）：accent + 悬停增大拇指（Chromium/WebView2） */
+input[type='range'] {
+  accent-color: var(--color-sky);
+  cursor: pointer;
+}
+input[type='range']::-webkit-slider-thumb { transition: transform var(--motion-fast) var(--ease-out); }
+input[type='range']:hover::-webkit-slider-thumb { transform: scale(1.15); }
+input[type='range']:active::-webkit-slider-thumb { transform: scale(1.3); }
+
+/* 曲库：悬停浮现播放键；正在播放行 = 强调色 + 跳动条（暂停时静止） */
+.track-row { position: relative; }
+.tr-artwork { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; }
+.tr-play {
+  position: absolute;
+  width: 28px; height: 28px;
+  display: none;
+  align-items: center; justify-content: center;
+  border: none; border-radius: 50%;
+  background: var(--color-rose);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+.track-row:hover .tr-play { display: inline-flex; }
+.track-row:hover .tr-artwork .art-glyph { display: none; }
+.track-row.playing .tr-title { color: var(--color-rose); }
+.track-row.playing .tr-artwork .art-glyph { color: var(--color-rose); }
+.eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+.eq i {
+  width: 3px;
+  background: var(--color-rose);
+  animation: eq-bounce 0.9s ease-in-out infinite;
+}
+.eq i:nth-child(1) { height: 60%; animation-delay: 0s; }
+.eq i:nth-child(2) { height: 100%; animation-delay: 0.25s; }
+.eq i:nth-child(3) { height: 45%; animation-delay: 0.5s; }
+.eq.paused i { animation-play-state: paused; }
+@keyframes eq-bounce {
+  0%, 100% { transform: scaleY(0.5); }
+  50% { transform: scaleY(1); }
+}
+
+/* 队列：当前曲强调 + 移除键悬停浮现 */
+.queue-item { display: flex; align-items: center; gap: 4px; border-radius: var(--radius-sm); transition: background var(--motion-fast) var(--ease-out); }
+.queue-item:hover { background: var(--surface-low); }
+.queue-item .queue-remove { opacity: 0; }
+.queue-item:hover .queue-remove { opacity: 1; }
+.queue-remove { transition: opacity var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out); }
+.queue-play.current { color: var(--color-rose); font-weight: 600; }
+
+/* 抽屉/面板入场（palette/settings 复用 overlay） */
+.palette-overlay { animation: overlay-in var(--motion-fast) var(--ease-out); }
+@keyframes overlay-in { from { opacity: 0; } }
+.settings-panel { animation: panel-in var(--motion-normal) var(--ease-out); }
+@keyframes panel-in {
+  from { transform: translateY(10px) scale(0.98); opacity: 0; }
+}
+
+/* 视图切换淡入（App 以 key=view 重挂载触发） */
+.view-fade { height: 100%; animation: view-in var(--motion-normal) var(--ease-out); }
+@keyframes view-in { from { opacity: 0; transform: translateY(4px); } }
+
+/* 侧栏激活项左侧强调条 */
+.side-btn { position: relative; }
+.side-btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 20%; bottom: 20%;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--color-rose);
+}
+
+/* 扫描进度：不定长进度条（底部流光） */
+.scan-progress { position: relative; overflow: hidden; }
+.scan-progress::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-sky), transparent);
+  animation: scan-sweep 1.4s linear infinite;
+}
+@keyframes scan-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+/* 设置面板按钮（此前无样式定义，浏览器默认外观） */
+.ghost-btn {
+  background: none;
+  border: 1px solid var(--surface-border);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+}
+.ghost-btn:hover { color: var(--color-text); background: var(--surface-low); }
+.primary-btn {
+  background: var(--color-rose);
+  border: none;
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: 5px 14px;
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+.primary-btn:hover { filter: brightness(1.12); }
+
+/* 导航悬停底色（原来只有文字变色） */
+.nav-btn:hover { background: var(--surface-low); }
+.nav-btn.active { background: var(--surface-low); }
