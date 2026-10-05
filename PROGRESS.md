@@ -482,7 +482,8 @@ fmt/clippy/workspace --locked 478+478（http_matrix 既有 flake 隔离 15/15）
 - **相位钳位**：淡变完成后相位不清除——OUT 钳在增益 0（静音）、IN 钳在 1（直通）。防 driver 应用挂起暂停前的 ≤1 循环（100ms）间隙全增益回跳爆音；`clear_fade` 保留 total、progress 推满以维持钳位
 - **增益连续反转**：淡出中按播放（或淡入中按暂停）→ 新淡变从最近发布的块末增益出发（OUT: g→0 / IN: g→1），方向反转不产生增益跳变；IN 消费不设状态守卫（回调 state 快照可能滞后一拍）
 - **driver 编排**（src-tauri audio.rs）：暂停/停止在 Playing 时挂起（`pending_transport`），淡出完成（progress≥total 或淡出中 EOF→Stopped）后生效；Play 立即生效、在 `set_playback_state(Playing)` 之后请求淡入（want_fade_in 武装）；`[fade-probe]` stderr 探针日志
-- **测试**：transport_fade.rs×4（淡出线性+钳位静音+clear 保持、淡入至满+直通、中途反转衔接、cancel 立即恢复）
+- **测试**：transport_fade.rs×5（淡出线性+钳位静音+clear 保持、淡入至满+直通、中途反转衔接、cancel 立即恢复、**暂停落地切换块残余静音**）
+- **暂停渐静后突刺修复**（用户实测反馈）：1s 淡出完成后 driver 才落地暂停，Playing→Paused 切换块把 ring 里从未被衰减的缓冲残余（暂停不清缓冲）以 1.0 起点做 10ms 淡出播放=渐静后蹦出全幅度声；停止路径无此问题（bump_generation 丢弃残余）。修复=切换块淡出起点取已发布传输增益（完成=0 静音；硬暂停=1.0 保留 10ms 保护）
 
 ### 验证（CDP 端到端，tauri build 独立产物 + --remote-debugging-port=9223）
 - stop 探针：淡出期间 state 仍 playing 位置 1.31→1.84 前进；1.5s 后 stopped 归零；重播 0.51s 从头起步（fading/stopped/replay 三断言 OK）
