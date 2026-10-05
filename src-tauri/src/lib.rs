@@ -10,6 +10,7 @@ pub mod integration;
 pub mod ipc;
 pub mod library;
 pub mod map_ipc;
+pub mod security_limits;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
