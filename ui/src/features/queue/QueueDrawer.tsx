@@ -2,7 +2,7 @@
 // M3-B queue persistence 存在但接线留待 queue store 演进（§50 允许）。
 // §197：全应用唯一 queue 权威（palette / drawer / main / mini 都走这里）。
 import { useEffect, useState } from 'react';
-import { useUiStore } from '../../state/stores';
+import { toast, useUiStore } from '../../state/stores';
 import { ipc } from '../../ipc/client';
 import { useTranslation } from '../../i18n/react';
 import type { TrackSummary } from '../../ipc/types';
@@ -84,9 +84,11 @@ export function removeAt(index: number) {
 }
 
 export function clearQueue() {
+  const had = items.length > 0;
   items.length = 0;
   currentIndex = -1;
   emit();
+  if (had) toast('toast.queueCleared', 'success');
 }
 
 /** 非 hook 读取（命令层/测试用；React 渲染请用 useQueue）。 */
@@ -245,7 +247,7 @@ export function QueueDrawer() {
           {items.map((item, i) => (
             <li key={`${item.track.id}-${i}`} className="queue-item">
               <button
-                className="queue-play"
+                className={`queue-play${i === currentIndex ? ' current' : ''}`}
                 aria-current={i === currentIndex ? 'true' : undefined}
                 onClick={() => playItemAt(i)}
               >

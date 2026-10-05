@@ -13,6 +13,7 @@ import {
   usePlayMode,
   type PlayMode,
 } from '../queue/QueueDrawer';
+import { toast } from '../../state/stores';
 
 const MODE_ICON: Record<PlayMode, string> = {
   order: '→',
@@ -126,35 +127,49 @@ export function NowPlayingPage() {
           className="ctl-btn"
           aria-label={t(`playMode.${playMode}`)}
           title={t(`playMode.${playMode}`)}
-          onClick={() => cyclePlayMode()}
+          onClick={() => {
+            const next = cyclePlayMode();
+            toast(t(`playMode.${next}`), 'success');
+          }}
         >
           {MODE_ICON[playMode]}
         </button>
         <button
           className="ctl-btn"
           aria-label={t('controls.previous')}
+          title={t('controls.previous')}
           onClick={() => void playPrevious().catch(() => undefined)}
         >
           ⏮
         </button>
         <button
-          className="ctl-btn primary"
+          className={`ctl-btn primary${playing ? ' pop' : ''}`}
+          key={playing ? 'playing' : 'paused'}
           aria-label={playing ? t('controls.pause') : t('controls.play')}
-          onClick={() => (playing ? ipc.pause() : ipc.play()).catch(() => undefined)}
+          title={playing ? t('controls.pause') : t('controls.play')}
+          onClick={() =>
+            (playing ? ipc.pause() : ipc.play()).catch(() => undefined)
+          }
         >
           {playing ? '⏸' : '▶'}
         </button>
-        <button className="ctl-btn" aria-label={t('controls.stop')} onClick={() => ipc.stop().catch(() => undefined)}>
+        <button
+          className="ctl-btn"
+          aria-label={t('controls.stop')}
+          title={t('controls.stop')}
+          onClick={() => ipc.stop().catch(() => undefined)}
+        >
           ⏹
         </button>
         <button
           className="ctl-btn"
           aria-label={t('controls.next')}
+          title={t('controls.next')}
           onClick={() => void playNext().catch(() => undefined)}
         >
           ⏭
         </button>
-        <label className="volume">
+        <label className="volume" title={t('controls.volume')}>
           <span aria-hidden>🔊</span>
           <input
             type="range"

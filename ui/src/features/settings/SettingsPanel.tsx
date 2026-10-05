@@ -1,7 +1,7 @@
 // 设置面板（§114/§119/§107）：语言/缩放/reducedMotion/loudness/crossfade/EQ。
 // 全部真实持久化（Rust JSON v1）并即时生效。
 import { useEffect, useState } from 'react';
-import { useSettingsStore, useUiStore } from '../../state/stores';
+import { toast, useSettingsStore, useUiStore } from '../../state/stores';
 import { ipc } from '../../ipc/client';
 import { useTranslation } from '../../i18n/react';
 import type { Locale } from '../../i18n';
@@ -76,7 +76,10 @@ export function SettingsPanel() {
       eqPreset: patch.eqPreset ?? s.eqPreset,
       micaEnabled: patch.micaEnabled ?? s.micaEnabled,
     };
-    void ipc.saveSettings(merged).catch(() => undefined);
+    void ipc
+      .saveSettings(merged)
+      .then(() => toast(t('toast.settingsSaved'), 'success'))
+      .catch(() => toast(t('toast.settingsSaveFailed'), 'error'));
   };
 
   return (

@@ -6,6 +6,7 @@ vi.mock('../../ipc/client', () => ({
 }));
 
 import { ipc } from '../../ipc/client';
+import { useUiStore } from '../../state/stores';
 import {
   advanceOnTrackEnded,
   clearQueue,
@@ -127,5 +128,20 @@ describe('play mode & track-ended advance（M12.6）', () => {
     const called = vi.mocked(ipc.playTrack).mock.lastCall?.[0];
     expect(called).not.toBe(2);
     expect([1, 3]).toContain(called);
+  });
+});
+
+describe('操作反馈（M12.7）', () => {
+  it('clearQueue 有内容时给出成功 toast；空队列不提示', () => {
+    
+    playWithQueueContext(track(1), [track(1)]);
+    useUiStore.getState().setNotice(null);
+    clearQueue();
+    expect(useUiStore.getState().notice).toBe('toast.queueCleared');
+    expect(useUiStore.getState().noticeKind).toBe('success');
+    // 空队列再清：不产生新 toast（seq 不变；自动消失是 App 层计时器）
+    const seq = useUiStore.getState().noticeSeq;
+    clearQueue();
+    expect(useUiStore.getState().noticeSeq).toBe(seq);
   });
 });

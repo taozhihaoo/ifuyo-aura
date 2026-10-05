@@ -2,7 +2,7 @@
 // + 分页（§85）+ 扫描进度（§88/§89）+ 空态/错误态（§91/§92）。
 import { useEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useLibraryStore, useSettingsStore, useUiStore } from '../../state/stores';
+import { useLibraryStore, usePlayerStore, useSettingsStore, useUiStore } from '../../state/stores';
 import { requestMapFocus } from '../map/mapBus';
 import { ipc } from '../../ipc/client';
 import type { ScanProgress, SortKey, TrackSummary } from '../../ipc/types';
@@ -24,6 +24,15 @@ function sortLabelKey(k: SortKey): string {
   return `library.sort${cap}`;
 }
 
+/** 曲库行高亮匹配：snapshot.trackPath 与 track.path 的形态可能差
+ *  `\\?\` verbatim 前缀——归一化后比较（与后端 track_id_by_path 同口径）。 */
+const normPath = (p: string) => p.replace(/^\\\\\?\\/, '').toLowerCase();
+
+function playTrackRow(track: TrackSummary, tracks: TrackSummary[]) {
+  playWithQueueContext(track, tracks);
+  void ipc.playTrack(track.id).catch(() => undefined);
+}
+
 export function LibraryPage() {
   const query = useLibraryStore((s) => s.query);
   const sort = useLibraryStore((s) => s.sort);
@@ -38,6 +47,10 @@ export function LibraryPage() {
   const listRef = useRef<HTMLDivElement>(null);
   const setView = useUiStore((s) => s.setView);
   const focusTrack = useLibraryStore((s) => s.focusTrack);
+  const setNotice = useUiStore((s) => s.setNotice);
+  const snapshot = usePlayerStore((s) => s.snapshot);
+  const playingPath = snapshot ? normPath(snapshot.trackPath ?? '') : null;
+  const isPlaying = snapshot?.state === 'playing';
 
   // §312：消费 Map→Library 定位请求（真实 TrackId）：切换查询保证
   // 可见，再滚动高亮该行。
@@ -90,7 +103,8 @@ export function LibraryPage() {
     };
   }, [debounced, sort, refreshNonce]);
 
-  // §88/§151：scan progress / library-changed 事件。
+  // §88/§151：scan progress / library-changed 事件；扫描完成 → toast 反馈。
+  const prevScan = useRef<ScanProgress | null>(null);
   useEffect(() => {
     const un1 = ipc.listenScanProgress((p) => setScan(p));
     const un2 = ipc.listenLibraryChanged(() => useLibraryStore.getState().bumpRefresh());
@@ -99,6 +113,19 @@ export function LibraryPage() {
       void un2.then((f) => f());
     };
   }, []);
+  useEffect(() => {
+    const prev = prevScan.current;
+    prevScan.current = scan;
+    if (!scan?.done || !prev || prev.done) return;
+    if (scan.imported > 0 && scan.failed > 0) {
+      setNotice(t('toast.scanDoneWithFail', { imported: scan.imported, failed: scan.failed }), 'error');
+    } else if (scan.imported > 0) {
+      setNotice(t('toast.scanDone', { imported: scan.imported }), 'success');
+    } else if (scan.failed > 0) {
+      setNotice(t('toast.scanFailed', { failed: scan.failed }), 'error');
+    }
+    // scan 事件驱动；t 随 locale 稳定（文案在渲染时翻译）
+  }, [scan, setNotice]);
 
   // §82：虚拟化。
   const tracks = state.kind === 'ready' ? state.tracks : [];
@@ -199,23 +226,45 @@ export function LibraryPage() {
             {rows.map((row) => {
               const track: TrackSummary | undefined = tracks[row.index];
               if (!track) return null;
+              const playingThis =
+                playingPath !== null && normPath(track.path) === playingPath;
               return (
                 <div
                   key={track.id}
-                  className="track-row"
+                  className={`track-row${playingThis ? ' playing' : ''}`}
                   data-track-id={track.id}
                   style={{ position: 'absolute', top: row.start, height: 52 }}
-                  onDoubleClick={() => {
-                    playWithQueueContext(track, tracks);
-                    void ipc.playTrack(track.id).catch(() => undefined);
-                  }}
+                  onDoubleClick={() => playTrackRow(track, tracks)}
                 >
                   <span className="tr-artwork" aria-hidden>
-                    {track.hasArtwork ? '▣' : '♪'}
+                    {playingThis && isPlaying ? (
+                      <span className={`eq${snapshot?.state === 'playing' ? '' : ' paused'}`}>
+                        <i /><i /><i />
+                      </span>
+                    ) : (
+                      <span className="art-glyph">{track.hasArtwork ? '▣' : '♪'}</span>
+                    )}
+                    <button
+                      className="tr-play"
+                      title={t('controls.play')}
+                      aria-label={`${t('controls.play')} ${track.title ?? track.path}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        playTrackRow(track, tracks);
+                      }}
+                    >
+                      ▶
+                    </button>
                   </span>
-                  <span className="tr-title">{track.title ?? track.path}</span>
-                  <span className="tr-artist">{track.artist ?? ''}</span>
-                  <span className="tr-album">{track.album ?? ''}</span>
+                  <span className="tr-title" title={track.title ?? track.path}>
+                    {track.title ?? track.path}
+                  </span>
+                  <span className="tr-artist" title={track.artist ?? undefined}>
+                    {track.artist ?? ''}
+                  </span>
+                  <span className="tr-album" title={track.album ?? undefined}>
+                    {track.album ?? ''}
+                  </span>
                   <span className="tr-duration">
                     {formatDuration(track.durationSeconds) ?? ''}
                   </span>
