@@ -526,4 +526,33 @@ fmt/clippy 干净/workspace 全绿（dns_rebind 既有 flake 隔离重跑即绿�
 - shuffle 为纯随机（无随机种子列表/避免重复历史）；repeatAll 循环以双击库列表形成的队列上下文为准
 - 单曲/列表循环的曲终前进走前端事件（后端已 Stop 再 play_track），曲目间有 ≤1 个快照周期的间隙（非无缝；无缝循环需引擎级 queue，超出口径）
 
+## M12.5 加固执行（2026-10-05/06）——测试方案落地：Phase 0–5 第一轮
+
+**状态 = PASS（三层套件全部固化并实跑；抓出并修复 3 个存量 bug；30min soak 通过）**
+
+按 Spec/ifuyo Aura — M12.5 播放与真实旅程加固计划.md 执行（用户 /goal：加固稳定性和强健性）。
+
+### 产出（全部入库）
+- **L1 真实设备**：crates/aura-core/tests/real_device.rs（#[ignore]×4：位置推进/暂停冻结/恢复、seek 联动、曲终检测、10Hz 供数零 underrun）——本机实跑 4/4；漂移说明：外部输出接管消费端后 capture 不可见，以位置/underrun/状态断言替代（计划原文 capture 断言）。首跑即抓 harness 漏 set_playback_state——回调按 Stopped 静音，再次印证状态传播是真实接缝
+- **L2 播放矩阵**：scripts/verify-playback.mjs（C01+P01-P09）10/10
+- **L2 库矩阵**：scripts/gen-fixtures.py（ffmpeg lavfi：ID3v2.3/2.4+封面 mp3、无标签、8KB 长标签、Unicode🎵、FLAC PICTURE、OGG → tests/fixtures/×7）+ scripts/verify-library.mjs（L01-L13）13/13
+- **L2 设置回环**：scripts/verify-settings.mjs（S01-S05：读→改→写后回读→硬杀→重启回读）5/5
+- **Phase 4 soak**：scripts/soak.mjs（随机传输操作流+30s 采样 RSS/句柄→JSONL）
+- **QA 隔离**：lib.rs 增 AURA_DATA_DIR 环境变量覆盖（QA 全走临时资料目录）；scripts/lib/qa-app.mjs（spawn+CDP attach 探测，规避启动竞态空页 origin 报错）
+
+### 实跑抓出的存量 bug（3 个，均带回归）
+1. **seek 帧空间不换算**（engine）：44.1k 源收 48k 帧号=时间×48/44.1——近端 seek 超界失败、远端内容与进度错位（已随 M12.6 提交 98054f2）
+2. **library_stats 列名错误恒 0**：规范化 schema 后无 artist/album 列，`COUNT(DISTINCT artist)` 报错被 unwrap_or(0) 吞——artists/albums 自 M3 迁移以来恒 0。修正 + aura-library/tests/schema_contract.rs 契约测试锁列形态
+3. **设置写后回读旧值**：save_settings 只写盘不更新内存缓存；set_* 持锁调用点拆出 write_settings（防重入死锁），save_settings 写盘+同步缓存
+
+### Gates
+fmt/clippy 干净/workspace 全绿（dns_rebind 既有 flake 隔离重跑即绿）/aura-core 99+94 vitest/schema_contract 2/real_device 4（ignored 套件本机实跑）
+
+### Known Limitations（如实）
+- 嫌疑区未勾项保留：crossfade/gapless 真实输出 capture 断言、Radio/HTTP 流接真实输出、设备热插拔实测、SMTC 真实面板、播放列表重启持久、升级 N→N+1、Mini Player、睡眠/恢复
+- EQ/响度真实回调逐项 PCM 断言未做（DSP 单测已有）
+- soak 第一轮用户 Music 因脚本时序（SCAN_RUNNING 并发拒绝）未装载，仅 fixtures 7 首高周转；脚本已修（顺序扫+等待），下一轮覆盖真实曲库
+- 流程教训入计划文档 §6：构建失败未察觉导致 QA 跑旧 exe 把 fixture 扫入真实曲库（已清理还原）；plain cargo build 产物 origin 报错（D-075 复发）
+
+
 

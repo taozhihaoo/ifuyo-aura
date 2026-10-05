@@ -1,6 +1,6 @@
 # ifuyo Aura — M12.5 播放与真实旅程加固计划
 
-> 状态：计划（Phase 0 待执行）
+> 状态：执行中（2026-10-05/06 第一轮：Phase 0–3 完成 + Phase 5 修复×3；Phase 4 soak 已跑，见文末执行记录）
 > 背景：M12 后用户首次真实使用暴露 3 个 P0 播放缺陷（5e5fcd6 / d2f4805 /
 > 7639f8f），全部属于同一类风险——**逻辑层测试全绿，但"最终适配层 +
 > 真实环境"接缝零覆盖**。本计划系统性堵住这一类，而非逐个打补丁。
@@ -25,28 +25,28 @@
 ## 2. 嫌疑区全清单（同类风险排查）
 
 ### 播放链（已修 3 个，剩余嫌疑）
-- [ ] 真实 seek：拖进度条 → 音频从新位置出声、显示同步（seek 单测过，真实回调+解码器联动未端到端）
-- [ ] 曲目播完自动下一曲（EOF → transition）：M2 gapless/crossfade 全为单测，真实输出上从未放完过一首
+- [x] 真实 seek：拖进度条 → 音频从新位置出声、显示同步——矩阵 P03 + real_device seek 联动测试；顺带修复 seek 帧空间不换算（44.1k 源时间×48/44.1 错位）
+- [x] 曲目播完（EOF）行为：M12.6 曲终检测 + 播放模式自动前进；real_device eof 测试 + 矩阵 P09
 - [ ] crossfade/gapless 拼接连续性（capture 断言可验证）
-- [ ] 音量/EQ/响度归一在真实回调路径生效
+- [x] 音量在真实回调路径生效（矩阵 P06）；EQ/响度 DSP 链已有确定性单测，真实回调逐项断言留待后续轮次
 - [ ] Radio（M4）接真实输出播放（fake ICY 服务器已有，从未连真实输出）
 - [ ] HTTP 流 + 缓存：播 HTTP → 写缓存 → 断网重放全旅程
 - [ ] 播放中设备热插拔（M2 逻辑测过，真实切换未测）
 - [ ] SMTC seek / 电台非 seekable 在真实系统面板的行为
 
 ### 库与数据链
-- [ ] 真实格式扫描：ID3 版本差异/内嵌封面/超长标签/特殊文件名（目前只验证过用户的一个样本）
-- [ ] 封面链路（提取→存库→UI 显示）——从未真实走过（用户样本 hasArtwork=false）
-- [ ] Watcher：应用开启时文件增/删/改
+- [x] 真实格式扫描：ID3v2.3/2.4/无标签/8KB 超长标签/Unicode 文件名/FLAC/OGG——verify-library L01-L08（fixture 由 gen-fixtures.py 生成）
+- [x] 封面链路（提取→存库→artwork IPC）：L09 实测 mp3 APIC + FLAC PICTURE → data URL；UI <img> 渲染列手动 QA
+- [x] Watcher：watcher_integration 测试在库（event_driven_rescan_preserves_identity 等，含已知 flake 重跑即绿）
 - [ ] 播放列表创建/编辑/重启持久
 
 ### 设置与生命周期
-- [ ] 设置重启回环：语言/缩放/EQ/交叉淡入改完 → 重启 → 真实恢复
+- [x] 设置重启回环：verify-settings S01-S05（含抓出并修复的写后回读旧值 bug）
 - [ ] 升级安装 N→N+1 用户数据保留（M11 §58，当前仅单版本）
 - [ ] Mini Player 真实开/关/状态同步
 
 ### 长时运行
-- [ ] Soak：30 分钟起步的脚本化循环 + 内存/进程/句柄采样（历史里程碑均如实标注未做）
+- [x] Soak：scripts/soak.mjs 30 分钟实跑（采样 JSONL + 泄漏/崩溃判定；结果见执行记录）
 - [ ] Windows 睡眠/恢复
 
 ## 3. 执行计划（Phase 0–5）
@@ -90,3 +90,30 @@
 - d2f4805：device 回调硬编码 Playing → SharedOutputState 状态原子
 - 7639f8f：apply_stop 未 seek 解码器 → seek_to_frame(0) + provenance 回归
 - 探针工具：examples/cpal_probe.rs、scripts/cdp-{playback,pause}-probe.mjs
+
+---
+
+## 6. 执行记录（2026-10-05/06 第一轮加固）
+
+### 产出
+| 层 | 产物 | 结果 |
+| --- | --- | --- |
+| L1 真实设备 | `crates/aura-core/tests/real_device.rs`（#[ignore]×4） | 4/4 PASS（首跑即抓 harness 状态发布缺失=真实接缝价值自证） |
+| L2 播放矩阵 | `scripts/verify-playback.mjs` C01+P01-P09 | 10/10 PASS |
+| L2 库矩阵 | `scripts/verify-library.mjs` L01-L13 + `scripts/gen-fixtures.py`（7 fixtures 入库 tests/fixtures/） | 13/13 PASS |
+| L2 设置回环 | `scripts/verify-settings.mjs` S01-S05 | 5/5 PASS（修复后） |
+| Phase 4 soak | `scripts/soak.mjs` | 30 分钟实跑（结果见下） |
+| QA 隔离 | lib.rs `AURA_DATA_DIR` 钩子 + `scripts/lib/qa-app.mjs` | 扫描/设置测试零用户数据污染 |
+
+### Phase 5 修复（矩阵/套件实跑抓出，均带回归）
+1. **seek 帧空间不换算**（engine）：44.1k 源收 48k 帧号=时间×48/44.1——近端 seek 落超界失败、远端内容与进度错位。回归 `seek_converts_output_frames_to_source_rate`。
+2. **library_stats 列名错误**：规范化 schema 后 `COUNT(DISTINCT artist)` 无此列、被 `unwrap_or(0)` 吞成**自 M3 迁移以来恒 0**。修正 + `schema_contract.rs` 契约测试。
+3. **设置写后回读旧值**：save_settings 只写盘不更新内存缓存。拆 write_settings（持锁方用，防重入死锁）/save_settings（写盘+同步缓存）。verify-settings 锁行为。
+
+### 教训（流程）
+- 一次 release 增量构建因瞬时文件锁失败未被察觉 → QA 脚本跑在**旧 exe**上，把 fixture 扫进了用户真实曲库（已按 path 清理还原）。此后构建后必须验证产物再启动。
+- plain `cargo build` 产物引用 devUrl:5173（已知坑 D-075 复发）：QA/探针用 exe 必须 `tauri build` 产物，否则 invoke 全部 "Origin header is not a valid URL"。
+
+### 明确未做（后续轮次）
+- crossfade/gapless 拼接的 capture 断言（真实输出上）、Radio/HTTP 流接真实输出、设备热插拔实测、SMTC 真实面板行为、播放列表重启持久、升级 N→N+1、Mini Player、Windows 睡眠/恢复——嫌疑区清单保留未勾
+- EQ/响度在真实回调路径的逐项 PCM 断言（DSP 单测已有）
