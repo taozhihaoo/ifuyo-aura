@@ -374,3 +374,72 @@ fn non_finite_pcm_is_sanitized() {
         .iter()
         .all(|s| (*s - 0.5).abs() < 1e-6));
 }
+
+#[test]
+fn natural_track_finish_reports_and_stops_cleanly() {
+    // 曲目自然播完（M12.6）：EOF 且缓冲被回调耗尽 → track_finished 置位；
+    // driver 据此投递 Stop（归零语义）。修复前引擎停留 Playing，回调持续
+    // underrun 静音而位置照常推进（用户报告：播完无声但进度条继续走）。
+    let total = u64::from(RATE) * 2; // 2s 曲目
+    let (mut engine, mut poster) = engine_with(
+        Waveform::Sine {
+            freq_hz: 440.0,
+            amplitude: 0.8,
+        },
+        total,
+    );
+    poster.post(AudioCommand::Play).unwrap();
+    assert!(!engine.take_track_finished(), "播放中不得误报播完");
+
+    let mut finished = false;
+    for _ in 0..200 {
+        engine.fill_and_process();
+        let _ = engine.render_for_frames(4_096);
+        if engine.take_track_finished() {
+            finished = true;
+            break;
+        }
+    }
+    assert!(finished, "曲终必须置位 track_finished（2s 曲目 200 轮内）");
+
+    // driver 语义：Stop → 状态停止、位置归零、可再播。
+    poster.post(AudioCommand::Stop).unwrap();
+    engine.fill_and_process();
+    assert_eq!(engine.state(), PlaybackState::Stopped);
+    assert_eq!(engine.position_frames(), 0);
+}
+
+#[test]
+fn seek_converts_output_frames_to_source_rate() {
+    // 非引擎采样率的源（44.1k→48k 重采样）：seek 目标按输出帧换算源帧。
+    // 修复前 48k 帧号被当作 44.1k 源时间戳——时间×48/44.1：近端 seek 落到
+    // 超界位置而失败（用户实测 seek(222s) 无效）、远端内容与进度错位。
+    let (mut engine, mut poster) = Engine::new(
+        SampleRate::new(RATE).unwrap(),
+        Channels::new(2).unwrap(),
+        8192,
+    )
+    .unwrap();
+    let src_rate = 44_100u32;
+    engine
+        .load_track(Box::new(SyntheticDecoder::new(
+            src_rate,
+            2,
+            u64::from(src_rate) * 10, // 10s 源
+            512,
+            Waveform::Ramp,
+        )))
+        .unwrap();
+    poster.post(AudioCommand::Play).unwrap();
+    engine.fill_and_process();
+
+    // 输出 9.5s（456_000 输出帧）= 源 419_325 帧 < 441_000 总源帧：必须成功。
+    // 修复前按源空间直读 456_000 > 441_000 → seek 失败、位置不动。
+    poster.post(AudioCommand::Seek { frame: 456_000 }).unwrap();
+    engine.fill_and_process();
+    assert_eq!(
+        engine.position_frames(),
+        456_000,
+        "重采样源的 seek 必须生效（帧空间换算）"
+    );
+}

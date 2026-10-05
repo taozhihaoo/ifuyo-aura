@@ -82,6 +82,9 @@ pub struct Engine {
     /// 重采样输出工作区（预分配复用，D-035）。
     resample_out: Vec<f32>,
     eof: bool,
+    /// 曲目自然播完（EOF 且 ring 已被回调耗尽且 Playing；无 next 可接力）。
+    /// driver 轮询 take_track_finished 取走后投递 Stop 并通知前端队列。
+    track_finished: bool,
     /// 当前曲目已解码帧数（记账用）。
     current_track_decoded: u64,
     /// 当前曲目在全局渲染帧空间中的起点。
@@ -161,6 +164,7 @@ impl Engine {
             pending_block: Vec::new(),
             pending_pos: 0,
             eof: false,
+            track_finished: false,
             current_track_decoded: 0,
             track_start_frame: 0,
             current_source_frames: 0,
@@ -442,18 +446,31 @@ impl Engine {
                     self.invalid_commands += 1;
                     return;
                 };
-                if let Err(_e) = decoder.seek_to_frame(frame) {
+                // seek 目标是输出帧空间；解码器按源采样率寻址——必须换算
+                // （44.1k 源收 48k 帧号=时间×48/44.1：近端 seek 落到超界
+                // 位置而失败、远端内容与进度错位）。
+                let src_rate = u64::from(decoder.format().sample_rate.get());
+                let out_rate = u64::from(self.sample_rate.get());
+                let src_frame = if src_rate == out_rate {
+                    frame
+                } else {
+                    u64::try_from(u128::from(frame) * u128::from(src_rate) / u128::from(out_rate))
+                        .unwrap_or(u64::MAX)
+                };
+                if let Err(_e) = decoder.seek_to_frame(src_frame) {
                     self.invalid_commands += 1;
                     return;
                 }
                 // seek 使 pending 旧代样本失效；transition 取消、next 失效（§49）
                 self.pending_block.clear();
                 self.pending_pos = 0;
+                self.resample_in.clear(); // 源侧未重采样残片同样失效
                 self.transition = TransitionState::Normal;
                 self.next_decoder = None;
                 self.mapped_b.clear();
                 self.next_track_decoded = 0;
                 self.eof = false;
+                self.track_finished = false;
                 self.producer.bump_generation();
                 self.output
                     .shared()
@@ -486,6 +503,7 @@ impl Engine {
         self.output.shared().position.store(0, Ordering::Release);
         self.producer.bump_generation();
         self.eof = false;
+        self.track_finished = false;
     }
 
     /// 将 pending_block 中未推送的部分尽量推入 ring buffer。
@@ -808,7 +826,19 @@ impl Engine {
         self.process_commands();
         if self.state == crate::types::PlaybackState::Playing {
             self.fill();
+            // 曲目自然播完：EOF 且 ring 已被回调耗尽（有 next 时 fill 内部
+            // gapless 接管并复位 eof，不会走到这里）。driver 取走标记后
+            // 投递 Stop 并通知前端队列自动前进——否则引擎停留 Playing，
+            // 回调持续 underrun 静音而位置照常推进（假播放）。
+            if self.eof && self.producer.free_frames() == self.producer.capacity_frames() {
+                self.track_finished = true;
+            }
         }
+    }
+
+    /// 曲目自然播完标记（驱动线程轮询；取走即复位）。
+    pub fn take_track_finished(&mut self) -> bool {
+        std::mem::take(&mut self.track_finished)
     }
 
     /// 捕获访问。
