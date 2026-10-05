@@ -432,3 +432,23 @@ fmt/clippy --workspace -D warnings/workspace **620**（一轮 aura-sources 网�
 - Windows 版本矩阵（§337）：仅在本机 Windows 11 实测；Windows 10 未测——如实声明
 - DPI/多显示器/主题矩阵（§338–§340）：未逐项实测——如实声明；托盘图标为深浅主题通用设计
 - Tray 重连（§283）：Tauri tray 创建失败仅降级+diagnostics，不做后台重试（§365/§367 无忙修复循环）——limitation 如实记录
+## M11（2026-10-05）——安装包、自动更新、代码签名与 Release Engineering
+
+**M11-A = BLOCKED**（生产 Windows code-signing 证书与生产 updater 密钥对缺失 §25/§103——架构/脚本/配置模板/mock/local dry-run 全部完成；不伪造 PASS）
+**M11-B = NOT COMPLETED**
+
+### Implemented
+- **版本权威 §A1**：version:check 五源一致（ui/tauri conf/Cargo/brand/app-v* tag）+ CHANGELOG 段检查（warning，pipeline 强制）
+- **Windows Installer §3**：NSIS per-user（`ifuyo Aura_<v>_x64-setup.exe`）；**installer smoke 实测全 PASS**（静默装 1s/启动/卸载/用户数据保留 §4；注册表 DisplayName+Version 证据 §49）
+- **Secure Updater §5–§15**：官方 tauri-plugin-updater/process；dev 配置（本地端点+dev 公钥+insecure 本地声明 §9 官方机制）与 release overlay（CI secrets 生成、HTTPS、createUpdaterArtifacts）严格隔离 §77；UpdateService typed 状态机 §7/错误分类 §65/降级拒绝 §47/清单校验 §46/进度节流 §99/检查策略 §8（15s 延迟+24h 间隔+设置开关 §84+手动检查 §85）；Settings 更新区 §34（i18n §66）
+- **Release Pipeline §18–§23**：release.yml（tag `app-v*` → validate/test/build/verify/draft，fail-closed §21，secrets guard §78）+ prepare-release-config + release-verify（存在/版本/签名/路径残留 §92）+ gitleaks CI §29 + `--locked`/npm ci §32
+- **更新集成测试 §59**：本地 fake server + CDP 观测（scripts/cdp-*.mjs）——真实 HTTP 回环实测（`GET /updates/windows/x86_64/0.1.0` target/arch/version 插值正确）、Phase A 同版本→null、Phase B 0.2.0→Update 对象、安装回环触发（Channel 需应用内插件，console 构造限制=工具边界如实记录）
+
+### Gates
+fmt/clippy/workspace（--locked）/deny 四项/ui 四件套 92/version:check/smoke/tauri build+NSIS 8.93MiB/updater dry-run（签名产物 .sig 实生成+release-verify PASS）
+
+### Known Limitations（§103 分类）
+- **BLOCKED**：生产 Authenticode 证书未申请；生产 updater 密钥对未创建；GitHub Release 发布未经真实远端验证（无凭据）——均已完成代码/脚本/CI 侧准备
+- GUI 级（托盘/SMTC 面板/Settings 按钮点击）自动化在本环境不可用（§336 人工 QA 清单见 docs/RELEASE_CHECKLIST.md）；update 按钮点击回环由 CDP 工具部分覆盖（检查回环实测、安装触发受 Channel 构造限制）
+- 数小时 update soak（§353）未执行；Windows 10 版本矩阵（§337）未实测
+- 升级 smoke（N→N+1 §58）未跑双版本（当前仅 0.1.0 一个版本；机制上用户数据 SQLite/设置已由 M3 迁移+安装器实测保留覆盖）
