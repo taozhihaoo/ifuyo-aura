@@ -452,3 +452,23 @@ fmt/clippy/workspace（--locked）/deny 四项/ui 四件套 92/version:check/smo
 - GUI 级（托盘/SMTC 面板/Settings 按钮点击）自动化在本环境不可用（§336 人工 QA 清单见 docs/RELEASE_CHECKLIST.md）；update 按钮点击回环由 CDP 工具部分覆盖（检查回环实测、安装触发受 Channel 构造限制）
 - 数小时 update soak（§353）未执行；Windows 10 版本矩阵（§337）未实测
 - 升级 smoke（N→N+1 §58）未跑双版本（当前仅 0.1.0 一个版本；机制上用户数据 SQLite/设置已由 M3 迁移+安装器实测保留覆盖）
+## M12（2026-10-05）——安全、隐私、许可证与商业发布合规加固
+
+**M12-A = PASS**（§77 MUST PASS 全项；一处 BLOCKED 如实：GitHub 账户级安全能力核对=MANUAL）
+**M12-B = NOT COMPLETED**
+
+### Implemented（§69 顺序）
+- **Step1 Baseline Audit**（§70）：cargo audit（0 漏洞/3 warnings 分类接受）+ npm audit（5 项全 dev-only，非破坏 fix 后剩 2 项需破坏性升级=DEFER 分类 §40）+ gitleaks CI + 密钥全 history 扫描（17 处 PRIVATE KEY 命中全为审计文档文本，零真实密钥 §43）+ CSP/capabilities/IPC 50 命令面枚举
+- **SecurityLimits 集中化**（§54）：security_limits.rs（更新/SMTC 元数据/map/IPC 上限单点）+ const 编译期自洽断言
+- **安全回归矩阵**（§38/§60）：src-tauri/tests/security_m12.rs——凭据 URL/非 https scheme/超长 URL/路径穿越/UNC/不存在路径 resolver 拒绝 + metadata sanitize 回归 + diagnostics 无 secret 字段
+- **文档套件**（§47/§50）：SECURITY_THREAT_MODEL.md（边界图+STRIDE 表+不变量）、IPC_SECURITY.md（50 命令分类核查 §38）、NETWORK_BEHAVIOR.md（出网面清单 §45/§87）、SUPPLY_CHAIN.md（cargo/npm audit 分类表 §40、SBOM-lite 命令、license 策略 §59）、DIAGNOSTICS.md（§46）、FUZZING.md（§39 targets 登记+smoke 命令）、SECURITY.md 漏洞报告节（§48）、M12_SECURITY_CHECKLIST.md（§61 手动清单）
+- **CI 安全门**（§41/§58）：permissions contents:read 最小化、cargo audit job、npm audit --omit=dev 生产依赖门（0 漏洞）、cargo-deny 改 install-action
+
+### Gates
+fmt/clippy/workspace --locked 478+478（http_matrix 既有 flake 隔离 15/15）/deny 四项/ui 全套 92+build/version:check/ smoke /tauri build
+
+### Known Limitations（§79/§103）
+- GitHub 账户级能力（Secret scanning/Push protection/CodeQL 开关）= MANUAL CONFIGURATION REQUIRED（无法从代码库内核实 §42）
+- 数小时 soak / Windows 10 实机 / DPI·多显示器·主题矩阵 = MANUAL VERIFICATION REQUIRED（同 M10/M11）
+- dev 工具链 vite6/vitest4 升级（含 1 critical dev-only）= DEFER 已分类（docs/SUPPLY_CHAIN.md）
+- GUI 级 IPC 滥用验证 = MANUAL（本环境输入注入受限；typed/权限层已 STATICALLY+RUNTIME 验证）

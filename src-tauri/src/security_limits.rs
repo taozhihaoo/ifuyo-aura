@@ -43,15 +43,20 @@ impl SecurityLimits {
 mod tests {
     use super::*;
 
-    /// §54：上限互相自洽（无 0、无反常识组合）。
+    /// §54：上限互相自洽（const 块编译期断言；无 0、无反常识组合）。
     #[test]
     fn limits_are_sane() {
-        assert!(SecurityLimits::UPDATER_CHECK_TIMEOUT_MS > 0);
-        assert!(
-            SecurityLimits::UPDATE_MIN_CHECK_INTERVAL_MS > SecurityLimits::UPDATE_STARTUP_DELAY_MS
-        );
-        assert!(SecurityLimits::MAX_METADATA_CHARS >= SecurityLimits::MAX_STATION_CHARS);
-        assert!(SecurityLimits::MAP_NODES_LIMIT_MAX <= 25_000); // M9 MAX_NODES 预算内
-        assert!(SecurityLimits::MAX_IPC_STRING_CHARS >= SecurityLimits::MAX_METADATA_CHARS);
+        const {
+            assert!(SecurityLimits::UPDATER_CHECK_TIMEOUT_MS > 0);
+            assert!(
+                SecurityLimits::UPDATE_MIN_CHECK_INTERVAL_MS
+                    > SecurityLimits::UPDATE_STARTUP_DELAY_MS
+            );
+            assert!(SecurityLimits::MAX_METADATA_CHARS >= SecurityLimits::MAX_STATION_CHARS);
+            assert!(SecurityLimits::MAP_NODES_LIMIT_MAX <= 25_000); // M9 预算内
+            assert!(SecurityLimits::MAX_IPC_STRING_CHARS >= SecurityLimits::MAX_METADATA_CHARS);
+        }
+        // 运行时抽样（保持测试有行为断言）。
+        assert_eq!(SecurityLimits::MAX_METADATA_CHARS, 256);
     }
 }
