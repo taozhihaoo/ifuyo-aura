@@ -329,7 +329,7 @@ pub fn set_crossfade(state: State<'_, AppState>, seconds: f64, persist: bool) ->
         let lib = &state.library;
         let mut settings = lib.settings.lock().expect("settings");
         settings.crossfade_seconds = s;
-        lib.save_settings(&settings)
+        lib.write_settings(&settings)
             .map_err(|e| from_err("SETTINGS_WRITE", e, true))?;
     }
     Ok(())
@@ -346,7 +346,7 @@ pub fn set_loudness(state: State<'_, AppState>, enabled: bool, persist: bool) ->
         let lib = &state.library;
         let mut settings = lib.settings.lock().expect("settings");
         settings.loudness_enabled = enabled;
-        lib.save_settings(&settings)
+        lib.write_settings(&settings)
             .map_err(|e| from_err("SETTINGS_WRITE", e, true))?;
     }
     Ok(())
@@ -363,7 +363,7 @@ pub fn set_eq_preset(state: State<'_, AppState>, preset: usize, persist: bool) -
         let lib = &state.library;
         let mut settings = lib.settings.lock().expect("settings");
         settings.eq_preset = preset;
-        lib.save_settings(&settings)
+        lib.write_settings(&settings)
             .map_err(|e| from_err("SETTINGS_WRITE", e, true))?;
     }
     Ok(())
@@ -597,7 +597,7 @@ pub fn set_mica(
         let lib = &state.library;
         let mut settings = lib.settings.lock().expect("settings");
         settings.mica_enabled = enabled;
-        lib.save_settings(&settings)
+        lib.write_settings(&settings)
             .map_err(|e| from_err("SETTINGS_WRITE", e, true))?;
     }
     Ok(())

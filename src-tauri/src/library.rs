@@ -121,11 +121,26 @@ impl LibraryState {
         })
     }
 
-    /// 保存设置。
+    /// 保存设置（写盘 + 同步内存缓存）。
+    ///
+    /// `get_settings` 读内存缓存——只写盘不更新缓存会让写后立即回读拿到
+    /// 旧值（M12.5 L2 verify-settings 实测抓出）。
     ///
     /// # Errors
     /// 序列化/写盘失败。
     pub fn save_settings(&self, s: &AppSettings) -> Result<(), String> {
+        self.write_settings(s)?;
+        *self.settings.lock().expect("settings") = s.clone();
+        Ok(())
+    }
+
+    /// 仅写盘。供**已持有 settings 锁**的调用方（set_crossfade 等
+    /// 部分持久化命令）使用——save_settings 内部会再锁缓存，持锁重入
+    /// 即死锁。
+    ///
+    /// # Errors
+    /// 序列化/写盘失败。
+    pub fn write_settings(&self, s: &AppSettings) -> Result<(), String> {
         let json = serde_json::to_vec_pretty(s).map_err(|e| e.to_string())?;
         std::fs::write(&self.settings_path, json).map_err(|e| e.to_string())
     }
