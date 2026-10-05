@@ -33,8 +33,12 @@ struct RealOutput {
 
 /// 真实设备 + 2s 合成曲目（低音量 0.05，避免打扰）。
 fn setup(total_seconds: u64) -> RealOutput {
-    let (mut engine, poster) =
-        Engine::new(SampleRate::new(RATE).unwrap(), Channels::new(2).unwrap(), 16_384).unwrap();
+    let (mut engine, poster) = Engine::new(
+        SampleRate::new(RATE).unwrap(),
+        Channels::new(2).unwrap(),
+        16_384,
+    )
+    .unwrap();
     engine
         .load_track(Box::new(SyntheticDecoder::new(
             RATE,
@@ -59,7 +63,10 @@ fn setup(total_seconds: u64) -> RealOutput {
 }
 
 fn pos_seconds(ro: &RealOutput) -> f64 {
-    ro.shared.position.load(std::sync::atomic::Ordering::Relaxed) as f64 / f64::from(RATE)
+    ro.shared
+        .position
+        .load(std::sync::atomic::Ordering::Relaxed) as f64
+        / f64::from(RATE)
 }
 
 /// driver 职责的一部分：把引擎状态发布给回调（缺失=回调按 Stopped 静音，
@@ -70,7 +77,9 @@ fn pump(ro: &mut RealOutput) {
 }
 
 fn underruns(ro: &RealOutput) -> u64 {
-    ro.shared.underruns.load(std::sync::atomic::Ordering::Relaxed)
+    ro.shared
+        .underruns
+        .load(std::sync::atomic::Ordering::Relaxed)
 }
 
 #[test]

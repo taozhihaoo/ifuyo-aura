@@ -36,10 +36,14 @@ fn stats_distinct_foreign_keys_count_non_null_only() {
     let conn = db.connection();
     // COUNT(DISTINCT artist_id) 对 NULL 不计数：无标签曲目的 artist_id 为 NULL。
     let artists: i64 = conn
-        .query_row("SELECT COUNT(DISTINCT artist_id) FROM tracks", [], |r| r.get(0))
+        .query_row("SELECT COUNT(DISTINCT artist_id) FROM tracks", [], |r| {
+            r.get(0)
+        })
         .expect("stats sql runs");
     let albums: i64 = conn
-        .query_row("SELECT COUNT(DISTINCT album_id) FROM tracks", [], |r| r.get(0))
+        .query_row("SELECT COUNT(DISTINCT album_id) FROM tracks", [], |r| {
+            r.get(0)
+        })
         .expect("stats sql runs");
     assert_eq!((artists, albums), (0, 0), "空库统计为 0 且 SQL 可执行");
 }
