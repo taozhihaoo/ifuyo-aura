@@ -162,3 +162,14 @@ api_key/password/token/client_secret/Authorization/Cookie/BEGIN PRIVATE KEY 全�
 - secrets（§26/§28/§29）：私钥/证书只存 GitHub Secrets；gitleaks 全 history 扫描入 CI；.gitleaks.toml 基线（无 secret 允许项）。
 - 单实例（§230/§231）：第二实例仅 focus。
 - CI 日志（§27）：不回显 secret；记录 artifact/版本/签名状态。
+
+## Supported versions / 漏洞报告（§48）
+
+- 支持版本：仅最新 tag 发布（app-v*；此前版本不接收安全补丁）。
+- 报告渠道：GitHub Security Advisories（私有）或仓库 SECURITY.md 所列
+  联系方式；**不要公开 issue 披露**（§48 What not to disclose publicly first）。
+- 报告请含：影响版本/复现步骤/影响评估/可能的修复建议。
+- 响应：确认收到 → 评估 → 修复 → 发布（无固定时限承诺 §48）。
+- 范围内：IPC 提权、路径穿越、SSRF、更新签名绕过、secret 泄露、
+  拒绝服务（客户端）。范围外：社交工程、需物理接触的攻击、
+  dev-only 工具链问题（vite dev server 等）。
