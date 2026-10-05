@@ -499,3 +499,31 @@ fmt/clippy 干净/aura-core 94 全绿/workspace 全绿（watcher `event_driven_r
 - 淡变增益为线性（非等响度曲线）；人耳听感如需更自然可后续升级 S 曲线/指数
 - WASAPI loopback 录音量化验证（淡出曲线数值实测）未做——工具链已备（scripts/capture_loopback.py，sounddevice 无 loopback 支持=工具边界）
 
+## M12.6（2026-10-05）——播放模式（顺序/列表循环/单曲/随机）+ 曲终假播放修复
+
+**状态 = PASS（引擎/前端单测 + CDP 端到端 RUNTIME VERIFIED）**
+
+### 用户报告
+1. "歌曲没有循环机制吗？顺序循环或者随机循环？"——确无（queue 只有游标制 next/previous）
+2. "歌曲播完后，进度条还在计数，但是已经没有声音了"——曲终假播放
+
+### Implemented
+- **引擎曲终检测**（aura-core player）：fill_and_process 在 EOF + ring 被回调耗尽 + Playing 时置 `track_finished`（`take_track_finished` 取走即复位；有 next 时 gapless 接管不触发）——修复前引擎曲终停留 Playing，回调持续 underrun 静音而位置照常推进
+- **driver 编排**：take_track_finished → 投递 Stop（复用归零语义）+ `on_track_ended` 回调（lib.rs 经 app.emit 发 `track-ended` 事件）
+- **seek 帧空间换算**（E2E 挖出的存量 bug）：Seek 目标是输出帧空间、解码器按源采样率寻址——44.1k 源收 48k 帧号=时间×48/44.1（CDP 实测：seek(222s) 无效、seek(60s) 实播 65.3s 内容错位）。修复=输出帧→源帧换算 + resample_in 残片清除
+- **时长链路按秒**：duration_frames→duration_seconds（open_decoder/3 个 LoadDecoder 点按源采样率换算）——修复 44.1k MP3 快照时长显示 206s（实际 224.4s）
+- **前端播放模式**：queue 权威增 PlayMode（order/repeatAll/repeatOne/shuffle）+ advanceOnTrackEnded（末曲回绕/单曲重播/随机避当前/order 停止）；`track-ended` 事件监听自动前进；NowPlayingPage 新增模式按钮（→/🔁/🔂/🔀，zh/en i18n）；修复 ⏮/⏭ 无 onClick 死按钮
+
+### 验证
+- 单测：aura-core 97（natural_track_finish + seek_converts_output_frames_to_source_rate 新增）；vitest 94（queue 模式 ×5 新增）
+- CDP：duration 224.39（修复前 206.16）、seek(222) 生效（修复前无效）、曲终 stopped 归零 + driver 日志 `track finished -> stop + ended event`
+
+### Gates
+fmt/clippy 干净/workspace 全绿（dns_rebind 既有 flake 隔离重跑即绿）/tauri build + NSIS 8.97MiB
+
+### Known Limitations
+- 播放模式为内存态（不持久化；重启回顺序播放）——queue 本身 §48 即 in-memory，持久化留待 queue store 演进
+- shuffle 为纯随机（无随机种子列表/避免重复历史）；repeatAll 循环以双击库列表形成的队列上下文为准
+- 单曲/列表循环的曲终前进走前端事件（后端已 Stop 再 play_track），曲目间有 ≤1 个快照周期的间隙（非无缝；无缝循环需引擎级 queue，超出口径）
+
+
