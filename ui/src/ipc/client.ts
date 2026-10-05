@@ -139,6 +139,11 @@ export const ipc = {
     import('@tauri-apps/api/event').then(({ listen }) =>
       listen<{ view: string }>('integration://navigate', (ev) => cb(ev.payload.view)),
     ),
+  // M12.6：曲目自然播完（后端引擎检测，非用户停止）→ 队列按播放模式前进。
+  listenTrackEnded: (cb: () => void) =>
+    import('@tauri-apps/api/event').then(({ listen }) =>
+      listen('track-ended', () => cb()),
+    ),
 };
 
 export function isDreamscapeStateDto(v: unknown): v is DreamscapeStateDto {

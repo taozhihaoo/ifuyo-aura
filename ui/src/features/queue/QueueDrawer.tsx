@@ -94,6 +94,75 @@ export function getQueueState(): { items: QueueItem[]; currentIndex: number } {
   return { items, currentIndex };
 }
 
+// ---- M12.6 播放模式与曲终自动前进 ----
+
+/** order=顺序（播完停止）/ repeatAll=列表循环 / repeatOne=单曲循环 / shuffle=随机。 */
+export type PlayMode = 'order' | 'repeatAll' | 'repeatOne' | 'shuffle';
+
+const PLAY_MODES: PlayMode[] = ['order', 'repeatAll', 'repeatOne', 'shuffle'];
+let playMode: PlayMode = 'order';
+const modeListeners = new Set<() => void>();
+
+function emitMode() {
+  for (const l of modeListeners) l();
+}
+
+/** 循环切换播放模式（传输条模式按钮）。 */
+export function cyclePlayMode(): PlayMode {
+  playMode = PLAY_MODES[(PLAY_MODES.indexOf(playMode) + 1) % PLAY_MODES.length] ?? 'order';
+  emitMode();
+  return playMode;
+}
+
+/** 非 hook 读取（测试用）。 */
+export function getPlayMode(): PlayMode {
+  return playMode;
+}
+
+export function usePlayMode(): PlayMode {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const l = () => force((n) => n + 1);
+    modeListeners.add(l);
+    return () => {
+      modeListeners.delete(l);
+    };
+  }, []);
+  return playMode;
+}
+
+/** 曲目自然播完（后端 track-ended 事件）→ 按播放模式自动前进。
+ *  order：不前进（后端已 Stop）；返回是否触发了播放。 */
+export function advanceOnTrackEnded(): boolean {
+  if (items.length === 0) return false;
+  switch (playMode) {
+    case 'order':
+      return false;
+    case 'repeatOne': {
+      const i = currentIndex >= 0 ? currentIndex : 0;
+      const item = items[i];
+      if (!item) return false;
+      void ipc.playTrack(item.track.id).catch(() => undefined);
+      return true;
+    }
+    case 'repeatAll': {
+      const next = currentIndex + 1 >= items.length ? 0 : currentIndex + 1;
+      playItemAt(next);
+      return true;
+    }
+    case 'shuffle': {
+      if (items.length === 1) {
+        playItemAt(0);
+        return true;
+      }
+      let next = currentIndex;
+      while (next === currentIndex) next = Math.floor(Math.random() * items.length);
+      playItemAt(next);
+      return true;
+    }
+  }
+}
+
 export function useQueue(): { items: QueueItem[]; currentIndex: number } {
   const [, force] = useState(0);
   useEffect(() => {
@@ -126,6 +195,21 @@ export function QueueDrawer() {
       .listenIntegrationCommand((cmd) => {
         if (cmd === 'next') void playNext();
         else void playPrevious();
+      })
+      .then((off) => {
+        unlisten = off;
+      });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
+  // M12.6：后端曲终事件 → 按播放模式自动前进（顺序/循环/随机）。
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    void ipc
+      .listenTrackEnded(() => {
+        advanceOnTrackEnded();
       })
       .then((off) => {
         unlisten = off;

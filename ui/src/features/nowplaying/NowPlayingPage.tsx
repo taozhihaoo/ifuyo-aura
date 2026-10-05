@@ -6,6 +6,20 @@ import { ipc } from '../../ipc/client';
 import { useTranslation } from '../../i18n/react';
 import { useArtwork } from '../../components/Artwork';
 import { formatDuration, safeProgress, clampNumber } from '../../ui/format';
+import {
+  cyclePlayMode,
+  playNext,
+  playPrevious,
+  usePlayMode,
+  type PlayMode,
+} from '../queue/QueueDrawer';
+
+const MODE_ICON: Record<PlayMode, string> = {
+  order: '→',
+  repeatAll: '🔁',
+  repeatOne: '🔂',
+  shuffle: '🔀',
+};
 
 function fmtTime(sec: number | null | undefined): string {
   return formatDuration(sec) ?? '0:00';
@@ -14,6 +28,7 @@ function fmtTime(sec: number | null | undefined): string {
 export function NowPlayingPage() {
   const snapshot = usePlayerStore((s) => s.snapshot);
   const { t } = useTranslation();
+  const playMode = usePlayMode();
   const [displayPos, setDisplayPos] = useState(0);
   const base = useRef({ at: 0, pos: 0, playing: false });
   const playing = snapshot?.state === 'playing';
@@ -107,7 +122,21 @@ export function NowPlayingPage() {
         </span>
       </div>
       <div className="np-controls" role="group" aria-label={t('controls.play')}>
-        <button className="ctl-btn" aria-label={t('controls.previous')}>⏮</button>
+        <button
+          className="ctl-btn"
+          aria-label={t(`playMode.${playMode}`)}
+          title={t(`playMode.${playMode}`)}
+          onClick={() => cyclePlayMode()}
+        >
+          {MODE_ICON[playMode]}
+        </button>
+        <button
+          className="ctl-btn"
+          aria-label={t('controls.previous')}
+          onClick={() => void playPrevious().catch(() => undefined)}
+        >
+          ⏮
+        </button>
         <button
           className="ctl-btn primary"
           aria-label={playing ? t('controls.pause') : t('controls.play')}
@@ -118,7 +147,13 @@ export function NowPlayingPage() {
         <button className="ctl-btn" aria-label={t('controls.stop')} onClick={() => ipc.stop().catch(() => undefined)}>
           ⏹
         </button>
-        <button className="ctl-btn" aria-label={t('controls.next')}>⏭</button>
+        <button
+          className="ctl-btn"
+          aria-label={t('controls.next')}
+          onClick={() => void playNext().catch(() => undefined)}
+        >
+          ⏭
+        </button>
         <label className="volume">
           <span aria-hidden>🔊</span>
           <input

@@ -5,8 +5,12 @@ vi.mock('../../ipc/client', () => ({
   ipc: { playTrack: vi.fn(async () => undefined) },
 }));
 
+import { ipc } from '../../ipc/client';
 import {
+  advanceOnTrackEnded,
   clearQueue,
+  cyclePlayMode,
+  getPlayMode,
   getQueueState,
   hasNext,
   hasPrevious,
@@ -75,5 +79,53 @@ describe('queue engine（§197）', () => {
     clearQueue();
     expect(getQueueState().items).toHaveLength(0);
     expect(getQueueState().currentIndex).toBe(-1);
+  });
+});
+
+describe('play mode & track-ended advance（M12.6）', () => {
+  beforeEach(() => {
+    while (getPlayMode() !== 'order') cyclePlayMode();
+    vi.mocked(ipc.playTrack).mockClear();
+  });
+
+  it('模式循环切换 order→repeatAll→repeatOne→shuffle→order', () => {
+    expect(getPlayMode()).toBe('order');
+    expect(cyclePlayMode()).toBe('repeatAll');
+    expect(cyclePlayMode()).toBe('repeatOne');
+    expect(cyclePlayMode()).toBe('shuffle');
+    expect(cyclePlayMode()).toBe('order');
+  });
+
+  it('order：播完不前进；空队列不前进', () => {
+    playWithQueueContext(track(1), [track(1), track(2)]);
+    expect(advanceOnTrackEnded()).toBe(false);
+    expect(ipc.playTrack).not.toHaveBeenCalled();
+    clearQueue();
+    expect(advanceOnTrackEnded()).toBe(false);
+  });
+
+  it('repeatAll：末曲回绕到首曲', () => {
+    playWithQueueContext(track(2), [track(1), track(2)]);
+    cyclePlayMode(); // repeatAll
+    expect(advanceOnTrackEnded()).toBe(true);
+    expect(ipc.playTrack).toHaveBeenLastCalledWith(1);
+    expect(getQueueState().currentIndex).toBe(0);
+  });
+
+  it('repeatOne：重播当前曲', () => {
+    playWithQueueContext(track(2), [track(1), track(2)]);
+    cyclePlayMode();
+    cyclePlayMode(); // repeatOne
+    expect(advanceOnTrackEnded()).toBe(true);
+    expect(ipc.playTrack).toHaveBeenLastCalledWith(2);
+  });
+
+  it('shuffle：多项队列随机不等于当前', () => {
+    playWithQueueContext(track(2), [track(1), track(2), track(3)]);
+    for (let i = 0; i < 3; i += 1) cyclePlayMode(); // shuffle
+    expect(advanceOnTrackEnded()).toBe(true);
+    const called = vi.mocked(ipc.playTrack).mock.lastCall?.[0];
+    expect(called).not.toBe(2);
+    expect([1, 3]).toContain(called);
   });
 });

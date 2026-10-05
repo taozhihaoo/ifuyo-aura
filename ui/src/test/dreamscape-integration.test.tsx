@@ -35,6 +35,7 @@ vi.mock('../ipc/client', () => ({
     listenLibraryChanged: vi.fn(async () => vi.fn()),
     reportQueueState: vi.fn(async () => undefined),
     listenIntegrationCommand: vi.fn(async () => vi.fn()),
+    listenTrackEnded: vi.fn(async () => vi.fn()),
     listenIntegrationNavigate: vi.fn(async () => vi.fn()),
 
   },
