@@ -154,3 +154,55 @@ fn fade_cancel_restores_full_gain_immediately() {
         "命令单次消费"
     );
 }
+
+#[test]
+fn pause_after_fade_out_keeps_buffered_residual_silent() {
+    // 用户报告的暂停突刺：1s 淡出完成后 driver 才落地暂停，切换块
+    // （Playing→Paused）会把 ring 里从未衰减过的全增益残余以 1.0 起点
+    // 淡出播放——渐静之后蹦出 10ms 全幅度声。修复后切换块淡出起点取
+    // 已发布增益（完成后=0），残余静音。
+    let (mut p, mut c, mut stage, shared) = setup();
+    push(&mut p, 3_000);
+    shared.set_playback_state(aura_core::PlaybackState::Playing);
+    shared.request_fade(FADE_CMD_OUT, TOTAL);
+    // 渲染跨过 total：淡出完成、相位钳位、发布增益 0。
+    let _ = render(&mut stage, &mut c, &shared, 480);
+    let _ = render(&mut stage, &mut c, &shared, 480);
+    let _ = render(&mut stage, &mut c, &shared, 480);
+    assert_eq!(shared.fade_progress(), TOTAL);
+
+    // driver 落地暂停后的首个回调块（last_state==Playing → 切换块）。
+    let mut out = vec![0.0f32; 960];
+    let got = stage.render(
+        &mut out,
+        &mut c,
+        &shared,
+        aura_core::PlaybackState::Paused,
+        None,
+    );
+    assert!(got > 0, "切换块消费了缓冲残余");
+    assert!(
+        out.iter().all(|s| s.abs() < 1e-5),
+        "暂停切换块残余必须静音（突刺回归）"
+    );
+
+    // 对照：无传输淡变的硬暂停（发布增益=1.0）保留 10ms 保护淡出。
+    let (mut p2, mut c2, mut stage2, shared2) = setup();
+    push(&mut p2, 2_000);
+    shared2.set_playback_state(aura_core::PlaybackState::Playing);
+    let _ = render(&mut stage2, &mut c2, &shared2, 480);
+    let mut out2 = vec![0.0f32; 960];
+    stage2.render(
+        &mut out2,
+        &mut c2,
+        &shared2,
+        aura_core::PlaybackState::Paused,
+        None,
+    );
+    assert!(
+        out2[0].abs() > 0.1 && out2[950].abs() < 0.02,
+        "硬暂停切换块保留 10ms 淡出保护（起点全增益、窗末近零），{}, {}",
+        out2[0],
+        out2[950]
+    );
+}

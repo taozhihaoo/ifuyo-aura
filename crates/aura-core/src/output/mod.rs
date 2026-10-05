@@ -288,11 +288,17 @@ impl OutputStage {
             let got = consumer.pop_frames_until_generation(out, &mut self.seen_generation) as usize;
             let rendered = got * ch;
             out[rendered..].fill(0.0);
-            // 10ms 线性淡出（覆盖 got 的前段；其余静音）。
+            // 10ms 线性淡出（起点=已发布的传输淡变增益）：1s 淡出完成后
+            // 钳位增益为 0，残余缓冲必须静音出声——否则暂停落地的瞬间，
+            // ring 里从未被衰减过的全增益残余以 1.0 起点出 10ms 声（用户
+            // 报告的"渐静后突刺"；停止路径因 bump_generation 丢弃残余而无
+            // 此问题）。无传输淡变的硬暂停（设备热拔等）发布值=1.0，行为
+            // 与原 10ms 保护一致。
+            let g0 = f32::from_bits(shared.fade_gain_bits.load(Ordering::Acquire)).clamp(0.0, 1.0);
             let fade = self.fade_frames().min(got.max(1));
             for i in 0..got {
                 let g = if i < fade {
-                    1.0 - (i as f32 / fade as f32)
+                    g0 * (1.0 - i as f32 / fade as f32)
                 } else {
                     0.0
                 };
