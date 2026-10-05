@@ -554,5 +554,27 @@ fmt/clippy 干净/workspace 全绿（dns_rebind 既有 flake 隔离重跑即绿�
 - soak 第一轮用户 Music 因脚本时序（SCAN_RUNNING 并发拒绝）未装载，仅 fixtures 7 首高周转；脚本已修（顺序扫+等待），下一轮覆盖真实曲库
 - 流程教训入计划文档 §6：构建失败未察觉导致 QA 跑旧 exe 把 fixture 扫入真实曲库（已清理还原）；plain cargo build 产物 origin 报错（D-075 复发）
 
+## M12.7（2026-10-06）——界面交互反馈全面优化（用户需求：界面死板/交互差/要给用户反馈）
+
+**状态 = PASS（tsc/eslint/vitest 95 全绿 + tauri build + CDP 实测交互生效 + 截图目测）**
+
+### 全局层
+- notice → toast 三态（success✓/infoℹ/error⚠）：语义 role（status/alert）、success/info 3.5s 自动消失、error 停留；noticeSeq 重放动画+重置计时；toast() 便捷函数
+- CSS 交互层：所有可点元素统一 hover/active/focus 三态+按压缩放+过渡；主播放键悬停光晕、播放/暂停切换弹跳动画；range 滑块 accent 主题+拇指悬停放大；palette/settings/queue 抽屉入场动画；视图切换淡入；侧栏激活项左强调条；扫描条不定长流光；补齐 ghost-btn/primary-btn 缺失样式
+
+### 组件层
+- **曲库**：行 cursor:pointer（原 default！）、悬停浮现 ▶ 播放键（单击即播）、正在播放行玫瑰色+跳动 EQ 条（暂停静止；路径归一化匹配）、省略文本 tooltip、扫描完成 toast 三态（成功/部分失败/全失败）
+- **正在播放**：播放模式切换即时 toast、传输键 title 悬停提示
+- **队列**：清空成功 toast、当前曲强调色+悬停浮现移除键
+- **设置**：保存成功/失败 toast
+
+### 验证
+vitest 95（+1 clearQueue 反馈断言）/CDP 实测：模式 toast 文案出现、cursor:pointer、悬停键渲染、playing 行+EQ 生效；capture-screens 截图目测布局无破损
+
+### Known Limitations
+- toast 单条（新 toast 替换旧的）——堆叠留待有真实需求再做
+- 音量/进度滑块无数值气泡（accent+拇指反馈已够；气泡可后续加）
+
+
 
 
