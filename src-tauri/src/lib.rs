@@ -34,10 +34,17 @@ pub fn run() {
         })
         .setup(|app| {
             let handle = app.handle().clone();
-            let data_dir = handle
-                .path()
-                .app_data_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+            // AURA_DATA_DIR：QA 钩子（M12.5 L2/L3/soak 走隔离临时资料目录，
+            // 零用户数据污染；缺省仍为系统 app_data_dir）。仅影响本机数据
+            // 位置，无权限/安全边界变化。
+            let data_dir = std::env::var("AURA_DATA_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    handle
+                        .path()
+                        .app_data_dir()
+                        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                });
             // 曲目自然播完 → 前端事件（队列按播放模式自动前进，M12.6）。
             let audio = audio::AudioHandle::start({
                 let handle = handle.clone();

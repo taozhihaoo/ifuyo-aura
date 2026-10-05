@@ -523,12 +523,18 @@ pub fn library_stats(state: State<'_, AppState>) -> CmdResult<LibraryStats> {
     let one = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap_or(0) };
     Ok(LibraryStats {
         tracks: one("SELECT COUNT(*) FROM tracks"),
-        artists: one("SELECT COUNT(DISTINCT artist) FROM tracks"),
-        albums: one("SELECT COUNT(DISTINCT album) FROM tracks"),
+        // 规范化 schema：tracks 持 artist_id/album_id 外键（无 artist/album
+        // 列——写错列名会被 unwrap_or(0) 吞成恒 0，M12.5 L2 矩阵实测抓出）。
+        artists: one("SELECT COUNT(DISTINCT artist_id) FROM tracks"),
+        albums: one("SELECT COUNT(DISTINCT album_id) FROM tracks"),
     })
 }
 
 /// path → TrackId（Now Playing artwork 绑定用）。
+///
+/// 路径形态鲁棒：扫描器存的是 canonicalize 后的 verbatim 路径（`\\?\`
+/// 前缀）；调用方常持普通形态。精确匹配 miss 后按「去 `\\?\` 前缀 +
+/// 小写」归一化兜底（Windows 路径不区分大小写）。
 #[tauri::command]
 pub fn track_id_by_path(state: State<'_, AppState>, path: String) -> CmdResult<Option<i64>> {
     let service = state
@@ -536,16 +542,32 @@ pub fn track_id_by_path(state: State<'_, AppState>, path: String) -> CmdResult<O
         .service
         .lock()
         .map_err(|e| from_err("LIBRARY_DB_UNAVAILABLE", e, true))?;
-    let id: Option<i64> = service
-        .database()
-        .connection()
+    let conn = service.database().connection();
+    let id: Option<i64> = conn
         .query_row(
             "SELECT track_id FROM track_paths WHERE path = ?1 AND is_active = 1 LIMIT 1",
             rusqlite::params![path],
             |r| r.get(0),
         )
         .ok();
-    Ok(id)
+    if id.is_some() {
+        return Ok(id);
+    }
+    let norm = |p: &str| p.trim_start_matches(r"\\?\").to_ascii_lowercase();
+    let target = norm(&path);
+    let mut stmt = conn
+        .prepare("SELECT path, track_id FROM track_paths WHERE is_active = 1")
+        .map_err(|e| from_err("LIBRARY_DB_UNAVAILABLE", e, true))?;
+    let rows = stmt
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
+        .map_err(|e| from_err("LIBRARY_DB_UNAVAILABLE", e, true))?;
+    for row in rows {
+        let (p, tid) = row.map_err(|e| from_err("LIBRARY_DB_UNAVAILABLE", e, true))?;
+        if norm(&p) == target {
+            return Ok(Some(tid));
+        }
+    }
+    Ok(None)
 }
 
 /// §19/§78：Win11 Mica 材质开关（失败自动保持 solid fallback，§20）。
