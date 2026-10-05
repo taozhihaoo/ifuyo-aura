@@ -478,6 +478,11 @@ impl Engine {
         self.mapped_b.clear();
         self.next_track_decoded = 0;
         self.state = PlaybackState::Stopped;
+        // Stop 语义 = 回到曲目开头：解码位置必须归零，否则再 Play 会从
+        // 中断处继续（进度显示归零但实际音频失同步——M12 用户报告）。
+        if let Some(decoder) = self.decoder.as_mut() {
+            let _ = decoder.seek_to_frame(0);
+        }
         self.output.shared().position.store(0, Ordering::Release);
         self.producer.bump_generation();
         self.eof = false;

@@ -112,6 +112,32 @@ fn play_pause_stop_state_machine() {
 }
 
 #[test]
+fn stop_resets_decode_position_play_restarts_from_zero() {
+    // M12 用户报告回归：Stop 后位置显示归零，但解码位置未归零——再
+    // Play 从中断处继续（音频与进度显示失同步）。Stop 语义 = 回到开头。
+    let total = RATE as u64 * 3;
+    let (mut engine, mut poster) = engine_with(Waveform::Ramp, total);
+    engine.set_limiter_enabled(false);
+
+    poster.post(AudioCommand::Play).unwrap();
+    let _ = engine.render_for_frames(1_000);
+    // 已播放 ramp 0..999（provenance 同 seek_provenance）。
+
+    poster.post(AudioCommand::Stop).unwrap();
+    poster.post(AudioCommand::Play).unwrap();
+    engine.clear_capture();
+    let _ = engine.render_for_frames(CHUNK as u64);
+    let cap = engine.capture();
+    // 必须从帧 0 重新解码（[0,0,1,1,…]），而非从中断处（1000…）继续。
+    assert_eq!(
+        &cap[..4],
+        &[0.0f32, 0.0, 1.0, 1.0],
+        "Stop 后 Play 必须从曲目开头重新解码（实际={:?}）",
+        &cap[..4]
+    );
+}
+
+#[test]
 fn seek_provenance_no_stale_generation() {
     // Fixture D ramp：sample[n] = n → 输出值直接暴露其来源帧（provenance 自证）
     let total = RATE as u64 * 3;
