@@ -33,6 +33,17 @@ pub struct SharedOutputState {
     /// 播放状态（控制面发布；设备回调据此决定静音/推进位置——暂停时
     /// 位置必须停住 §183）。
     playback_state_bits: Arc<AtomicU32>,
+    /// M12.5 传输淡变命令（driver→callback）。
+    pub fade_cmd: Arc<AtomicU32>,
+    /// M12.5 淡变已渲染帧数（callback→driver 进度）。
+    pub fade_progress_frames: Arc<AtomicU64>,
+    /// M12.5 淡变总帧数（driver 写入；0=无淡变）。
+    pub fade_total_frames: Arc<AtomicU64>,
+    /// M12.5 本轮淡变的起点增益（请求时定格；callback 每块读取，f32 bits）。
+    fade_start_gain_bits: Arc<AtomicU32>,
+    /// M12.5 淡变当前增益（callback 每块发布块末值；driver 发起新淡变时
+    /// 由此连续出发，中途反转不跳变；f32 bits）。
+    pub fade_gain_bits: Arc<AtomicU32>,
 }
 
 impl SharedOutputState {
@@ -44,7 +55,59 @@ impl SharedOutputState {
             target_gain_bits: Arc::new(AtomicU32::new(1.0f32.to_bits())),
             track_gain_bits: Arc::new(AtomicU32::new(1.0f32.to_bits())),
             playback_state_bits: Arc::new(AtomicU32::new(state_bits(PlaybackState::Stopped))),
+            fade_cmd: Arc::new(AtomicU32::new(FADE_CMD_NONE)),
+            fade_progress_frames: Arc::new(AtomicU64::new(0)),
+            fade_total_frames: Arc::new(AtomicU64::new(0)),
+            fade_start_gain_bits: Arc::new(AtomicU32::new(1.0f32.to_bits())),
+            fade_gain_bits: Arc::new(AtomicU32::new(1.0f32.to_bits())),
         }
+    }
+
+    /// M12.5：请求传输淡变（OUT=淡出 / IN=淡入；total_frames=1s 帧）。
+    ///
+    /// 起始增益取回调最近发布的块末增益——中途反转（淡出中按播放等）
+    /// 从当前响度连续出发，不产生增益跳变。
+    pub fn request_fade(&self, cmd: u32, total_frames: u64) {
+        let start = f32::from_bits(self.fade_gain_bits.load(Ordering::Acquire)).clamp(0.0, 1.0);
+        self.request_fade_gain(cmd, total_frames, start);
+    }
+
+    /// M12.5：显式起始增益的淡变（IN 从静音恢复时用 0.0，不依赖发布值）。
+    pub fn request_fade_gain(&self, cmd: u32, total_frames: u64, start_gain: f32) {
+        self.fade_total_frames
+            .store(total_frames, Ordering::Release);
+        self.fade_progress_frames.store(0, Ordering::Release);
+        self.fade_start_gain_bits
+            .store(start_gain.clamp(0.0, 1.0).to_bits(), Ordering::Release);
+        self.fade_cmd.store(cmd, Ordering::Release);
+    }
+
+    /// M12.5：取消进行中的淡变（增益立即回满）。
+    pub fn cancel_fade(&self) {
+        self.fade_cmd.store(FADE_CMD_CANCEL, Ordering::Release);
+        self.fade_total_frames.store(0, Ordering::Release);
+    }
+
+    /// M12.5：淡变已渲染帧数（driver 轮询判定完成）。
+    #[must_use]
+    pub fn fade_progress(&self) -> u64 {
+        self.fade_progress_frames.load(Ordering::Acquire)
+    }
+
+    /// M12.5：淡变总帧数。
+    #[must_use]
+    pub fn fade_total(&self) -> u64 {
+        self.fade_total_frames.load(Ordering::Acquire)
+    }
+
+    /// M12.5：清除淡变命令槽（driver 在应用挂起命令后调用）。
+    ///
+    /// 保留 total 并把 progress 推满：相位钳位（OUT=静音/IN=全增益）在
+    /// 挂起命令生效前后保持一致，直到下一条淡变命令复位。
+    pub fn clear_fade(&self) {
+        let total = self.fade_total_frames.load(Ordering::Acquire);
+        self.fade_progress_frames.store(total, Ordering::Release);
+        self.fade_cmd.store(FADE_CMD_NONE, Ordering::Release);
     }
 
     /// 控制面：发布当前播放状态（driver 线程低频写入）。
@@ -95,6 +158,14 @@ impl SharedOutputState {
     }
 }
 
+// M12.5 传输淡变命令（driver→callback 经共享原子）。
+pub const FADE_CMD_NONE: u32 = 0;
+/// M12.5 淡变总帧数 @48k（1 秒；其它采样率按比例换算）。
+pub const FADE_TOTAL_AT_48K: u64 = 48_000;
+pub const FADE_CMD_OUT: u32 = 1;
+pub const FADE_CMD_IN: u32 = 2;
+pub const FADE_CMD_CANCEL: u32 = 3;
+
 fn state_bits(state: PlaybackState) -> u32 {
     match state {
         PlaybackState::Stopped => 0,
@@ -123,6 +194,20 @@ pub struct OutputStage {
     last_state: PlaybackState,
     /// 淡变长度（帧，10ms @当前采样率；§突刺消爆音）。
     fade_frames: usize,
+    /// M12.5 传输淡变相位（driver 经共享原子请求；callback 消费）。
+    ///
+    /// 淡变完成后相位**钳位不清除**：OUT 钳在增益 0（静音）、IN 钳在 1
+    /// （无操作）——driver 应用挂起暂停前有 ≤1 个循环周期的间隙，钳位
+    /// 保证该间隙不回跳全增益（爆音）；相位仅被下一条淡变命令复位。
+    fade_phase: TransportFade,
+}
+
+/// M12.5 传输淡变相位（1s 淡变；driver 请求、callback 消费）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TransportFade {
+    None,
+    Out,
+    In,
 }
 
 impl OutputStage {
@@ -138,6 +223,7 @@ impl OutputStage {
             limiter_enabled: true,
             last_state: PlaybackState::Stopped,
             fade_frames: sample_rate.get() as usize / 100, // 10ms
+            fade_phase: TransportFade::None,
         }
     }
 
@@ -175,6 +261,19 @@ impl OutputStage {
         state: PlaybackState,
         eq_bus: Option<&crate::dsp::EqBus>,
     ) -> u64 {
+        // M12.5：消费传输淡变命令。OUT 仅 Playing 态有意义（淡出期间引擎
+        // 保持 Playing 供数据，fade 完成后 driver 才应用暂停/停止）；IN
+        // 不设状态守卫——driver 在发布 Playing 之后才请求，但回调的 state
+        // 快照可能滞后一拍，守卫会整体丢掉淡入命令。
+        match shared.fade_cmd.swap(FADE_CMD_NONE, Ordering::AcqRel) {
+            FADE_CMD_OUT if state == PlaybackState::Playing => {
+                self.fade_phase = TransportFade::Out;
+            }
+            FADE_CMD_IN => self.fade_phase = TransportFade::In,
+            FADE_CMD_CANCEL => self.fade_phase = TransportFade::None,
+            _ => {}
+        }
+
         // 非 Playing：切换块（last_state==Playing）消费缓冲残余并做 10ms
         // 淡出（消除波形硬切爆音"突刺"），位置按实际消费推进——此后纯静音。
         // §183：淡出后位置冻结。
@@ -257,6 +356,33 @@ impl OutputStage {
         // Limiter（§44 末级，§21；D-034：provenance 测试可关）
         if self.limiter_enabled {
             crate::dsp::limit_block(out);
+        }
+        // M12.5 传输淡变（1s；起始增益取发布值保证中途反转连续；每块
+        // 发布块末增益；完成后相位钳位——见 OutputStage::fade_phase 文档）。
+        if self.fade_phase != TransportFade::None {
+            let total = (shared.fade_total_frames.load(Ordering::Acquire)).max(1) as f32;
+            let base = shared.fade_progress_frames.load(Ordering::Acquire) as f32;
+            let g0 =
+                f32::from_bits(shared.fade_start_gain_bits.load(Ordering::Acquire)).clamp(0.0, 1.0);
+            let end_target = if self.fade_phase == TransportFade::Out {
+                0.0f32
+            } else {
+                1.0f32
+            };
+            // total/base 以帧计，out 为交错采样——按声道数折算帧进度。
+            let ch = f32::from(self.channels.get());
+            let n_frames = out.len() as f32 / ch;
+            for (i, s) in out.iter_mut().enumerate() {
+                let t = ((base + i as f32 / ch) / total).clamp(0.0, 1.0);
+                *s *= g0 + (end_target - g0) * t;
+            }
+            let done = (base + n_frames).min(total) as u64;
+            shared.fade_progress_frames.store(done, Ordering::Release);
+            let t_end = ((base + n_frames) / total).clamp(0.0, 1.0);
+            shared.fade_gain_bits.store(
+                (g0 + (end_target - g0) * t_end).to_bits(),
+                Ordering::Release,
+            );
         }
         // 位置按输出实际消费的帧数推进（underrun 静音帧也是被消费的时间；
         // 本分支仅在 Playing 进入——Paused/Stopped 已在函数头静音返回）。
