@@ -3,6 +3,12 @@
 import { create } from 'zustand';
 import type { Locale } from '../i18n';
 
+/**
+ * 功能开关：Dreamscape（M7）。当前版本对外停用——入口（导航/palette/
+ * 托盘）全部隐藏，后端模块保留（改回 true 即整功能恢复）。
+ */
+export const DREAMSCAPE_ENABLED = false;
+
 export type ViewId = 'now-playing' | 'library' | 'map' | 'dreamscape';
 
 interface UiState {

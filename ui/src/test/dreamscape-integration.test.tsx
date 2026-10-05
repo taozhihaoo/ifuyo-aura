@@ -49,7 +49,7 @@ vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => winMocks }));
 
 import App from '../App';
 import { DreamscapeRenderer } from '../visual/dreamscape/DreamscapeRenderer';
-import { useUiStore } from '../state/stores';
+import { DREAMSCAPE_ENABLED, useUiStore } from '../state/stores';
 
 afterEach(() => {
   cleanup();
@@ -90,7 +90,9 @@ describe('§277 renderer 失败 fallback', () => {
   });
 });
 
-describe('§189 M6 集成', () => {
+// 功能停用（DREAMSCAPE_ENABLED=false）时 App 壳不再渲染 Dreamscape，
+// 这组经 shell 导航的集成测试按事实跳过（渲染器自身测试在上方独立跑）。
+describe.skipIf(!DREAMSCAPE_ENABLED)('§189 M6 集成', () => {
   it('导航进入 Dreamscape：Aurora 不挂载（§130/§131）；退出恢复', async () => {
     const view = render(createElement(App));
     // 初始 now-playing → Aurora 存在（aria-hidden canvas 或 fallback div）。

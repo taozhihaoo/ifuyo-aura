@@ -1,7 +1,7 @@
 // 自绘标题栏（§16/§17）：drag region + window controls + 主导航。
 // Windows 权限经 capabilities 最小授权（§22）。
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useUiStore, useSettingsStore } from '../state/stores';
+import { DREAMSCAPE_ENABLED, useUiStore, useSettingsStore } from '../state/stores';
 import { useTranslation } from '../i18n/react';
 
 const win = getCurrentWindow();
@@ -26,7 +26,9 @@ export function TitleBar() {
         ifuyo <span className="brand-accent">Aura</span>
       </div>
       <nav className="titlebar-nav" aria-label="Primary">
-        {(['now-playing', 'library', 'map', 'dreamscape'] as const).map((v) => (
+        {(['now-playing', 'library', 'map', 'dreamscape'] as const)
+          .filter((v) => v !== 'dreamscape' || DREAMSCAPE_ENABLED)
+          .map((v) => (
           <button
             key={v}
             className={`nav-btn${view === v ? ' active' : ''}`}

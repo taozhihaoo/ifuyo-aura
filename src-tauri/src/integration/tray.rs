@@ -11,7 +11,7 @@
 use std::sync::Mutex;
 use std::sync::OnceLock;
 
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{IsMenuItem, Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, Wry};
 
@@ -165,6 +165,10 @@ pub fn track_line(artist: Option<&str>, title: &str) -> String {
 
 // ---------- Tauri 侧：单例托盘 ----------
 
+/// 功能开关：Dreamscape 对外停用时托盘不再出现该入口（与前端
+/// DREAMSCAPE_ENABLED 同步；改回 true 恢复）。
+const DREAMSCAPE_ENABLED: bool = false;
+
 /// 托盘单例句柄（§106 singleton ownership；跨线程可见）。
 pub struct TrayPresenter {
     pub track: MenuItem<Wry>,
@@ -217,8 +221,14 @@ pub fn create(app: &AppHandle, initial_locale: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let map =
         MenuItem::with_id(app, ids::MAP, t.map, true, None::<&str>).map_err(|e| e.to_string())?;
-    let dreamscape = MenuItem::with_id(app, ids::DREAMSCAPE, t.dreamscape, true, None::<&str>)
-        .map_err(|e| e.to_string())?;
+    let dreamscape = if DREAMSCAPE_ENABLED {
+        Some(
+            MenuItem::with_id(app, ids::DREAMSCAPE, t.dreamscape, true, None::<&str>)
+                .map_err(|e| e.to_string())?,
+        )
+    } else {
+        None
+    };
     let mini =
         MenuItem::with_id(app, ids::MINI, t.mini, true, None::<&str>).map_err(|e| e.to_string())?;
     let exit =
@@ -228,27 +238,23 @@ pub fn create(app: &AppHandle, initial_locale: &str) -> Result<(), String> {
     let sep3 = tauri::menu::PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?;
     let sep4 = tauri::menu::PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?;
 
-    let menu = Menu::with_items(
-        app,
-        &[
-            &open,
-            &sep1,
-            &track,
-            &play_pause,
-            &previous,
-            &next,
-            &sep2,
-            &now_playing,
-            &library,
-            &map,
-            &dreamscape,
-            &mini,
-            &sep3,
-            &exit,
-            &sep4,
-        ],
-    )
-    .map_err(|e| e.to_string())?;
+    let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![
+        &open,
+        &sep1,
+        &track,
+        &play_pause,
+        &previous,
+        &next,
+        &sep2,
+        &now_playing,
+        &library,
+        &map,
+    ];
+    if let Some(d) = dreamscape.as_ref() {
+        items.push(d);
+    }
+    items.extend([&mini as &dyn IsMenuItem<Wry>, &sep3, &exit, &sep4]);
+    let menu = Menu::with_items(app, &items).map_err(|e| e.to_string())?;
 
     let icon = tauri::image::Image::from_bytes(include_bytes!("../../icons/tray.png"))
         .map_err(|e| e.to_string())?

@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { FeatureBoundary } from './components/ErrorBoundary';
 import { useTranslation } from './i18n/react';
-import { useUiStore, usePlayerStore, useSettingsStore } from './state/stores';
+import { DREAMSCAPE_ENABLED, useUiStore, usePlayerStore, useSettingsStore } from './state/stores';
 import { ipc } from './ipc/client';
 import { updateService } from './features/update/UpdateService';
 import { getAppInfo } from './ipc/appInfo';
@@ -110,6 +110,7 @@ export default function App() {
         e.preventDefault();
         const views = ['now-playing', 'library', 'map', 'dreamscape'] as const;
         const target = views[Number(e.key) - 1];
+        if (target === 'dreamscape' && !DREAMSCAPE_ENABLED) return; // 功能停用
         if (target) setView(target);
         return;
       }
@@ -157,7 +158,7 @@ export default function App() {
       .listenIntegrationNavigate((view) => {
         if (view === 'mini') {
           useUiStore.getState().setMiniPlayerOpen(true);
-        } else if (['now-playing', 'library', 'map', 'dreamscape'].includes(view)) {
+        } else if (view === 'dreamscape' ? DREAMSCAPE_ENABLED : ['now-playing', 'library', 'map'].includes(view)) {
           useUiStore.getState().setView(view as Parameters<typeof setView>[0]);
         }
       })
@@ -194,7 +195,7 @@ export default function App() {
               <MapPage />
             </FeatureBoundary>
           )}
-          {view === 'dreamscape' && (
+          {view === 'dreamscape' && DREAMSCAPE_ENABLED && (
             <FeatureBoundary name="dreamscape" message={t('error.boundaryDreamscape')} retryLabel={t('common.retry')}>
               <DreamscapeView />
             </FeatureBoundary>
