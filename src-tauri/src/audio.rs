@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use aura_core::decoder::streaming::StreamingDecoder;
+
 use aura_core::types::{AudioCommand, Channels, PlaybackState, SampleRate};
 
 /// 本地文件的 [`aura_core::decoder::AudioByteStream`]（M3 支持格式直读）。
@@ -142,6 +143,11 @@ impl AudioHandle {
                     duration_frames: None,
                     sample_rate: 48_000,
                 };
+                // M12.5：淡出期间挂起的暂停/停止（1s 淡变完成后生效 §183）。
+                let mut pending_transport: Option<aura_core::types::AudioCommand> = None;
+                // M12.5：Play 已入队、待引擎转入 Playing 后再请求淡入
+                // （时序：回调的 state 快照可能滞后，须先发布 Playing）。
+                let mut want_fade_in = false;
                 loop {
                     while let Ok(msg) = rx.try_recv() {
                         match msg {
@@ -172,18 +178,85 @@ impl AudioHandle {
                                 let presets = aura_core::dsp::EQ_PRESETS;
                                 engine.set_eq_preset(&presets[i.min(presets.len() - 1)]);
                             }
-                            Control::Post(cmd) => {
-                                let _ = poster.post(cmd);
-                            }
+                            Control::Post(cmd) => match cmd {
+                                // M12.5：暂停/停止走 1s 淡出后生效（淡出期间
+                                // 引擎保持 Playing 供数据）；播放立即生效并淡入。
+                                AudioCommand::Pause | AudioCommand::Stop
+                                    if engine.state() == PlaybackState::Playing =>
+                                {
+                                    eprintln!(
+                                        "[fade-probe] driver: fade-out requested for {cmd:?}"
+                                    );
+                                    shared_out.request_fade(
+                                        aura_core::output::FADE_CMD_OUT,
+                                        aura_core::output::FADE_TOTAL_AT_48K,
+                                    );
+                                    pending_transport = Some(cmd);
+                                }
+                                AudioCommand::Play if pending_transport.is_some() => {
+                                    // 淡出中改播放：从当前增益连续淡入回满
+                                    // （request_fade 取已发布增益，反转不跳变）。
+                                    shared_out.request_fade(
+                                        aura_core::output::FADE_CMD_IN,
+                                        aura_core::output::FADE_TOTAL_AT_48K,
+                                    );
+                                    pending_transport = None;
+                                    eprintln!("[fade-probe] driver: reversal fade-in requested");
+                                }
+                                AudioCommand::Play => {
+                                    let _ = poster.post(cmd);
+                                    want_fade_in = true;
+                                    eprintln!("[fade-probe] driver: play posted, fade-in armed");
+                                }
+                                other => {
+                                    let _ = poster.post(other);
+                                }
+                            },
                             Control::Shutdown => return,
                         }
                     }
+                    // M12.5：淡出完成后应用挂起的暂停/停止。曲目在淡出中
+                    // 自然结束（EOF→Stopped）时 progress 不再推进，同样视为
+                    // 完成，避免挂起命令永久滞留。
+                    if let Some(pending) = pending_transport {
+                        let progress = shared_out.fade_progress();
+                        let total = shared_out.fade_total();
+                        if total > 0
+                            && (progress >= total || engine.state() == PlaybackState::Stopped)
+                        {
+                            eprintln!("[fade-probe] driver: pending {pending:?} applied");
+                            match pending {
+                                AudioCommand::Pause => {
+                                    let _ = poster.post(AudioCommand::Pause);
+                                }
+                                AudioCommand::Stop => {
+                                    let _ = poster.post(AudioCommand::Stop);
+                                }
+                                _ => {}
+                            }
+                            pending_transport = None;
+                            shared_out.clear_fade();
+                        }
+                    }
+
                     engine.fill_and_process();
                     // 快照刷新 ~10Hz（§14）。
                     let pos_frames = shared_out.position.load(Ordering::Relaxed);
                     pos2.store(pos_frames, Ordering::Relaxed);
                     let engine_state = engine.state();
                     shared_out.set_playback_state(engine_state); // §183：暂停时回调停止推进位置
+                                                                 // M12.5：淡入请求须在 Playing 已发布之后（回调 state 快照
+                                                                 // 滞后一拍时，无守卫的 IN 消费保证命令不丢）。从静音恢复
+                                                                 // 用显式 0 起点（新装载/停止场景无已发布淡变增益）。
+                    if want_fade_in && engine_state == PlaybackState::Playing {
+                        want_fade_in = false;
+                        shared_out.request_fade_gain(
+                            aura_core::output::FADE_CMD_IN,
+                            aura_core::output::FADE_TOTAL_AT_48K,
+                            0.0,
+                        );
+                        eprintln!("[fade-probe] driver: fade-in requested (1s)");
+                    }
                     let new_state = match engine_state {
                         PlaybackState::Playing => "playing",
                         PlaybackState::Paused => "paused",
