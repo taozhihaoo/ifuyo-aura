@@ -164,6 +164,14 @@ impl AudioHandle {
                                 display,
                             } => {
                                 st.duration_seconds = duration_seconds;
+                                // 换曲使旧传输挂起失效：若上一首的停止/暂停
+                                // 淡出仍挂起，随后的 play_track Play 会命中
+                                // "淡出中反转"分支被吞（旧曲已不存在）——
+                                // 新曲永远不播（用户场景：停止后立即双击
+                                // 另一首）。load_track 自带归零 Stop，旧挂起
+                                // 已无意义。
+                                pending_transport = None;
+                                want_fade_in = false;
                                 let _ = engine.load_track(decoder);
                                 let _ = poster.post(AudioCommand::Stop);
                                 let mut snap = snap2.lock().expect("snap");
