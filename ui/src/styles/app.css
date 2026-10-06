@@ -587,6 +587,7 @@ input[type='range']:active::-webkit-slider-thumb { transform: scale(1.3); }
 /* 曲库：悬停浮现播放键；正在播放行 = 强调色 + 跳动条（暂停时静止） */
 .track-row { position: relative; }
 .tr-artwork { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; }
+/* 三角形用 CSS 边框绘制（▶ 字符在字体 em box 内不居中——用户实测截图） */
 .tr-play {
   position: absolute;
   width: 28px; height: 28px;
@@ -594,9 +595,16 @@ input[type='range']:active::-webkit-slider-thumb { transform: scale(1.3); }
   align-items: center; justify-content: center;
   border: none; border-radius: 50%;
   background: var(--color-rose);
-  color: #fff;
-  font-size: 12px;
   cursor: pointer;
+  padding: 0;
+}
+.tr-play::before {
+  content: '';
+  border-style: solid;
+  border-width: 5px 0 5px 8px;
+  border-color: transparent transparent transparent #fff;
+  /* 光学修正：三角形质心偏左，视觉上右移 1px 才居中 */
+  margin-left: 2px;
 }
 .track-row:hover .tr-play { display: inline-flex; }
 .track-row:hover .tr-artwork .art-glyph { display: none; }

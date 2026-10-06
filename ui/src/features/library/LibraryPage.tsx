@@ -263,9 +263,7 @@ export function LibraryPage() {
                         e.stopPropagation();
                         playTrackRow(track, tracks);
                       }}
-                    >
-                      ▶
-                    </button>
+                    />
                   </span>
                   <span className="tr-title" title={track.title?.trim() || track.path}>
                     {trackTitle(track)}
