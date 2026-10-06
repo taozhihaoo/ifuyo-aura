@@ -575,6 +575,24 @@ vitest 95（+1 clearQueue 反馈断言）/CDP 实测：模式 toast 文案出现
 - toast 单条（新 toast 替换旧的）——堆叠留待有真实需求再做
 - 音量/进度滑块无数值气泡（accent+拇指反馈已够；气泡可后续加）
 
+## M13.1 第一轮（2026-10-06）——对齐 QQ 音乐的界面优化（用户需求）
 
+**状态 = PASS（vitest 95 + workspace（dns_rebind 既有 flake 隔离绿）+ clippy 0 + tauri build + CDP 实测 + 截图目测）**
 
+### 范式补齐：全局播放条（PlayerBar）
+- 常驻底栏（除正在播放页——该页已有全尺寸控件）：封面缩略 44px + 标题/状态（点击进正在播放页）+ ⏮⏸⏭（应用层队列语义）+ 迷你 seek（rAF 本地插值，可拖）+ 播放模式（toast）+ 音量
+- queue 抽屉与 toast 经 data-view 选择器自动让出底栏高度
+- 首版两行叠放被 64px 裁切（CDP 实测抓出）→ 单行布局修复
 
+### 修复
+- **无标签曲目显示完整路径**（用户截图实锤）：曲库行/播放条/正在播放大标题统一回退文件名 stem（fileBaseName 去目录+verbatim `\?\` 前缀+扩展名）；tooltip 保留全路径；后端 play_input_impl Local 分支同口径回退（SMTC/快照受益），title_fallback_tests×3
+- **⌖（Open on Map）按钮隐式 grid 行溢出**：行网格 5 列 6 元素——按钮落到 52px 行高外不可见；改 6 列
+- **截图"空行"排查**：真实 DB 仅 2 条干净记录；当前构建 CDP 数 DOM 无空行——判定为旧构建/扫描瞬态，非存量 bug
+
+### 曲库专业化
+- 表头（标题/艺术家/专辑/时长，网格与行对齐）
+- useCurrentTrackId 提取共用（PlayerBar/NowPlayingPage）
+
+### Known Limitations / 后续轮次
+- 表头暂不可点排序（排序仍走下拉）——点表头排序留待下轮
+- 封面模糊背景/主色沉浸、歌词（LRC/ID3）、封面真实缩略图列 = 第二/三轮
