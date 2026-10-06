@@ -101,6 +101,17 @@ def main() -> None:
     if r.returncode != 0:
         sys.exit(f"set_uslt 失败：{r.stderr[-400:]}")
 
+    # 9) M15a 新格式：AAC(M4A) / ALAC(M4A) / AIFF
+    run(*audio_args(3), *out_opts, *meta,
+        "-c:a", "aac", "-b:a", "128k",
+        str(OUT / "fixture.m4a"))
+    run(*audio_args(3), *out_opts, *meta,
+        "-c:a", "alac",
+        str(OUT / "fixture-alac.m4a"))
+    run(*audio_args(3), *out_opts, *meta,
+        "-c:a", "pcm_s16be",
+        str(OUT / "fixture.aiff"))
+
     COVER.unlink(missing_ok=True)
     print(f"fixtures → {OUT}")
     for f in sorted(OUT.iterdir()):

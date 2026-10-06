@@ -9,7 +9,7 @@ description = "ifuyo Aura"
 
 [dependencies]
 # M0-2 依赖锁定（M1 音频内核四件套）：
-symphonia = { version = "0.6.1", features = ["mp3"] } # 解码；M4 追加 mp3（Charter §14 支持矩阵；默认特性不含 mp3）
+symphonia = { version = "0.6.1", features = ["mp3", "aac", "alac", "isomp4", "aiff"] } # 解码；M4 追加 mp3，M15a 追加 aac/alac(M4A)/isomp4/aiff（支持矩阵扩展）
 symphonia-bundle-flac = "0.6.1" # FLAC 具体 decoder/reader 类型（D-015）
 cpal = "0.18.2"     # 音频输出（Windows WASAPI shared）
 rubato = "5.0.1"    # 重采样

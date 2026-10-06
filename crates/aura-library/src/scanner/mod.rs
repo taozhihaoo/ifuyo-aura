@@ -8,7 +8,7 @@ use crate::types::{CancelToken, ScanProgress};
 
 /// 支持的音频扩展名（§11 + Charter §14：FLAC/MP3/OGG/WAV/M4A/ALAC；
 /// m4a 的实际 codec 由 metadata 层判定，扫描层只做发现）。
-pub const SUPPORTED_EXTENSIONS: &[&str] = &["flac", "mp3", "ogg", "oga", "wav", "m4a", "alac"];
+pub const SUPPORTED_EXTENSIONS: &[&str] = &["flac", "mp3", "ogg", "oga", "wav", "m4a", "alac", "aac", "aiff"];
 
 /// 扩展名快速过滤（§12：先过滤，format detection 留给 metadata 层）。
 #[must_use]

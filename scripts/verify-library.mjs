@@ -18,7 +18,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const run = async () => {
   const fixtures = join(process.cwd(), 'tests', 'fixtures');
   const files = readdirSync(fixtures).filter(
-    (f) => !f.startsWith('_') && /\.(mp3|flac|ogg)$/i.test(f),
+    (f) => !f.startsWith('_') && /\.(mp3|flac|ogg|m4a|aiff)$/i.test(f),
   );
   const musicDir = mkdtempSync(join(tmpdir(), 'aura-lib-'));
   cpSync(fixtures, musicDir, { recursive: true });
@@ -109,8 +109,8 @@ const run = async () => {
     line('L12', after.tracks === before.tracks, `重扫幂等：${before.tracks} → ${after.tracks}`);
 
     // L-13 库统计精确值（library_stats 列名 bug 回归：曾恒 0）
-    line('L13', after.tracks === 8 && after.artists === 3 && after.albums === 1,
-      `stats 精确值：tracks=${after.tracks}(8) artists=${after.artists}(3) albums=${after.albums}(1)`);
+    line('L13', after.tracks === 11 && after.artists === 3 && after.albums === 1,
+      `stats 精确值：tracks=${after.tracks}(11) artists=${after.artists}(3) albums=${after.albums}(1)`);
 
     // L-14 封面缩略图列（M13.2）：5 个带封面 fixture → 曲库可视行渲染 <img>
     await inv('library_list', { sort: 'title', limit: 50, offset: 0 });
@@ -147,6 +147,34 @@ const run = async () => {
       const noneTrack = s.find((t) => t.path && t.path.endsWith('fixture-notags.mp3'));
       const l18 = noneTrack ? await inv('lyrics_for_track', { trackId: noneTrack.id }) : null;
       line('L18', l18 === null, `无歌词回退 null：${JSON.stringify(l18)}`);
+
+      // L19 M15a 新格式播放矩阵：AAC(M4A)/ALAC(M4A)/AIFF 全部真实解码
+      const fmtFiles = ['fixture.m4a', 'fixture-alac.m4a', 'fixture.aiff'];
+      const fmtResults = [];
+      for (const f of fmtFiles) {
+        const t = s.find((x) => x.path && x.path.endsWith(f));
+        if (!t) {
+          fmtResults.push(`${f}:MISSING`);
+          continue;
+        }
+        await inv('play_track', { trackId: t.id });
+        // 轮询等待 playing（首次播放含编解码器初始化，容 3s 延迟）
+        let ok = false;
+        let at = '';
+        for (let i = 0; i < 10; i += 1) {
+          await sleep(300);
+          const st = await inv('player_snapshot', {});
+          if (st.state === 'playing') {
+            ok = true;
+            at = `${((i + 1) * 0.3).toFixed(1)}s`;
+            break;
+          }
+        }
+        fmtResults.push(`${f}:${ok ? 'OK@' + at : 'FAIL'}`);
+        await inv('stop', {});
+        await sleep(400);
+      }
+      line('L19', fmtResults.every((r) => r.includes('OK@')), `新格式播放矩阵 ${fmtResults.join(' | ')}`);
     } finally {
       try { ws2?.close(); } catch { /* 已断开 */ }
     }
