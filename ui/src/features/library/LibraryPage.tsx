@@ -8,6 +8,8 @@ import { ipc } from '../../ipc/client';
 import type { ScanProgress, SortKey, TrackSummary } from '../../ipc/types';
 import { useTranslation } from '../../i18n/react';
 import { formatDuration, trackTitle } from '../../ui/format';
+import { ArtworkThumb } from '../../components/ArtworkThumb';
+import { clearArtworkCache } from '../../ipc/artworkCache';
 import { playWithQueueContext } from '../queue/QueueDrawer';
 
 type LoadState =
@@ -107,7 +109,10 @@ export function LibraryPage() {
   const prevScan = useRef<ScanProgress | null>(null);
   useEffect(() => {
     const un1 = ipc.listenScanProgress((p) => setScan(p));
-    const un2 = ipc.listenLibraryChanged(() => useLibraryStore.getState().bumpRefresh());
+    const un2 = ipc.listenLibraryChanged(() => {
+      clearArtworkCache(); // 扫描可能新增/移除封面
+      useLibraryStore.getState().bumpRefresh();
+    });
     return () => {
       void un1.then((f) => f());
       void un2.then((f) => f());
@@ -221,12 +226,31 @@ export function LibraryPage() {
       )}
 
       {state.kind === 'ready' && tracks.length > 0 && (
-        <div className="track-head" aria-hidden>
+        <div className="track-head">
           <span />
-          <span>{t('library.sortTitle')}</span>
-          <span>{t('library.sortArtist')}</span>
-          <span>{t('library.sortAlbum')}</span>
-          <span className="tr-duration">{t('library.sortDuration')}</span>
+          {([['title', 'library.sortTitle'], ['artist', 'library.sortArtist'], ['album', 'library.sortAlbum']] as const).map(
+            ([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                className={`track-head-btn${sort === key ? ' active' : ''}`}
+                onClick={() => setSort(key)}
+                aria-pressed={sort === key}
+              >
+                {t(label)}
+                {sort === key ? ' ◆' : ''}
+              </button>
+            ),
+          )}
+          <button
+            type="button"
+            className={`track-head-btn tr-duration${sort === 'duration' ? ' active' : ''}`}
+            onClick={() => setSort('duration')}
+            aria-pressed={sort === 'duration'}
+          >
+            {t('library.sortDuration')}
+            {sort === 'duration' ? ' ◆' : ''}
+          </button>
           <span />
         </div>
       )}
@@ -253,7 +277,7 @@ export function LibraryPage() {
                         <i /><i /><i />
                       </span>
                     ) : (
-                      <span className="art-glyph">{track.hasArtwork ? '▣' : '♪'}</span>
+                      <ArtworkThumb trackId={track.id} hasArtwork={track.hasArtwork} />
                     )}
                     <button
                       className="tr-play"
