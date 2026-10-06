@@ -74,6 +74,11 @@ export function NowPlayingPage() {
 
   return (
     <section className="now-playing" aria-label={t('nav.nowPlaying')}>
+      {artwork.kind === 'loaded' && (
+        <div className="np-ambient" aria-hidden>
+          <img src={artwork.dataUrl} alt="" />
+        </div>
+      )}
       <div className="np-artwork" role="img" aria-label="artwork">
         {artwork.kind === 'loading' && <div className="artwork-loading skeleton" aria-busy />}
         {artwork.kind === 'loaded' && <img className="artwork-img" src={artwork.dataUrl} alt="" />}

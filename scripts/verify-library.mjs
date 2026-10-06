@@ -109,6 +109,32 @@ const run = async () => {
     // L-13 库统计精确值（library_stats 列名 bug 回归：曾恒 0）
     line('L13', after.tracks === 7 && after.artists === 3 && after.albums === 1,
       `stats 精确值：tracks=${after.tracks}(7) artists=${after.artists}(3) albums=${after.albums}(1)`);
+
+    // L-14 封面缩略图列（M13.2）：5 个带封面 fixture → 曲库可视行渲染 <img>
+    await inv('library_list', { sort: 'title', limit: 50, offset: 0 });
+    const { ws: ws2, evalJs } = await (async () => connectCdp(9223))();
+    try {
+      await evalJs("[...document.querySelectorAll('.nav-btn,.side-btn')].find(b=>b.textContent.includes('音乐库')||b.textContent.includes('Library'))?.click()");
+      await sleep(1200);
+      const thumbs = await evalJs("document.querySelectorAll('.track-list .tr-art-img').length");
+      const thumbCount = Number(thumbs?.result?.value ?? 0);
+      line('L14', thumbCount >= 4, `封面缩略图列：${thumbCount} 个 <img>（≥4，5 带封面 fixture）`);
+
+      // L-15 沉浸模糊背景（M13.2）：播放带封面曲目 → 正在播放页 .np-ambient
+      if (v23) {
+        await inv('play_track', { trackId: v23.id });
+        await sleep(1800);
+        await evalJs("[...document.querySelectorAll('.nav-btn,.side-btn')].find(b=>b.textContent.includes('正在播放')||b.textContent.includes('Now Playing'))?.click()");
+        await sleep(600);
+        const ambient = await evalJs("!!document.querySelector('.np-ambient img')");
+        line('L15', ambient?.result?.value === true, `沉浸封面背景 .np-ambient：${ambient?.result?.value}`);
+        await inv('stop', {});
+      } else {
+        line('L15', 'skip', '无 v23 fixture');
+      }
+    } finally {
+      try { ws2?.close(); } catch { /* 已断开 */ }
+    }
   } finally {
     try {
       ws?.close();
