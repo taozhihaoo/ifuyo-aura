@@ -39,10 +39,6 @@ fn probe(path: &str) {
     }
 }
 
-fn n_frames_zero(n: u64) -> bool {
-    n == 0
-}
-
 fn main() {
     for p in std::env::args().skip(1) {
         probe(&p);

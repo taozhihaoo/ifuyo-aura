@@ -379,6 +379,28 @@ pub fn open_decoder(
     Ok((boxed, duration))
 }
 
+/// M15a：CUE 子轨打开——整轨解码器包装到 [start, start+duration) 帧区间
+/// （EOF/时长/seek 全部在子轨坐标系内；时长直接来自 CUE，秒）。
+///
+/// # Errors
+/// 文件打开/探测失败（同 [`open_decoder`]）。
+pub fn open_decoder_sub(
+    path: &Path,
+    start_seconds: f64,
+    duration_seconds: f64,
+) -> Result<(Box<dyn aura_core::decoder::Decoder>, Option<f64>), String> {
+    let (base, _) = open_decoder(path)?;
+    let rate = f64::from(base.format().sample_rate.get());
+    let start_frame = (start_seconds * rate) as u64;
+    let total_frames = (duration_seconds * rate) as u64;
+    let wrapped = Box::new(aura_core::SubRangeDecoder::new(
+        base,
+        start_frame,
+        total_frames,
+    )) as Box<dyn aura_core::decoder::Decoder>;
+    Ok((wrapped, Some(duration_seconds)))
+}
+
 #[allow(dead_code)]
 const _: () = {
     const fn assert_send_sync<T: Send + Sync>() {}

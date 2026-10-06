@@ -142,10 +142,17 @@ fn from_source_err(e: aura_sources::error::SourceError) -> AppError {
 /// §93：双击曲目 → application layer 解析 Track → Source → Audio Core。
 #[tauri::command]
 pub fn play_track(state: State<'_, AppState>, track_id: i64) -> CmdResult<()> {
-    let path = state
+    let mut path = state
         .library
         .track_path(track_id)
         .map_err(|e| from_err("TRACK_UNAVAILABLE", e, true))?;
+    // M15a：CUE 子轨（合成路径 file#NN）→ 真实文件路径 + 偏移区间
+    let cue = track_cue_range(&state, track_id);
+    if cue.is_some() {
+        if let Some((real, _)) = path.rsplit_once('#') {
+            path = real.to_string();
+        }
+    }
     // §41/§42：应用层提供 M3 真实 metadata（SMTC 不自查 SQLite）。
     let meta = state.library.service.lock().ok().and_then(|service| {
         service
@@ -161,7 +168,20 @@ pub fn play_track(state: State<'_, AppState>, track_id: i64) -> CmdResult<()> {
                 artwork_id: t.artwork_id.map(|a| a.0),
             })
     });
-    play_input_impl(state, path, meta).map(|_| ())
+    play_input_impl(state, path, meta, cue).map(|_| ())
+}
+
+/// M15a：曲目 CUE 子轨区间（cue_start/cue_duration 双非空才有效）。
+fn track_cue_range(state: &AppState, track_id: i64) -> Option<(f64, f64)> {
+    let service = state.library.service.lock().ok()?;
+    let conn = service.database().connection();
+    conn.query_row(
+        "SELECT cue_start_seconds, cue_duration_seconds FROM tracks WHERE id = ?1",
+        [track_id],
+        |r| Ok(r.get::<_, Option<f64>>(0)?.zip(r.get::<_, Option<f64>>(1)?)),
+    )
+    .ok()
+    .flatten()
 }
 
 /// M13.1：Local 源无元数据时的标题回退——文件名 stem
@@ -180,13 +200,14 @@ fn local_stem_title(path: &str) -> Option<String> {
 /// Local Source 分支处理（存在性/扩展名校验在 Rust 侧，§192）。
 #[tauri::command]
 pub fn play_input(state: State<'_, AppState>, input: String) -> CmdResult<String> {
-    play_input_impl(state, input, None)
+    play_input_impl(state, input, None, None)
 }
 
 fn play_input_impl(
     state: State<'_, AppState>,
     input: String,
     known_meta: Option<crate::integration::CurrentTrackMeta>,
+    cue: Option<(f64, f64)>,
 ) -> CmdResult<String> {
     let resolved = aura_sources::resolver::resolve_input(&input, &state.http, &state.blocklist)
         .map_err(from_source_err)?;
@@ -207,8 +228,14 @@ fn play_input_impl(
                 .first()
                 .map(|s| s.url.clone())
                 .unwrap_or_else(|| input.clone());
-            let (decoder, duration_seconds) = audio::open_decoder(std::path::Path::new(&path))
-                .map_err(|e| AppError::new("UNSUPPORTED_SOURCE", e.to_string(), true))?;
+            // M15a：CUE 子轨经子区间解码器打开（时长取 CUE 声明值）
+            let (decoder, duration_seconds) = if let Some((st, dur)) = cue {
+                audio::open_decoder_sub(std::path::Path::new(&path), st, dur)
+                    .map_err(|e| AppError::new("UNSUPPORTED_SOURCE", e.to_string(), true))?
+            } else {
+                audio::open_decoder(std::path::Path::new(&path))
+                    .map_err(|e| AppError::new("UNSUPPORTED_SOURCE", e.to_string(), true))?
+            };
             // M13.1：无元数据时标题回退文件名 stem（曲库 UI fileBaseName 同口径）。
             let title = title.or_else(|| local_stem_title(&path));
             state

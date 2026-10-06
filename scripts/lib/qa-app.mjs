@@ -21,7 +21,9 @@ export async function startApp({ cdpPort = 9223, dataDir } = {}) {
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${cdpPort}`,
     },
   });
-  child.stderr.on('data', () => {}); // 探针日志不刷屏；需要时手动跑可见
+  child.stderr.on('data', (d) => {
+    if (process.env.AURA_QA_STDERR) process.stderr.write(d);
+  });
   // 等 CDP 就绪（最多 30s）
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
