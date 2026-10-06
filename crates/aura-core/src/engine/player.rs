@@ -426,8 +426,15 @@ impl Engine {
     fn apply_command(&mut self, cmd: AudioCommand) {
         match cmd {
             AudioCommand::Play => match self.state {
-                PlaybackState::Stopped | PlaybackState::Paused => {
+                // 无曲目时拒绝 Play：否则 Playing + 空 ring 持续 underrun
+                // 静音而位置照常推进（UI 计时器走字、显示可暂停的假播放态；
+                // 用户报告"没有歌播放时计时器在走"）。Stop 后 decoder 保留
+                // （归零重播语义），此处不受影响。
+                PlaybackState::Stopped | PlaybackState::Paused if self.decoder.is_some() => {
                     self.state = PlaybackState::Playing;
+                }
+                PlaybackState::Stopped | PlaybackState::Paused => {
+                    self.invalid_commands += 1;
                 }
                 PlaybackState::Playing => {}
             },

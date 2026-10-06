@@ -443,3 +443,46 @@ fn seek_converts_output_frames_to_source_rate() {
         "重采样源的 seek 必须生效（帧空间换算）"
     );
 }
+
+#[test]
+fn play_without_track_is_rejected_no_phantom_clock() {
+    // 无曲目时 Play 被拒（M13.1 用户报告"没有歌播放时计时器在走"）：
+    // 此前 Play 无条件切 Playing——空 ring 持续 underrun 静音而位置
+    // 照常推进（假播放时钟）。修复后保持 Stopped、位置不动、静音。
+    let (mut engine, mut poster) = Engine::new(
+        SampleRate::new(RATE).unwrap(),
+        Channels::new(2).unwrap(),
+        8192,
+    )
+    .unwrap();
+    engine.reserve_capture(48_000 * 2);
+    poster.post(AudioCommand::Play).unwrap();
+    engine.fill_and_process();
+    let _ = engine.render_for_frames(CHUNK as u64 * 4);
+    assert_eq!(
+        engine.state(),
+        PlaybackState::Stopped,
+        "无曲目 Play 必须被拒绝"
+    );
+    assert_eq!(engine.position_frames(), 0, "不得假推进位置");
+    assert!(engine.capture().iter().all(|s| *s == 0.0), "无曲目必须静音");
+
+    // 装载曲目后 Play 正常（Stop 后重播场景不受影响）。
+    engine
+        .load_track(Box::new(SyntheticDecoder::new(
+            RATE,
+            2,
+            u64::from(RATE),
+            512,
+            Waveform::Sine {
+                freq_hz: 440.0,
+                amplitude: 0.8,
+            },
+        )))
+        .unwrap();
+    poster.post(AudioCommand::Play).unwrap();
+    engine.fill_and_process();
+    let _ = engine.render_for_frames(CHUNK as u64 * 4);
+    assert_eq!(engine.state(), PlaybackState::Playing);
+    assert_eq!(engine.position_frames(), (CHUNK * 4) as u64);
+}
