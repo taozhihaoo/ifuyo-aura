@@ -84,6 +84,21 @@ def main() -> None:
     lrc_lines = ["[ti:Fixture曲目]", "[00:00.50]第一句", "[00:01.50]第二句", "[00:02.50]第三句", "[00:03.50]第四句"]
     (OUT / "fixture-lrc.lrc").write_text(chr(10).join(lrc_lines) + chr(10), encoding="utf-8")
 
+    # 7.4) CUE 整轨对：12s FLAC + 6 子轨 ×2s 的同名 .cue
+    run(*audio_args(12), *out_opts,
+        "-metadata", "album=CUE合集",
+        "-c:a", "flac",
+        str(OUT / "fixture-cue.flac"))
+    cue_lines = ["PERFORMER \"测试艺术家\"", "TITLE \"CUE合集\"",
+                 "FILE \"fixture-cue.flac\" WAVE"]
+    titles = ["轨道一", "轨道二", "轨道三", "轨道四", "轨道五", "轨道六"]
+    for i, name in enumerate(titles):
+        mm, ss = divmod(i * 2, 60)
+        cue_lines.append(f"  TRACK {i + 1:02d} AUDIO")
+        cue_lines.append(f"    TITLE \"{name}\"")
+        cue_lines.append(f"    INDEX 01 {mm:02d}:{ss:02d}:00")
+    (OUT / "fixture-cue.cue").write_text(chr(10).join(cue_lines) + chr(10), encoding="utf-8")
+
     # 7.5) GBK 乱码标题载体（有封面；标题随后由 set_tag_latin1 覆盖）
     run(*audio_args(3), *cover_map, *out_opts, *meta,
         "-c:a", "libmp3lame", "-b:a", "128k", "-id3v2_version", "3",

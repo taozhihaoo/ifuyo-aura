@@ -109,8 +109,8 @@ const run = async () => {
     line('L12', after.tracks === before.tracks, `重扫幂等：${before.tracks} → ${after.tracks}`);
 
     // L-13 库统计精确值（library_stats 列名 bug 回归：曾恒 0）
-    line('L13', after.tracks === 12 && after.artists === 3 && after.albums === 1,
-      `stats 精确值：tracks=${after.tracks}(12) artists=${after.artists}(3) albums=${after.albums}(1)`);
+    line('L13', after.tracks === 19 && after.artists === 3 && after.albums === 3,
+      `stats 精确值：tracks=${after.tracks}(19) artists=${after.artists}(3) albums=${after.albums}(3)`);
 
     // L-14 封面缩略图列（M13.2）：5 个带封面 fixture → 曲库可视行渲染 <img>
     await inv('library_list', { sort: 'title', limit: 50, offset: 0 });
@@ -176,10 +176,29 @@ const run = async () => {
       }
       line('L19', fmtResults.every((r) => r.includes('OK@')), `新格式播放矩阵 ${fmtResults.join(' | ')}`);
 
+      const s2fresh = await inv('library_list', { sort: 'title', limit: 50, offset: 0 });
+      // L21/L22 CUE 整轨（M15a）：虚拟子轨入库 + 子轨播放坐标
+      const cueRows = s2fresh.filter((x) => x.path && x.path.includes('fixture-cue.flac#'));
+      line('L21', cueRows.length === 6 && cueRows.some((r) => r.title === '轨道三'),
+        `CUE 虚拟子轨：${cueRows.length} 条（应 6）｜全部路径尾部=${s2fresh.map((x) => x.path?.split(/[\/]/).pop()).join(', ')}`);
+      const cue3 = cueRows.find((r) => r.title === '轨道三');
+      if (cue3) {
+        await inv('play_track', { trackId: cue3.id });
+        await sleep(1200);
+        const st = await inv('player_snapshot', {});
+        const posOk = st.positionSeconds >= 0.9 && st.positionSeconds <= 2.0;
+        const durOk = Math.abs(st.durationSeconds - 2) < 0.1;
+        line('L22', st.state === 'playing' && posOk && durOk,
+          `CUE 子轨播放：state=${st.state} pos=${st.positionSeconds.toFixed(2)}（子轨内 0.9-2.0）dur=${st.durationSeconds?.toFixed(2)}（应 ≈2.0）`);
+        await inv('stop', {});
+      } else {
+        line('L22', 'skip', '无 轨道三');
+      }
+
       // L20 GBK 乱码标题修复（M15a）：扫描时 Latin-1→GBK 启发式恢复
       const gbk = s.find((x) => x.path && x.path.endsWith('fixture-gbk.mp3'));
-      const s2fresh = await inv('library_list', { sort: 'title', limit: 50, offset: 0 });
       const gbkFresh = s2fresh.find((x) => x.path && x.path.endsWith('fixture-gbk.mp3'));
+      void gbk;
       line('L20', !!gbkFresh && gbkFresh.title === '周杰伦',
         `GBK 乱码修复：title=${gbkFresh?.title}（应为 周杰伦；修复前=${gbk?.title?.slice(0, 8)}…）`);
     } finally {
