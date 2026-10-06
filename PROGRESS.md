@@ -596,3 +596,21 @@ vitest 95（+1 clearQueue 反馈断言）/CDP 实测：模式 toast 文案出现
 ### Known Limitations / 后续轮次
 - 表头暂不可点排序（排序仍走下拉）——点表头排序留待下轮
 - 封面模糊背景/主色沉浸、歌词（LRC/ID3）、封面真实缩略图列 = 第二/三轮
+
+## M13.2 第二轮（2026-10-07）——封面与沉浸感（对齐 QQ 音乐）
+
+**状态 = PASS（vitest 100 + verify-library 15/15 含 L14/L15 新断言 + 截图目测）**
+
+### Implemented
+- **曲库封面真实缩略图列**：artworkCache（Map+负缓存+并发去重+512 FIFO+library-changed 全量失效，vitest×5）；ArtworkThumb 32px 组件仅对 hasArtwork 行发 IPC、虚拟列表可视行自然限流；▣ 字符占位退役（无封面=♪）
+- **正在播放封面模糊沉浸背景**：当前封面 blur(72px)+saturate(1.25)+scale(1.35) 铺满+径向暗化遮罩+600ms 淡入（QQ 式 ambient）；无封面回退 Aurora；页面内容 z-index 提层
+- **表头按钮化排序**：标题/艺术家/专辑/时长点击切换字段+活动列 ◆；下拉排序保留（year/dateAdded 仍走下拉）
+
+### 验证
+verify-library L14（5 个带封面 fixture → 5 个 `<img>` 渲染）/L15（播放后 .np-ambient 渲染）新增，15/15；截图目测 ambient 光晕生效（fixture 纯色封面=蓝晕，真实封面更丰富）
+
+### Known Limitations / 后续
+- 表头排序暂无方向反转（后端 SortKey 无 desc——需后端扩展）
+- 封面主色驱动 Aurora 渐变（进阶沉浸）未做
+- 歌词（LRC/ID3 USLT）= 第三轮，开始前定 lofty crate vs 自研解析
+- 教训：缩略图功能提交前忘跑 tauri build，旧 exe 使 verify-library L14/L15 假 FAIL——QA 前必须确认 exe 与源码同代
