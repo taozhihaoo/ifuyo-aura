@@ -144,7 +144,27 @@ export const ipc = {
     import('@tauri-apps/api/event').then(({ listen }) =>
       listen('track-ended', () => cb()),
     ),
+  // ---- M13.3 歌词/元数据 ----
+  lyricsForTrack: (trackId: number) =>
+    call<LyricsDto | null>('lyrics_for_track', { trackId }),
+  trackMeta: (trackId: number) =>
+    call<TrackMetaDto>('track_meta', { trackId }),
 };
+
+/** 歌词行：timeSeconds=null = 无时间戳（纯文本）。 */
+export interface LyricLineDto {
+  timeSeconds: number | null;
+  text: string;
+}
+export interface LyricsDto {
+  synced: boolean;
+  lines: LyricLineDto[];
+}
+export interface TrackMetaDto {
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+}
 
 export function isDreamscapeStateDto(v: unknown): v is DreamscapeStateDto {
   return isDreamscapeState(v);

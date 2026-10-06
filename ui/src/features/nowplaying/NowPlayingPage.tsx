@@ -13,7 +13,8 @@ import {
   usePlayMode,
   type PlayMode,
 } from '../queue/QueueDrawer';
-import { toast } from '../../state/stores';
+import { toast, useSettingsStore } from '../../state/stores';
+import type { LyricsDto, TrackMetaDto } from '../../ipc/client';
 
 const MODE_ICON: Record<PlayMode, string> = {
   order: '→',
@@ -71,14 +72,58 @@ export function NowPlayingPage() {
   // §35–§37：当前 track 的真实 artwork（path → id → data URL；M13.1 提取共用）。
   const trackId = useCurrentTrackId();
   const artwork = useArtwork(trackId);
+  const [lyrics, setLyrics] = useState<LyricsDto | null>(null);
+  const [meta, setMeta] = useState<TrackMetaDto | null>(null);
+  const lyricListRef = useRef<HTMLDivElement>(null);
+
+  // M13.3：歌词 + 元数据随曲目加载（无歌词 → meta 回退面板）。
+  useEffect(() => {
+    setLyrics(null);
+    setMeta(null);
+    if (trackId === null) return;
+    let alive = true;
+    void ipc
+      .lyricsForTrack(trackId)
+      .then((l) => {
+        if (alive) setLyrics(l);
+      })
+      .catch(() => undefined);
+    void ipc
+      .trackMeta(trackId)
+      .then((m) => {
+        if (alive) setMeta(m);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [trackId]);
+
+  // M13.3：当前歌词行（最后一个 time<=当前进度的行）+ 平滑居中滚动。
+  let activeIdx = -1;
+  if (lyrics?.synced) {
+    lyrics.lines.forEach((l, i) => {
+      if (l.timeSeconds !== null && l.timeSeconds <= displayPos) activeIdx = i;
+    });
+  }
+  useEffect(() => {
+    if (activeIdx < 0) return;
+    const el = lyricListRef.current?.querySelector(`[data-line="${activeIdx}"]`);
+    const reduced = useSettingsStore.getState().reducedMotion;
+    el?.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
+  }, [activeIdx]);
 
   return (
-    <section className="now-playing" aria-label={t('nav.nowPlaying')}>
+    <section
+      className={`now-playing${lyrics ? ' has-lyrics' : ''}`}
+      aria-label={t('nav.nowPlaying')}
+    >
       {artwork.kind === 'loaded' && (
         <div className="np-ambient" aria-hidden>
           <img src={artwork.dataUrl} alt="" />
         </div>
       )}
+      <div className="np-stage">
       <div className="np-artwork" role="img" aria-label="artwork">
         {artwork.kind === 'loading' && <div className="artwork-loading skeleton" aria-busy />}
         {artwork.kind === 'loaded' && <img className="artwork-img" src={artwork.dataUrl} alt="" />}
@@ -91,6 +136,11 @@ export function NowPlayingPage() {
           {snapshot?.title?.trim() || (snapshot?.trackPath ? fileBaseName(snapshot.trackPath) : null) || t('np.noTrack')}
         </h1>
         {!snapshot?.title && <p className="np-hint">{t('np.noTrackHint')}</p>}
+        {(meta?.artist || meta?.album) && (
+          <p className="np-meta-line">
+            {[meta?.artist, meta?.album].filter(Boolean).join(' · ')}
+          </p>
+        )}
       </div>
       <div className="np-progress">
         <span className="time">{fmtTime(displayPos)}</span>
@@ -168,6 +218,38 @@ export function NowPlayingPage() {
           />
         </label>
       </div>
+      </div>
+      {lyrics && (
+        <aside className="np-lyrics" aria-label={t('np.lyrics')}>
+          <div ref={lyricListRef}>
+            {lyrics.lines.map((l, i) => {
+              const synced = l.timeSeconds !== null;
+              return (
+                <p
+                  key={`${i}-${l.text}`}
+                  data-line={i}
+                  className={`np-lyric-line${synced ? ' synced' : ''}${i === activeIdx ? ' active' : ''}`}
+                  onClick={
+                    synced
+                      ? () => {
+                          base.current = {
+                            at: performance.now(),
+                            pos: l.timeSeconds ?? 0,
+                            playing,
+                          };
+                          setDisplayPos(l.timeSeconds ?? 0);
+                          ipc.seek(l.timeSeconds ?? 0).catch(() => undefined);
+                        }
+                      : undefined
+                  }
+                >
+                  {l.text || '♪'}
+                </p>
+              );
+            })}
+          </div>
+        </aside>
+      )}
     </section>
   );
 }
