@@ -23,9 +23,11 @@ export function TitleBar() {
   return (
     <header className="titlebar" data-tauri-drag-region onDoubleClick={onDragRegionDoubleClick}>
       <div className="titlebar-brand" data-tauri-drag-region>
-        ifuyo <span className="brand-accent">Aura</span>
+        ifuyo <span className="brand-accent" data-tauri-drag-region>Aura</span>
       </div>
-      <nav className="titlebar-nav" aria-label="Primary">
+      {/* M13.1：空白容器也标记 drag region——Tauri 只认 mousedown 目标
+          元素自身的属性，flex:1 的 nav 空白此前吞掉了绝大部分拖动区域。 */}
+      <nav className="titlebar-nav" aria-label="Primary" data-tauri-drag-region>
         {(['now-playing', 'library', 'map', 'dreamscape'] as const)
           .filter((v) => v !== 'dreamscape' || DREAMSCAPE_ENABLED)
           .map((v) => (
@@ -47,7 +49,7 @@ export function TitleBar() {
           </button>
         ))}
       </nav>
-      <div className="titlebar-actions">
+      <div className="titlebar-actions" data-tauri-drag-region>
         <button className="icon-btn" onClick={() => setPaletteOpen(true)} aria-label="Ctrl+K" title="Ctrl+K">
           ⌘
         </button>
