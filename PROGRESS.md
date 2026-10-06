@@ -632,3 +632,37 @@ Rust lyrics_tests×6（时间戳排序/多时间戳+offset/纯文本降级/垃�
 - GBK 编码 .lrc 不支持（乱码兜底=视为无歌词）；SYLT 同步歌词标签不做
 - 歌词无缓存（每次播放重读，本地 FS 开销可忽略）
 - 逐字卡拉OK式 LRC（<mm:ss.xx> 词级时间戳）按行级处理
+
+## M15a（2026-10-07）——格式与兼容（音乐管理器升级计划第一期）
+
+**状态 = PASS（verify-library 22/22 + Rust 单测：cue×4/mojibake×5/gbk_lrc×1/title_fallback×3 + workspace 全绿（dns_rebind 既有 flake 隔离绿）+ clippy 0）**
+
+### 1. 格式支持矩阵（symphonia feature 开启）
+- `aac`/`alac`/`isomp4`/`aiff` feature → **M4A(AAC)/ALAC(M4A)/AIFF** 真实解码；扫描器补 aac/aiff 扩展名
+- 此前状态：扫描器已列 m4a/alac 扩展名但解码 feature 未开（扫到放不出=半接线）
+- fixtures：fixture.m4a/fixture-alac.m4a/fixture.aiff；verify L19 播放矩阵（轮询断言 3s 容忍首播初始化）
+- Opus：symphonia 0.6 无 codec（registry 实测），后置
+
+### 2. 编码检测（encoding_rs，已登记 SUPPLY_CHAIN：audit 复扫 0 漏洞/deny 过）
+- **GBK 标签乱码修复**：ID3v2.3 Latin-1 声明按字节透明 → GBK 二次解码；启发式双轨（无错误 + ≥2 CJK 才采用，欧洲语文不命中）；AppSettings.mojibake_fix 默认开（启动/save_settings 同步原子量）+ 设置面板开关（zh/en）
+- **GBK .lrc**：UTF-8 失败按 GBK 解码（M13.3 后置项并入）
+- fixture-gbk.mp3（set_tag_latin1 示例写 Latin-1 形态 GBK 字节标题）+ verify L20：扫描后标题=周杰伦
+
+### 3. CUE 整轨虚拟子轨
+- **cue.rs 解析器**：TRACK/INDEX01/TITLE/PERFORMER/FILE/REM、数据轨排除、sheet 级继承、UTF-8→GBK 回退、≥2 AUDIO 子轨才展开；单测×4
+- **导入**：schema V3（tracks.cue_start/cue_duration_seconds）；import_file 展开虚拟子轨（identity=父#轨道号、合成路径 path#NN、元数据继承、时长=相邻 INDEX 差/文件尾、复用主轨封面）；子轨成功→整轨主行 is_active=0 隐藏
+- **mark_missing 前缀覆盖规则**：`整轨路径#` 开头的合成路径由整轨 seen 覆盖（否则未变化跳过轮子轨被误停用——L21 实测抓出）
+- **SubRangeDecoder**（aura-core）：任意 Decoder 限制到 [start, start+total) 帧区间
+- **播放**：open_decoder_sub（秒×源采样率包装，时长取 CUE 声明）+ play_track 识别合成路径
+- fixture-cue.flac(12s)+.cue（6 子轨×2s 中文标题）+ verify L21/L22
+
+### 4. 过程中抓出的存量 bug
+- **换曲吞掉新曲目播放**（真用户 bug）：play_track 在上一首停止淡出未落地窗口内到达，新 Play 被"淡出中反转"分支吞掉（e79436b）——L19 探针序列实测抓出
+
+### Gates
+fmt/clippy 0/workspace 全绿（dns_rebind 既有 flake 隔离绿）/aura-core 103 + aura-library 52（cue×4+mojibake×5+gbk_lrc×1+cue_import×1 新增）/vitest 100/verify-library **22/22**/tauri build
+
+### Known Limitations
+- GBK .lrc 已支持；SYLT/TTML 不做（口径同 M13.3）
+- CUE 仅 INDEX 01 主起点（pregap 00 忽略）；跨 FILE 多文件 CUE 不支持（单文件整轨主流场景）
+- 子轨 seek 精度受容器 seek 粒度影响（Coarse）；设备选择/输出设备跟随默认设备（M15b/M15c 范围）
