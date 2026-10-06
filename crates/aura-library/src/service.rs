@@ -225,9 +225,10 @@ impl LibraryService {
         }
 
         let tx = self.db.transaction()?;
-        let outcome = repo::import_file(&tx, root_id, path, (self.now_ms)())?;
+        let outcomes = repo::import_file(&tx, root_id, path, (self.now_ms)())?;
         tx.commit()?;
-        Ok(if outcome.created {
+        // CUE 子轨展开（M15a）：任一子轨新建即视为 Created
+        Ok(if outcomes.iter().any(|o| o.created) {
             ImportDelta::Created
         } else {
             ImportDelta::Updated

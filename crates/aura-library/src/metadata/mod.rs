@@ -53,15 +53,15 @@ pub fn from_tagged(tagged: &TaggedFile) -> ParsedFile {
     if let Some(tag) = tag {
         // M15a：Latin-1 声明下的 GBK 乱码恢复（mojibake 模块，设置可关）
         let fix = |v: String| mojibake::fix_mojibake(&v);
-        m.title = opt_display(tag.title()).map(&fix);
-        m.artist = opt_display(tag.artist()).map(&fix);
-        m.album = opt_display(tag.album()).map(&fix);
-        m.genre = opt_display(tag.genre()).map(&fix);
+        m.title = opt_display(tag.title()).map(fix);
+        m.artist = opt_display(tag.artist()).map(fix);
+        m.album = opt_display(tag.album()).map(fix);
+        m.genre = opt_display(tag.genre()).map(fix);
         m.album_artist = opt_display(
             tag.get_string(&ItemKey::AlbumArtist)
                 .map(std::borrow::Cow::Borrowed),
         )
-        .map(&fix);
+        .map(fix);
         m.year = tag
             .year()
             .and_then(|y| normalize::parse_year(&y.to_string()));

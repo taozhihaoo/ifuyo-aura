@@ -62,6 +62,10 @@ pub struct TrackMetadata {
     pub codec: Option<String>,
     /// 统一小写短名，如 `flac` / `mpeg` / `ogg` / `riff`。
     pub container: Option<String>,
+    /// M15a CUE 子轨：在整轨文件中的起点（秒）。
+    pub cue_start_seconds: Option<f64>,
+    /// M15a CUE 子轨：时长（秒）。
+    pub cue_duration_seconds: Option<f64>,
 }
 
 impl TrackMetadata {

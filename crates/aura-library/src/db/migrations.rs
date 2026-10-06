@@ -7,7 +7,13 @@ use rusqlite::Connection;
 use crate::error::{LibraryError, Result};
 
 /// 迁移脚本表：`MIGRATIONS[n]` 把数据库从版本 `n` 升到 `n+1`。
-pub const MIGRATIONS: &[&str] = &[super::schema::V1, super::schema::V2];
+pub const MIGRATIONS: &[&str] = &[
+    super::schema::V1,
+    super::schema::V2,
+    // V3（M15a）：CUE 整轨虚拟子轨——tracks 增子轨偏移/时长
+    "ALTER TABLE tracks ADD COLUMN cue_start_seconds REAL;
+     ALTER TABLE tracks ADD COLUMN cue_duration_seconds REAL;",
+];
 
 /// 最新 schema 版本。
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;

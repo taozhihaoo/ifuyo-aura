@@ -25,7 +25,7 @@ pub fn import_file(
     root_id: RootId,
     path: &Path,
     now_ms: i64,
-) -> crate::error::Result<ImportOutcome> {
+) -> crate::error::Result<Vec<ImportOutcome>> {
     let parsed = crate::metadata::parse_file(path)?;
     let file_size = std::fs::metadata(path)
         .map_err(|e| crate::error::LibraryError::Io {
@@ -48,7 +48,7 @@ pub fn import_file(
         .as_ref()
         .map(|a| upsert_artwork(tx, a))
         .transpose()?;
-    upsert_track(
+    let main = upsert_track(
         tx,
         root_id,
         path,
@@ -58,7 +58,85 @@ pub fn import_file(
         file_size,
         modified_ms,
         now_ms,
-    )
+    )?;
+    let mut outcomes = vec![main];
+
+    // M15a CUE 整轨：同名 .cue 且 ≥2 AUDIO 子轨 → 展开为虚拟子轨
+    // （identity = 父身份#轨道号、合成路径 path#NN、偏移/时长入新列）。
+    if let Some(sheet) = crate::cue::load_for_audio(path) {
+        let src_rate = f64::from(parsed.metadata.sample_rate.unwrap_or(44_100).max(1));
+        let file_dur = parsed.metadata.duration_frames.map(|f| f as f64 / src_rate);
+        let parent_artwork: Option<ArtworkId> = tx
+            .query_row(
+                "SELECT artwork_id FROM tracks WHERE id = ?1",
+                params![main.track_id.0],
+                |r| r.get::<_, Option<i64>>(0).map(|a| a.map(ArtworkId)),
+            )
+            .ok()
+            .flatten();
+        for (i, sub) in sheet.subtracks.iter().enumerate() {
+            let start = sub.start_seconds;
+            let duration = match sheet.subtracks.get(i + 1) {
+                Some(next) => (next.start_seconds - start).max(0.0),
+                None => file_dur.map(|d| (d - start).max(0.0)).unwrap_or(0.0),
+            };
+            if duration <= 0.0 {
+                continue;
+            }
+            let ident_sub = TrackIdentity {
+                identity_key: format!("{}#{}", ident.identity_key, sub.number),
+                audio_sig: ident.audio_sig.clone(),
+            };
+            let mut meta = crate::types::TrackMetadata {
+                title: Some(
+                    sub.title
+                        .clone()
+                        .unwrap_or_else(|| format!("Track {:02}", sub.number)),
+                ),
+                artist: sub
+                    .performer
+                    .clone()
+                    .or_else(|| sheet.album_performer.clone()),
+                album: sheet.album.clone(),
+                album_artist: sheet.album_performer.clone(),
+                cue_start_seconds: Some(start),
+                cue_duration_seconds: Some(duration),
+                duration_frames: Some((duration * src_rate) as u64),
+                sample_rate: parsed.metadata.sample_rate,
+                channels: parsed.metadata.channels,
+                codec: parsed.metadata.codec.clone(),
+                container: parsed.metadata.container.clone(),
+                ..crate::types::TrackMetadata::default()
+            };
+            meta.album_artist = meta.album_artist.or_else(|| meta.artist.clone());
+            let synth = format!("{}#{:02}", path.display(), sub.number);
+            let o = upsert_track(
+                tx,
+                root_id,
+                Path::new(&synth),
+                &ParsedFile {
+                    metadata: meta,
+                    artwork: None,
+                    artwork_unavailable: None,
+                },
+                &ident_sub,
+                parent_artwork,
+                file_size,
+                modified_ms,
+                now_ms,
+            )?;
+            outcomes.push(o);
+        }
+        // 子轨展开成功 → 隐藏整轨主行（对标：用户不应看到超长整轨；
+        // identity 保留，删掉 .cue 后重扫即恢复整轨行）。
+        if outcomes.len() > 1 {
+            tx.execute(
+                "UPDATE tracks SET is_active = 0 WHERE id = ?1",
+                params![main.track_id.0],
+            )?;
+        }
+    }
+    Ok(outcomes)
 }
 
 pub fn insert_root(conn: &Connection, path: &str, now_ms: i64) -> crate::error::Result<RootId> {
@@ -445,7 +523,12 @@ pub fn mark_missing(
         .collect::<Result<_, _>>()?;
     drop(stmt);
     for (id, path) in rows {
-        if !seen_paths.contains(&path) {
+        // M15a：CUE 子轨的合成路径（`整轨路径#NN`）由整轨路径覆盖——
+        // 未变化跳过时子轨不在本轮导入产物里，但不应被当作消失停用。
+        let covered = seen_paths
+            .iter()
+            .any(|sp| path.as_str() == sp.as_str() || path.starts_with(&format!("{sp}#")));
+        if !covered {
             tx.execute(
                 "UPDATE track_paths SET is_active = 0 WHERE id = ?1",
                 params![id],
@@ -538,8 +621,9 @@ fn insert_track(
             artist_id, album_id, genre_id, album_artist_id,
             year, track_number, track_total, disc_number, disc_total,
             duration_frames, sample_rate, channels, codec, container,
+            cue_start_seconds, cue_duration_seconds,
             artwork_id, file_size, modified_ms, date_added_ms, last_scanned_ms, is_active
-         ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,1)",
+         ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,1)",
         params![
             identity.identity_key,
             identity.audio_sig,
@@ -559,6 +643,8 @@ fn insert_track(
             m.channels.map(i64::from),
             m.codec,
             m.container,
+            m.cue_start_seconds,
+            m.cue_duration_seconds,
             artwork_id.map(|a| a.0),
             i64::try_from(file_size).unwrap_or(i64::MAX),
             modified_ms,
@@ -592,8 +678,9 @@ fn update_track_fields(
             artist_id = ?5, album_id = ?6, genre_id = ?7, album_artist_id = ?8,
             year = ?9, track_number = ?10, track_total = ?11, disc_number = ?12, disc_total = ?13,
             duration_frames = ?14, sample_rate = ?15, channels = ?16, codec = ?17, container = ?18,
-            artwork_id = ?19, file_size = ?20, modified_ms = ?21, last_scanned_ms = ?22
-         WHERE id = ?23",
+            cue_start_seconds = ?19, cue_duration_seconds = ?20,
+            artwork_id = ?21, file_size = ?22, modified_ms = ?23, last_scanned_ms = ?24
+         WHERE id = ?25",
         params![
             identity.identity_key,
             identity.audio_sig,
@@ -613,6 +700,8 @@ fn update_track_fields(
             m.channels.map(i64::from),
             m.codec,
             m.container,
+            m.cue_start_seconds,
+            m.cue_duration_seconds,
             artwork_id.map(|a| a.0),
             i64::try_from(file_size).unwrap_or(i64::MAX),
             modified_ms,
