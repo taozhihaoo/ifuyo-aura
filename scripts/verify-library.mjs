@@ -17,7 +17,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const run = async () => {
   const fixtures = join(process.cwd(), 'tests', 'fixtures');
-  const files = readdirSync(fixtures).filter((f) => !f.startsWith('_'));
+  const files = readdirSync(fixtures).filter(
+    (f) => !f.startsWith('_') && /\.(mp3|flac|ogg)$/i.test(f),
+  );
   const musicDir = mkdtempSync(join(tmpdir(), 'aura-lib-'));
   cpSync(fixtures, musicDir, { recursive: true });
 
@@ -107,8 +109,8 @@ const run = async () => {
     line('L12', after.tracks === before.tracks, `重扫幂等：${before.tracks} → ${after.tracks}`);
 
     // L-13 库统计精确值（library_stats 列名 bug 回归：曾恒 0）
-    line('L13', after.tracks === 7 && after.artists === 3 && after.albums === 1,
-      `stats 精确值：tracks=${after.tracks}(7) artists=${after.artists}(3) albums=${after.albums}(1)`);
+    line('L13', after.tracks === 8 && after.artists === 3 && after.albums === 1,
+      `stats 精确值：tracks=${after.tracks}(8) artists=${after.artists}(3) albums=${after.albums}(1)`);
 
     // L-14 封面缩略图列（M13.2）：5 个带封面 fixture → 曲库可视行渲染 <img>
     await inv('library_list', { sort: 'title', limit: 50, offset: 0 });
@@ -132,6 +134,19 @@ const run = async () => {
       } else {
         line('L15', 'skip', '无 v23 fixture');
       }
+
+      // L16/L17/L18 歌词（M13.3）：.lrc 优先→USLT 标签→无
+      const lrcTrack = s.find((t) => t.path && t.path.endsWith('fixture-lrc.mp3'));
+      const l16 = lrcTrack ? await inv('lyrics_for_track', { trackId: lrcTrack.id }) : null;
+      line('L16', !!l16 && l16.synced === true && l16.lines.length === 4 && l16.lines[0].text === '第一句',
+        `LRC 歌词：synced=${l16?.synced} lines=${l16?.lines?.length}（应为 4 行时间戳）`);
+      const v23b = s.find((t) => t.path && t.path.endsWith('fixture-id3v2.3.mp3'));
+      const l17 = v23b ? await inv('lyrics_for_track', { trackId: v23b.id }) : null;
+      line('L17', !!l17 && l17.synced === false && l17.lines.length === 3 && l17.lines[0].text === '第一句歌词',
+        `USLT 标签歌词：synced=${l17?.synced} lines=${l17?.lines?.length}（应 3 行纯文本）`);
+      const noneTrack = s.find((t) => t.path && t.path.endsWith('fixture-notags.mp3'));
+      const l18 = noneTrack ? await inv('lyrics_for_track', { trackId: noneTrack.id }) : null;
+      line('L18', l18 === null, `无歌词回退 null：${JSON.stringify(l18)}`);
     } finally {
       try { ws2?.close(); } catch { /* 已断开 */ }
     }

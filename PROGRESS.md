@@ -614,3 +614,21 @@ verify-library L14（5 个带封面 fixture → 5 个 `<img>` 渲染）/L15（�
 - 封面主色驱动 Aurora 渐变（进阶沉浸）未做
 - 歌词（LRC/ID3 USLT）= 第三轮，开始前定 lofty crate vs 自研解析
 - 教训：缩略图功能提交前忘跑 tauri build，旧 exe 使 verify-library L14/L15 假 FAIL——QA 前必须确认 exe 与源码同代
+
+## M13.3 第三轮（2026-10-07）——歌词显示
+
+**状态 = PASS（Rust 单测×6 + verify-library 18/18 含 L16/L17/L18 + DOM 实测：4 行渲染、当前位置高亮、meta 行生效）**
+
+### Implemented
+- **后端 lyrics.rs**：lyrics_for_path——同目录同名 `.lrc` 优先（带时间戳，synced=true）→ lofty `ItemKey::Lyrics` 标签回退（通常纯文本 synced=false）→ None；LRC 解析覆盖多时间戳/offset(毫秒→秒)/元数据行跳过/无时间戳降级/单行损坏不致命；UTF-8/BOM only（GBK 后置需 encoding_rs 供应链审批）；MAX_LYRICS_BYTES=512KB 入 SecurityLimits
+- **IPC**：`lyrics_for_track` + `track_meta`（无歌词回退面板）
+- **前端**：正在播放页左右分栏（有歌词时）——右歌词面板：同步行随进度高亮（rAF 插值位置）+ 平滑居中滚动（reducedMotion 降级）+ 点击行 seek；纯文本静态滚动；无歌词回退"艺术家 · 专辑"meta 行；窄屏上下叠放
+- **取舍落地**：复用依赖树内 lofty 0.22（M3 已引入、M12 已审计）——自研解析零收益；SYLT 不做（lofty 支持弱+罕见）；ffmpeg `lyrics=` 元数据实测不落 USLT 帧 → fixture 用应用同款 lofty 写入（examples/set_uslt，往返一致）
+
+### 验证
+Rust lyrics_tests×6（时间戳排序/多时间戳+offset/纯文本降级/垃圾输入/标签回退/LRC 内容标签）；verify-library L16（LRC synced 4 行）/L17（USLT 3 行）/L18（无歌词 null）+ DOM 实测（pane/4 行/active 第三句@2.7s）+ 截图目测分栏布局
+
+### Known Limitations
+- GBK 编码 .lrc 不支持（乱码兜底=视为无歌词）；SYLT 同步歌词标签不做
+- 歌词无缓存（每次播放重读，本地 FS 开销可忽略）
+- 逐字卡拉OK式 LRC（<mm:ss.xx> 词级时间戳）按行级处理
