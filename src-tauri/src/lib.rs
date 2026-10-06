@@ -57,6 +57,8 @@ pub fn run() {
             .map_err(|e| format!("audio init failed: {e}"))?;
             let library = library::LibraryState::open(&data_dir)?;
             let settings = library.settings.lock().expect("settings").clone();
+            // M15a：标签乱码修复开关（扫描线程读取原子量）。
+            aura_library::metadata::mojibake::set_mojibake_fix(settings.mojibake_fix);
             // 启动即应用持久化设置（§114/§155 启动优先级 3）。
             let _ = audio.send(audio::Control::SetCrossfade(settings.crossfade_seconds));
             let _ = audio.send(audio::Control::SetLoudness(settings.loudness_enabled));

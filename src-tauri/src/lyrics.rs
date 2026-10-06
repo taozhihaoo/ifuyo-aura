@@ -58,7 +58,17 @@ fn read_lrc(path: &str) -> Option<Lyrics> {
     if content.len() > security_limits::SecurityLimits::MAX_LYRICS_BYTES {
         return None;
     }
-    let text = String::from_utf8(content).ok()?;
+    // UTF-8 优先；失败按 GBK 解码（老歌词文件常见，M15a；仍失败=无歌词）
+    let text = match String::from_utf8(content.clone()) {
+        Ok(t) => t,
+        Err(_) => {
+            let (decoded, _, had_errors) = encoding_rs::GBK.decode(&content);
+            if had_errors {
+                return None;
+            }
+            decoded.into_owned()
+        }
+    };
     parse_lrc(&text)
 }
 
@@ -245,5 +255,29 @@ mod lyrics_tests {
     fn tag_lyrics_content_that_is_lrc_parses_synced() {
         let l = parse_lrc("[00:01.0]词").unwrap();
         assert!(l.synced);
+    }
+}
+
+#[cfg(test)]
+mod gbk_lrc_tests {
+    use super::*;
+
+    #[test]
+    fn gbk_lrc_decodes_to_synced_lines() {
+        let text = "[ti:GBK]
+[00:01.00]GBK测试歌词
+";
+        let (bytes, _, _) = encoding_rs::GBK.encode(text);
+        let dir = std::env::temp_dir().join(format!("aura-gbk-lrc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mp3 = dir.join("gbk测试.mp3");
+        let lrc = dir.join("gbk测试.lrc");
+        std::fs::write(&mp3, b"ID3").unwrap(); // 占位（lrc 查找只看路径）
+        std::fs::write(&lrc, &bytes).unwrap();
+        let l = lyrics_for_path(mp3.to_str().unwrap());
+        std::fs::remove_dir_all(&dir).ok();
+        let l = l.expect("GBK lrc 应解码成功");
+        assert!(l.synced);
+        assert_eq!(l.lines[0].text, "GBK测试歌词");
     }
 }

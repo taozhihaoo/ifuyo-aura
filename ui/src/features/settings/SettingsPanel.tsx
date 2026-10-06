@@ -57,6 +57,7 @@ export function SettingsPanel() {
     language?: string;
     uiScale?: number;
     reducedMotion?: boolean;
+    mojibakeFix?: boolean;
     loudnessEnabled?: boolean;
     crossfadeSeconds?: number;
     eqEnabled?: boolean;
@@ -70,6 +71,7 @@ export function SettingsPanel() {
       uiScale: patch.uiScale ?? s.uiScale,
       updatesAutoCheck: patch.updatesAutoCheck ?? s.updatesAutoCheck,
       reducedMotion: patch.reducedMotion ?? s.reducedMotion,
+      mojibakeFix: patch.mojibakeFix ?? s.mojibakeFix,
       loudnessEnabled: patch.loudnessEnabled ?? s.loudnessEnabled,
       crossfadeSeconds: patch.crossfadeSeconds ?? s.crossfadeSeconds,
       eqEnabled: patch.eqEnabled ?? s.eqEnabled,
@@ -199,6 +201,18 @@ export function SettingsPanel() {
             onChange={(e) => {
               s.setAll({ ...s, loudnessEnabled: e.target.checked });
               void ipc.setLoudness(e.target.checked, true).catch(() => undefined);
+            }}
+          />
+        </label>
+
+        <label className="settings-row">
+          <span>{t('settings.mojibake')}</span>
+          <input
+            type="checkbox"
+            checked={s.mojibakeFix}
+            onChange={(e) => {
+              s.setAll({ ...s, mojibakeFix: e.target.checked });
+              persist({ mojibakeFix: e.target.checked });
             }}
           />
         </label>

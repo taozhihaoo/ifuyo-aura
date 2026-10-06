@@ -84,13 +84,28 @@ def main() -> None:
     lrc_lines = ["[ti:Fixture曲目]", "[00:00.50]第一句", "[00:01.50]第二句", "[00:02.50]第三句", "[00:03.50]第四句"]
     (OUT / "fixture-lrc.lrc").write_text(chr(10).join(lrc_lines) + chr(10), encoding="utf-8")
 
+    # 7.5) GBK 乱码标题载体（有封面；标题随后由 set_tag_latin1 覆盖）
+    run(*audio_args(3), *cover_map, *out_opts, *meta,
+        "-c:a", "libmp3lame", "-b:a", "128k", "-id3v2_version", "3",
+        str(OUT / "fixture-gbk.mp3"))
+
     # 8) OGG Vorbis（有标签无封面）
     run(*audio_args(2), *out_opts, *meta,
         "-c:a", "libvorbis", "-q:a", "4",
         str(OUT / "fixture.ogg"))
 
+    # GBK 乱码标题 fixture：Latin-1 形态写入 GBK 原字节（老 MP3 场景），
+    # 扫描 → mojibake 启发式 → 标题恢复"周杰伦"
+    r = subprocess.run(
+        ["cargo", "run", "--quiet", "-p", "aura-library",
+         "--example", "set_tag_latin1", "--",
+         str(OUT / "fixture-gbk.mp3"), "周杰伦"],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        sys.exit(f"set_tag_latin1 失败：{r.stderr[-400:]}")
+
     # USLT：应用同款 lofty 写入（与读取路径往返一致，D-016 工具口径）
-    import subprocess
     r = subprocess.run(
         ["cargo", "run", "--quiet", "-p", "aura-library",
          "--example", "set_uslt", "--",

@@ -54,6 +54,7 @@ export default function App() {
         useSettingsStore.getState().setAll({
           locale: s.language === 'en' ? 'en' : 'zh-CN',
           updatesAutoCheck: s.updatesAutoCheck,
+          mojibakeFix: s.mojibakeFix,
           uiScale: s.uiScale,
           reducedMotion: s.reducedMotion,
           loudnessEnabled: s.loudnessEnabled,

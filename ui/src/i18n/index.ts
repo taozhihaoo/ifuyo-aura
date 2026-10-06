@@ -139,6 +139,7 @@ const zhCN: Record<string, string> = {
   'settings.reducedMotion': '减少动态效果',
   'settings.mica': 'Win11 材质（Mica）',
   'settings.loudness': '响度归一化',
+  'settings.mojibake': '自动修复标签乱码（GBK）',
   'settings.crossfade': '淡入淡出（秒）',
   'settings.eq': '均衡器',
   'settings.eqFlat': '平坦',

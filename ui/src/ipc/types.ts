@@ -44,6 +44,7 @@ export interface AppSettings {
   version: number;
   language: string;
   updatesAutoCheck: boolean;
+  mojibakeFix: boolean;
   uiScale: number;
   reducedMotion: boolean;
   loudnessEnabled: boolean;

@@ -106,6 +106,7 @@ export const useLibraryStore = create<LibraryDomain>((set) => ({
 export interface SettingsState {
   locale: Locale;
   updatesAutoCheck: boolean;
+  mojibakeFix: boolean;
   uiScale: number;
   reducedMotion: boolean;
   loudnessEnabled: boolean;
@@ -117,6 +118,7 @@ export interface SettingsState {
   setAll: (s: {
     locale: Locale;
     updatesAutoCheck: boolean;
+    mojibakeFix: boolean;
     uiScale: number;
     reducedMotion: boolean;
     loudnessEnabled: boolean;
@@ -133,6 +135,7 @@ export interface SettingsState {
 export const useSettingsStore = create<SettingsState>((set) => ({
   locale: 'zh-CN',
   updatesAutoCheck: true,
+  mojibakeFix: true,
   uiScale: 1.0,
   reducedMotion: false,
   loudnessEnabled: false,

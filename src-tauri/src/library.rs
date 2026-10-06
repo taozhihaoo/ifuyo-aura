@@ -43,6 +43,9 @@ pub struct AppSettings {
     /// M11 §84：自动检查更新（默认 true；非阻塞、无遥测 §8/§44）。
     #[serde(default = "default_true")]
     pub updates_auto_check: bool,
+    /// M15a：Latin-1 声明下 GBK 标签乱码自动修复（默认开；双轨防误判）。
+    #[serde(default = "default_true")]
+    pub mojibake_fix: bool,
     #[serde(default = "default_scale")]
     pub ui_scale: f32,
     #[serde(default)]
@@ -78,6 +81,7 @@ impl Default for AppSettings {
             version: 1,
             language: default_language(),
             updates_auto_check: true,
+            mojibake_fix: true,
             ui_scale: default_scale(),
             reduced_motion: false,
             loudness_enabled: false,

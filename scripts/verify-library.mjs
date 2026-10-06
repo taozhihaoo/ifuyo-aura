@@ -109,8 +109,8 @@ const run = async () => {
     line('L12', after.tracks === before.tracks, `重扫幂等：${before.tracks} → ${after.tracks}`);
 
     // L-13 库统计精确值（library_stats 列名 bug 回归：曾恒 0）
-    line('L13', after.tracks === 11 && after.artists === 3 && after.albums === 1,
-      `stats 精确值：tracks=${after.tracks}(11) artists=${after.artists}(3) albums=${after.albums}(1)`);
+    line('L13', after.tracks === 12 && after.artists === 3 && after.albums === 1,
+      `stats 精确值：tracks=${after.tracks}(12) artists=${after.artists}(3) albums=${after.albums}(1)`);
 
     // L-14 封面缩略图列（M13.2）：5 个带封面 fixture → 曲库可视行渲染 <img>
     await inv('library_list', { sort: 'title', limit: 50, offset: 0 });
@@ -175,6 +175,13 @@ const run = async () => {
         await sleep(400);
       }
       line('L19', fmtResults.every((r) => r.includes('OK@')), `新格式播放矩阵 ${fmtResults.join(' | ')}`);
+
+      // L20 GBK 乱码标题修复（M15a）：扫描时 Latin-1→GBK 启发式恢复
+      const gbk = s.find((x) => x.path && x.path.endsWith('fixture-gbk.mp3'));
+      const s2fresh = await inv('library_list', { sort: 'title', limit: 50, offset: 0 });
+      const gbkFresh = s2fresh.find((x) => x.path && x.path.endsWith('fixture-gbk.mp3'));
+      line('L20', !!gbkFresh && gbkFresh.title === '周杰伦',
+        `GBK 乱码修复：title=${gbkFresh?.title}（应为 周杰伦；修复前=${gbk?.title?.slice(0, 8)}…）`);
     } finally {
       try { ws2?.close(); } catch { /* 已断开 */ }
     }

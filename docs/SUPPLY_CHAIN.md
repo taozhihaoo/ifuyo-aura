@@ -5,6 +5,7 @@
 | 工具 | 范围 | 结果 | 分类 |
 | --- | --- | --- | --- |
 | cargo audit 0.18.5 | Cargo.lock 608 crates | **0 vulnerabilities**；3 warnings（paste/proc-macro-error unmaintained=传递构建宏依赖；glib unsound=Linux GTK 栈，Windows 产物不含） | 无 P0；warnings 接受（无漏洞、无 Windows 影响） |
+| M15a 新增 encoding_rs 0.8（aura-library+src-tauri：GBK 标签/歌词修复） | Cargo.lock 614 crates | cargo audit 复扫 **0 vulnerabilities**、3 warnings 同前（既有）；deny licenses/bans/sources 过 | WHATWG 编码标准实现、mozilla 维护、无 unsafe 传递；新增流程按 §378 核对（license Apache-2.0/MIT，纯 Rust，无 MSRV/binary 异常） |
 | cargo deny check | advisories/bans/licenses/sources | 全 ok | — |
 | npm audit | ui 依赖树 | 5 项（1 critical/1 high/3 moderate）——**全部 dev 工具链**（vite/vitest/esbuild/@vitest/mocker），不进 Tauri 产物 | 见下分类 |
 

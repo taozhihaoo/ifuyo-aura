@@ -34,6 +34,8 @@ pub struct ParsedFile {
 /// # Errors
 /// 打不开/不可识别为音频/属性读取失败 → [`LibraryError::Metadata`]
 /// （调用方按单文件失败处理，扫描继续）。
+pub mod mojibake;
+
 pub fn parse_file(path: &Path) -> Result<ParsedFile> {
     let tagged = lofty::read_from_path(path).map_err(|e| LibraryError::Metadata {
         path: path.to_path_buf(),
@@ -49,14 +51,17 @@ pub fn from_tagged(tagged: &TaggedFile) -> ParsedFile {
 
     let mut m = TrackMetadata::default();
     if let Some(tag) = tag {
-        m.title = opt_display(tag.title());
-        m.artist = opt_display(tag.artist());
-        m.album = opt_display(tag.album());
-        m.genre = opt_display(tag.genre());
+        // M15a：Latin-1 声明下的 GBK 乱码恢复（mojibake 模块，设置可关）
+        let fix = |v: String| mojibake::fix_mojibake(&v);
+        m.title = opt_display(tag.title()).map(&fix);
+        m.artist = opt_display(tag.artist()).map(&fix);
+        m.album = opt_display(tag.album()).map(&fix);
+        m.genre = opt_display(tag.genre()).map(&fix);
         m.album_artist = opt_display(
             tag.get_string(&ItemKey::AlbumArtist)
                 .map(std::borrow::Cow::Borrowed),
-        );
+        )
+        .map(&fix);
         m.year = tag
             .year()
             .and_then(|y| normalize::parse_year(&y.to_string()));
