@@ -17,6 +17,7 @@ import { CommandPalette } from './features/palette/CommandPalette';
 import { AuroraCanvas } from './visual/AuroraCanvas';
 import { SettingsPanel } from './features/settings/SettingsPanel';
 import { QueueDrawer } from './features/queue/QueueDrawer';
+import { PlayerBar } from './features/playerbar/PlayerBar';
 import { isMiniPlayer, MiniPlayer, useMiniPlayerOpener } from './windows/MiniPlayer';
 import { translate } from './i18n';
 
@@ -218,6 +219,8 @@ export default function App() {
             Dreamscape 自带画布与 CSS fallback，无需占位背景。 */}
         {view !== 'dreamscape' && <AuroraCanvas />}
       </div>
+      {/* M13.1：常驻播放条（正在播放页已有全尺寸控件，不重复显示） */}
+      {view !== 'now-playing' && <PlayerBar />}
       <CommandPalette />
       <SettingsPanel />
       <QueueDrawer />
