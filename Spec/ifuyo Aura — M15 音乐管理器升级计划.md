@@ -1,10 +1,12 @@
-# ifuyo Aura — M14 音乐管理器升级计划（格式 · 用户资产 · 元数据 · 健康中心）
+# ifuyo Aura — M15 音乐管理器升级计划（格式 · 用户资产 · 元数据 · 健康中心）
 
 > 状态：计划（待用户按期下达执行）
 > 来源：内部差距分析 + 两份外部结论（"结论一"功能清单型 / "结论二"能力簇型）合并裁决，
 > 全部关键判断经本仓库代码事实校准（见 §2 已验证事实）。
-> 编号说明：M13.x 已被界面优化三轮占用（见 PROGRESS）；M13 编号原保留给 Steamworks
-> （待用户提示词）——本计划启用 **M14**，Steamworks 顺延 M15，避免混淆。
+> 编号说明：编号体系已发生占位——M13 = Steamworks（用户保留，待提示词）、
+> M14 = 最终商业化封版/Release 1.0（用户保留提示词已在 Spec）、M13.x = 界面优化三轮
+> （已提交，占用了 M13 号段，见 PROGRESS）。本计划取 **M15**；执行顺序建议
+> **M15（本计划）先于 M14 封版**——音乐管理器补深后再封版，Release 1.0 内容更完整。
 
 ---
 
@@ -41,7 +43,7 @@ Playback  Library   Exploration
 
 ## 3. 分期计划
 
-### M14a 格式与兼容（P0，先行）
+### M15a 格式与兼容（P0，先行）
 
 - [ ] **symphonia feature 开启**：`aac` + `isomp4` + `alac` + `aiff`（F1）——M4A/AAC/ALAC/AIFF
       解码进入支持矩阵；扫描器扩展名、探测、测试矩阵同步
@@ -53,7 +55,7 @@ Playback  Library   Exploration
 - [ ] 验收：真实格式矩阵（M4A/AAC/ALAC/AIFF/整轨+CUE/GBK 标签/GBK lrc）扫描→播放→seek→
       封面全链路 verify；symphonia 无 Opus（F8）如实记录后置
 
-### M14b 用户资产（P0）
+### M15b 用户资产（P0）
 
 - [ ] **Track Memory**：`playback_stats` 扩展（rating/favorite/skip_count/first_played/
       resume_position）+ 记录埋点（播放完成/跳过判定）
@@ -63,7 +65,7 @@ Playback  Library   Exploration
 - [ ] **睡眠定时**（淡出停止）+ **播放时阻止系统睡眠**（SetThreadExecutionState）
 - [ ] 验收：歌单全生命周期 verify + 统计字段入库断言 + 拖放/定时 CDP 实测
 
-### M14c 音乐管理器（P1，覆盖层设计先行）
+### M15c 音乐管理器（P1，覆盖层设计先行）
 
 - [ ] **覆盖层设计先行**（F4，本计划新增的关键前置）：identity 键控的"用户覆盖表"，
       重扫合并策略=编辑字段优先；先出设计文档（DECISIONS）再动工
@@ -76,11 +78,11 @@ Playback  Library   Exploration
       的当前链路可视化（引擎状态已知，纯呈现）
 - [ ] 验收：批量编辑预览/应用/写回/重扫不丢失 E2E；Health 各类异常注入实测
 
-### M14d 体验进阶（P1/P2，依赖前几期）
+### M15d 体验进阶（P1/P2，依赖前几期）
 
 - [ ] **智能歌单**（规则式：流派/年份/**BPM/调性/响度**/rating/play_count——分析特征是
-      独有优势；依赖 M14b 字段）
-- [ ] **文件整理**（Preview→Plan→Apply→Verify 模板移动，绝不直接 Rename；依赖 M14c 覆盖层）
+      独有优势；依赖 M15b 字段）
+- [ ] **文件整理**（Preview→Plan→Apply→Verify 模板移动，绝不直接 Rename；依赖 M15c 覆盖层）
 - [ ] **桌面歌词**（独立置顶+鼠标穿透窗，复用 Mini Player 多窗口管线；歌词面板 M13.3 为数据源）
 - [ ] **Smart Queue / Auto-DJ**（"接下来 20 首不连续同艺术家、优先高评分、BPM/调性连贯"——
       分析+Map 特征闭环，差异化主打）
@@ -112,9 +114,9 @@ Playback  Library   Exploration
 | WASAPI 独占 | P2 | P0 ★★★★★ | **后置**（F2 工程量 vs 受众） |
 | 输出设备选择 | P0 | 未提（只讲独占） | **拆两步**：跟随默认设备（先）/手动指定（consumer 换绑后，F3） |
 | Track Memory/Health/Signal Path/文件整理 | 未展开 | 提出 | **采纳** |
-| 智能歌单 | P1 | P0 | **M14d**（依赖 M14b 字段） |
-| 桌面歌词首批 | 进 6 项 | 提及未排期 | **M14d**（独立窗口成本，非纯 UI） |
-| 队列拖拽/下一首播放/阻止睡眠 | 部分提及 | 均未提 | **纳入 M14b** |
+| 智能歌单 | P1 | P0 | **M15d**（依赖 M15b 字段） |
+| 桌面歌词首批 | 进 6 项 | 提及未排期 | **M15d**（独立窗口成本，非纯 UI） |
+| 队列拖拽/下一首播放/阻止睡眠 | 部分提及 | 均未提 | **纳入 M15b** |
 | 插件/皮肤/Roon 图谱/云生态 | 不追 | 不追 | **一致：不做** |
 
 ## 7. 门禁口径（各期统一）
