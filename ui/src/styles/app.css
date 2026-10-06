@@ -191,6 +191,7 @@
   color: var(--color-text-muted);
 }
 .track-head {
+  box-sizing: border-box; /* 与行同口径：width/padding 含入总宽，列网格严格对齐 */
   display: grid;
   grid-template-columns: 40px 1fr 1fr 1fr 60px 32px;
   gap: 12px;
@@ -204,6 +205,11 @@
 .track-row {
   display: grid;
   grid-template-columns: 40px 1fr 1fr 1fr 60px 32px;
+  /* 虚拟列表行是 absolute 定位——不显式撑满会收缩为内容宽，1fr 列
+     全部塌成 min-content，与全宽表头错位（用户截图实测）。
+     border-box：content-box 下 100%+padding 会让行比表头宽 24px。 */
+  box-sizing: border-box;
+  width: 100%;
   align-items: center;
   gap: 12px;
   padding: 0 12px;
