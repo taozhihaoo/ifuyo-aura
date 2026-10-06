@@ -43,7 +43,8 @@ def main() -> None:
     meta = ["-metadata", "title=Fixture曲目", "-metadata", "artist=测试艺术家",
             "-metadata", "album=加固计划合集", "-metadata", "date=2026"]
 
-    # 1) ID3v2.3 + 内嵌封面
+    # 1) ID3v2.3 + 内嵌封面（USLT 歌词由 lofty 工具后写——ffmpeg lyrics
+    #    元数据实测不落 USLT 帧）
     run(*audio_args(3), *cover_map, *out_opts, *meta,
         "-c:a", "libmp3lame", "-b:a", "128k", "-id3v2_version", "3", "-write_id3v1", "0",
         str(OUT / "fixture-id3v2.3.mp3"))
@@ -76,10 +77,29 @@ def main() -> None:
         "-c:a", "flac",
         str(OUT / "fixture.flac"))
 
-    # 7) OGG Vorbis（有标签无封面）
+    # 7) LRC 对：mp3（无歌词标签）+ 同名 .lrc（时间戳行）
+    run(*audio_args(4), *cover_map, *out_opts, *meta,
+        "-c:a", "libmp3lame", "-b:a", "128k", "-id3v2_version", "3",
+        str(OUT / "fixture-lrc.mp3"))
+    lrc_lines = ["[ti:Fixture曲目]", "[00:00.50]第一句", "[00:01.50]第二句", "[00:02.50]第三句", "[00:03.50]第四句"]
+    (OUT / "fixture-lrc.lrc").write_text(chr(10).join(lrc_lines) + chr(10), encoding="utf-8")
+
+    # 8) OGG Vorbis（有标签无封面）
     run(*audio_args(2), *out_opts, *meta,
         "-c:a", "libvorbis", "-q:a", "4",
         str(OUT / "fixture.ogg"))
+
+    # USLT：应用同款 lofty 写入（与读取路径往返一致，D-016 工具口径）
+    import subprocess
+    r = subprocess.run(
+        ["cargo", "run", "--quiet", "-p", "aura-library",
+         "--example", "set_uslt", "--",
+         str(OUT / "fixture-id3v2.3.mp3"),
+         chr(10).join(["第一句歌词", "第二句歌词", "第三句歌词"])],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        sys.exit(f"set_uslt 失败：{r.stderr[-400:]}")
 
     COVER.unlink(missing_ok=True)
     print(f"fixtures → {OUT}")

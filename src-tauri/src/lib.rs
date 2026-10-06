@@ -9,6 +9,7 @@ pub mod dreamscape;
 pub mod integration;
 pub mod ipc;
 pub mod library;
+pub mod lyrics;
 pub mod map_ipc;
 pub mod security_limits;
 
@@ -152,6 +153,8 @@ pub fn run() {
             ipc::track_id_by_path,
             ipc::play_input,
             ipc::library_stats,
+            ipc::lyrics_for_track,
+            ipc::track_meta,
             dreamscape::dreamscape_state,
             dreamscape::dreamscape_advance,
             dreamscape::dreamscape_manifest,

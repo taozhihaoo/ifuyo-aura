@@ -341,6 +341,7 @@ dependencies = [
  "aura-sources",
  "aura-synth",
  "base64 0.22.1",
+ "lofty",
  "rusqlite",
  "serde",
  "serde_json",

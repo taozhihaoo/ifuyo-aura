@@ -715,3 +715,47 @@ mod title_fallback_tests {
         );
     }
 }
+
+/// M13.3：曲目歌词（.lrc 文件优先 → 标签歌词；无 = null）。
+#[tauri::command]
+pub fn lyrics_for_track(
+    state: State<'_, AppState>,
+    track_id: i64,
+) -> CmdResult<Option<crate::lyrics::Lyrics>> {
+    let path = state
+        .library
+        .track_path(track_id)
+        .map_err(|e| from_err("TRACK_UNAVAILABLE", e, true))?;
+    Ok(crate::lyrics::lyrics_for_path(&path))
+}
+
+/// M13.3：曲目元数据（无歌词时的回退面板；同 play_track 的 M3 元数据口径）。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackMetaDto {
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+}
+
+#[tauri::command]
+pub fn track_meta(state: State<'_, AppState>, track_id: i64) -> CmdResult<TrackMetaDto> {
+    let meta = state
+        .library
+        .service
+        .lock()
+        .map_err(|e| from_err("LIBRARY_DB_UNAVAILABLE", e, true))?
+        .get_track(aura_library::types::TrackId(track_id))
+        .map_err(|e| from_err("LIBRARY_DB_UNAVAILABLE", e, true))?;
+    Ok(meta
+        .map(|t| TrackMetaDto {
+            title: t.title,
+            artist: t.artist,
+            album: t.album,
+        })
+        .unwrap_or(TrackMetaDto {
+            title: None,
+            artist: None,
+            album: None,
+        }))
+}

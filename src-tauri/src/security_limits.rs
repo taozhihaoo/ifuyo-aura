@@ -20,6 +20,8 @@ impl SecurityLimits {
 
     /// §134（M10）：SMTC 元数据字符串上限（chars）。
     pub const MAX_METADATA_CHARS: usize = 256;
+    /// M13.3 歌词文件/标签字节上限（.lrc 或标签歌词超限视为无歌词）。
+    pub const MAX_LYRICS_BYTES: usize = 512 * 1024;
     /// §134：电台/流标题上限（chars）。
     pub const MAX_STATION_CHARS: usize = 128;
 
