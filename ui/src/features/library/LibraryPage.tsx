@@ -7,7 +7,7 @@ import { requestMapFocus } from '../map/mapBus';
 import { ipc } from '../../ipc/client';
 import type { ScanProgress, SortKey, TrackSummary } from '../../ipc/types';
 import { useTranslation } from '../../i18n/react';
-import { formatDuration } from '../../ui/format';
+import { formatDuration, trackTitle } from '../../ui/format';
 import { playWithQueueContext } from '../queue/QueueDrawer';
 
 type LoadState =
@@ -220,6 +220,17 @@ export function LibraryPage() {
         </div>
       )}
 
+      {state.kind === 'ready' && tracks.length > 0 && (
+        <div className="track-head" aria-hidden>
+          <span />
+          <span>{t('library.sortTitle')}</span>
+          <span>{t('library.sortArtist')}</span>
+          <span>{t('library.sortAlbum')}</span>
+          <span className="tr-duration">{t('library.sortDuration')}</span>
+          <span />
+        </div>
+      )}
+
       {state.kind === 'ready' && (
         <div className="track-list" ref={listRef}>
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
@@ -256,8 +267,8 @@ export function LibraryPage() {
                       ▶
                     </button>
                   </span>
-                  <span className="tr-title" title={track.title ?? track.path}>
-                    {track.title ?? track.path}
+                  <span className="tr-title" title={track.title?.trim() || track.path}>
+                    {trackTitle(track)}
                   </span>
                   <span className="tr-artist" title={track.artist ?? undefined}>
                     {track.artist ?? ''}

@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { usePlayerStore } from '../../state/stores';
 import { ipc } from '../../ipc/client';
 import { useTranslation } from '../../i18n/react';
-import { useArtwork } from '../../components/Artwork';
-import { formatDuration, safeProgress, clampNumber } from '../../ui/format';
+import { useArtwork, useCurrentTrackId } from '../../components/Artwork';
+import { formatDuration, safeProgress, clampNumber, fileBaseName } from '../../ui/format';
 import {
   cyclePlayMode,
   playNext,
@@ -68,27 +68,8 @@ export function NowPlayingPage() {
     ipc.seek(v).catch(() => undefined);
   };
 
-  // §35–§37：当前 track 的真实 artwork（path → id → data URL）。
-  const trackPath = snapshot?.trackPath ?? null;
-  const [trackId, setTrackId] = useState<number | null>(null);
-  useEffect(() => {
-    if (!trackPath) {
-      setTrackId(null);
-      return;
-    }
-    let alive = true;
-    void ipc
-      .trackIdByPath(trackPath)
-      .then((id) => {
-        if (alive) setTrackId(id);
-      })
-      .catch(() => {
-        if (alive) setTrackId(null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [trackPath]);
+  // §35–§37：当前 track 的真实 artwork（path → id → data URL；M13.1 提取共用）。
+  const trackId = useCurrentTrackId();
   const artwork = useArtwork(trackId);
 
   return (
@@ -101,7 +82,9 @@ export function NowPlayingPage() {
         )}
       </div>
       <div className="np-info">
-        <h1 className="np-title">{snapshot?.title ?? t('np.noTrack')}</h1>
+        <h1 className="np-title">
+          {snapshot?.title?.trim() || (snapshot?.trackPath ? fileBaseName(snapshot.trackPath) : null) || t('np.noTrack')}
+        </h1>
         {!snapshot?.title && <p className="np-hint">{t('np.noTrackHint')}</p>}
       </div>
       <div className="np-progress">
