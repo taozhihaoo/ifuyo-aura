@@ -107,14 +107,12 @@ export function PlayerBar() {
             ⏮
           </button>
           <button
-            className={`ctl-btn primary pb-play${playing ? ' pop' : ''}`}
+            className={`ctl-btn primary pb-play ${playing ? 'glyph-pause' : 'glyph-play'}${playing ? ' pop' : ''}`}
             key={playing ? 'playing' : 'paused'}
             aria-label={playing ? t('controls.pause') : t('controls.play')}
             title={playing ? t('controls.pause') : t('controls.play')}
             onClick={() => (playing ? ipc.pause() : ipc.play()).catch(() => undefined)}
-          >
-            {playing ? '⏸' : '▶'}
-          </button>
+          />
           <button
             className="icon-btn"
             aria-label={t('controls.next')}

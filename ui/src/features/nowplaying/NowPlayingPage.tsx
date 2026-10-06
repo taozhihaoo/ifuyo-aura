@@ -126,16 +126,14 @@ export function NowPlayingPage() {
           ⏮
         </button>
         <button
-          className={`ctl-btn primary${playing ? ' pop' : ''}`}
+          className={`ctl-btn primary ${playing ? 'glyph-pause' : 'glyph-play'}${playing ? ' pop' : ''}`}
           key={playing ? 'playing' : 'paused'}
           aria-label={playing ? t('controls.pause') : t('controls.play')}
           title={playing ? t('controls.pause') : t('controls.play')}
           onClick={() =>
             (playing ? ipc.pause() : ipc.play()).catch(() => undefined)
           }
-        >
-          {playing ? '⏸' : '▶'}
-        </button>
+        />
         <button
           className="ctl-btn"
           aria-label={t('controls.stop')}
