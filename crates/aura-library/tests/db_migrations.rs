@@ -10,8 +10,8 @@ fn fresh_database_reaches_latest_schema() {
     assert_eq!(db.schema_version().unwrap(), migrations::SCHEMA_VERSION);
     assert_eq!(
         migrations::SCHEMA_VERSION,
-        2,
-        "v1(M3) + v2(M8 上篇 track_analysis 重建)"
+        3,
+        "v1(M3) + v2(M8 track_analysis 重建) + v3(M15a CUE 子轨列)"
     );
 }
 

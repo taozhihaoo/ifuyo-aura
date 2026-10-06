@@ -6,6 +6,7 @@
 //! 不负责 audio decoding / playback / output / network / UI / Dreamscape。
 
 pub mod artwork;
+pub mod cue;
 pub mod db;
 pub mod error;
 pub mod identity;

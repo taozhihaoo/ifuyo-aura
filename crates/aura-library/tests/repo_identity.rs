@@ -44,9 +44,11 @@ impl Env {
     /// 事务内导入单文件。
     fn import(&mut self, path: &Path, now_ms: i64) -> repo::ImportOutcome {
         let tx = self.db.transaction().unwrap();
-        let out = repo::import_file(&tx, self.root_id, path, now_ms).unwrap();
+        // M15a：import_file 返回 [主轨, CUE 子轨...]——非 CUE 文件恒 1 条
+        let mut out = repo::import_file(&tx, self.root_id, path, now_ms).unwrap();
         tx.commit().unwrap();
-        out
+        assert!(!out.is_empty());
+        out.remove(0)
     }
 
     /// 扫描收尾（模拟整轮扫描后未见路径停用）。
