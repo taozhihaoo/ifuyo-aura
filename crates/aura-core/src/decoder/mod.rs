@@ -10,6 +10,8 @@
 pub mod flac;
 pub mod pcm;
 pub mod streaming;
+pub mod sub_range;
+pub use sub_range::SubRangeDecoder;
 
 pub use streaming::{AudioByteStream, StreamingDecoder};
 

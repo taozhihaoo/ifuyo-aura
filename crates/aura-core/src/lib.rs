@@ -27,6 +27,7 @@ pub use audio::gain::{GainSmoother, SMOOTHING_WINDOW_MS};
 pub use audio::position::PositionTracker;
 pub use decoder::flac::FlacDecoder;
 pub use decoder::pcm::{map_channels, map_channels_into, PcmBuffer};
+pub use decoder::sub_range::SubRangeDecoder;
 pub use decoder::Decoder;
 pub use dsp::{
     bands_from_preset, limit_sample, loudness_gain, EqBand, EqBandKind, EqBus, EqCoeffs, EqPreset,
