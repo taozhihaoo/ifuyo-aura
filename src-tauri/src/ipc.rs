@@ -164,6 +164,16 @@ pub fn play_track(state: State<'_, AppState>, track_id: i64) -> CmdResult<()> {
     play_input_impl(state, path, meta).map(|_| ())
 }
 
+/// M13.1：Local 源无元数据时的标题回退——文件名 stem
+/// （去 verbatim `\\?\` 前缀与扩展名；与 UI fileBaseName 同口径）。
+fn local_stem_title(path: &str) -> Option<String> {
+    let clean = path.trim_start_matches(r"\\?\");
+    std::path::Path::new(clean)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(str::to_string)
+}
+
 /// §275/§276/§194：Open File / Open URL 统一入口。
 /// 全部经过 M4 Source Resolver（scheme 白名单 → 凭据拒绝 → 封锁表 →
 /// 私网策略 → 探测），frontend 不自行 fetch。本地路径由 resolver 的
@@ -199,6 +209,8 @@ fn play_input_impl(
                 .unwrap_or_else(|| input.clone());
             let (decoder, duration_seconds) = audio::open_decoder(std::path::Path::new(&path))
                 .map_err(|e| AppError::new("UNSUPPORTED_SOURCE", e.to_string(), true))?;
+            // M13.1：无元数据时标题回退文件名 stem（曲库 UI fileBaseName 同口径）。
+            let title = title.or_else(|| local_stem_title(&path));
             state
                 .audio
                 .send(Control::LoadDecoder {
@@ -675,4 +687,31 @@ use crate::audio::Control as _ControlAlias;
 #[allow(dead_code)]
 fn _touch(h: &AudioHandle) -> PlayerSnapshot {
     h.snapshot()
+}
+
+#[cfg(test)]
+mod title_fallback_tests {
+    use super::local_stem_title;
+
+    #[test]
+    fn verbatim_path_strips_prefix_and_extension() {
+        assert_eq!(
+            local_stem_title(r"\?\C:\Users\Gray\Music\富士山下.mp3").as_deref(),
+            Some("富士山下")
+        );
+    }
+
+    #[test]
+    fn plain_path_and_edge_cases() {
+        assert_eq!(
+            local_stem_title(r"C:\Music\song.flac").as_deref(),
+            Some("song")
+        );
+        assert_eq!(local_stem_title("track.ogg").as_deref(), Some("track"));
+        assert_eq!(local_stem_title(""), None);
+        assert_eq!(
+            local_stem_title(r"\?\C:\Music\.mp3").as_deref(),
+            Some(".mp3")
+        );
+    }
 }
