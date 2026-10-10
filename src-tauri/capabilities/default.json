@@ -4,7 +4,8 @@
   "description": "ifuyo Aura \u4e3b\u7a97\u53e3\u9ed8\u8ba4\u80fd\u529b\u3002Phase 0 \u6700\u5c0f\u96c6\uff1a\u4ec5 core \u9ed8\u8ba4\u6743\u9650\uff1b\u540e\u7eed\u6743\u9650\u6309\u91cc\u7a0b\u7891\u6700\u5c0f\u5316\u8ffd\u52a0\u3002",
   "windows": [
     "main",
-    "mini"
+    "mini",
+    "desktop-lyrics"
   ],
   "permissions": [
     "core:default",
@@ -13,6 +14,7 @@
     "core:window:allow-close",
     "core:window:allow-start-dragging",
     "core:window:allow-show",
+    "core:window:allow-hide",
     "core:webview:allow-create-webview-window",
     "core:webview:allow-get-all-webviews",
     "dialog:default",
