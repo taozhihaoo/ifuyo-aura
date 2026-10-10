@@ -1,0 +1,21 @@
+PERFORMER "测试艺术家"
+TITLE "CUE合集"
+FILE "fixture-cue.flac" WAVE
+  TRACK 01 AUDIO
+    TITLE "轨道一"
+    INDEX 01 00:00:00
+  TRACK 02 AUDIO
+    TITLE "轨道二"
+    INDEX 01 00:02:00
+  TRACK 03 AUDIO
+    TITLE "轨道三"
+    INDEX 01 00:04:00
+  TRACK 04 AUDIO
+    TITLE "轨道四"
+    INDEX 01 00:06:00
+  TRACK 05 AUDIO
+    TITLE "轨道五"
+    INDEX 01 00:08:00
+  TRACK 06 AUDIO
+    TITLE "轨道六"
+    INDEX 01 00:10:00

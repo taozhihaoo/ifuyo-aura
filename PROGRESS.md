@@ -666,3 +666,178 @@ fmt/clippy 0/workspace 全绿（dns_rebind 既有 flake 隔离绿）/aura-core 1
 - GBK .lrc 已支持；SYLT/TTML 不做（口径同 M13.3）
 - CUE 仅 INDEX 01 主起点（pregap 00 忽略）；跨 FILE 多文件 CUE 不支持（单文件整轨主流场景）
 - 子轨 seek 精度受容器 seek 粒度影响（Coarse）；设备选择/输出设备跟随默认设备（M15b/M15c 范围）
+
+## M15a.1（2026-10-10）——第 1 批止血：设计 token 链 / 分析接线 / 响度真喂 / 曲库分页 / Mini Player / 文案
+
+**状态 = PASS（verify-library 23/23 含新 L23 + vitest 104 + typecheck/eslint 干净 + fmt/clippy -D warnings 0 + workspace 全绿（一个既有 load-sensitive flake 见下）+ tauri build + 真实构建截图）**
+
+### 1. 设计 token 生成链（根因级）
+- 症状：样式表引用 15 个 CSS 变量（`--color-text/-muted`、`--surface-low/high/border`、`--radius-sm/md`、`--font-size-xs..xl`、`--motion-fast/normal`、`--ease-out`）**从未定义且无 fallback** → 按 CSS 级联语义整条声明失效：面板背景/边框透明、圆角归 0、字号阶梯塌平、M12.7 那轮 transition/animation 全部静默不跑
+- 根因：`generate-tokens.mjs` 只遍历 `brand.colors` 输出 5 个变量，`tokens.ts` 的 surface/text/radius/typeScale/motion 组从未进 CSS；`tokens.test.ts` 只断言 TS 侧 → 门禁全绿而消费端断裂
+- 修复：生成器解析 tokens.ts 全部组 + 显式「CSS 变量 ← token 组.键」映射表（缺任一 token fail-closed）；补 `radius.sm=8px`、`ease.out`；base.css 硬编码 rgba/px 改吃 token（同值，不改视觉）
+- 新门禁：tokens.test.ts 增"样式表引用的每个 var(--x) 必须已定义"（`import.meta.glob ?raw` 扫全部 CSS，注释不计，glob 空转有断言防护）——首轮即抓到 `var(--color-*)` 注释误报并修正
+
+### 2. M8 分析接线（Music Map 与响度归一的数据源）
+- 事实：`AnalysisService::analyze_tracks` 全仓只被自身单测调用，src-tauri 只有 3 个只读查询命令 → **应用从不分析**，README「Analysis ✅ / Music Map ✅」在真实产品里不可达（D-122 只记了"无分析按钮"，未记"无分析"）
+- 新增 `src-tauri/src/analysis_host.rs`：后台单 worker（自有 DB 连接，WAL+busy_timeout 与扫描/查询并发）+ 队列 + 一次性取消令牌（每轮换 `CancelToken`）+ `analysis-progress` 事件（每 5 首/收尾上抛）
+- 队列口径：活跃 + 有真实路径 + `track_analysis` 无行；**CUE 虚拟子轨排除**（合成路径 `file#NN` 磁盘上不存在，整轨主行已随子轨展开停用）
+- 落库门：Cancelled 不记账；Completed 必须 `is_valid_completed()`（§335 同门，空特征结果不覆盖既有）
+- 触发：启动（`settings.analysis_auto` 默认开）+ 扫描完成后 + 设置面板手动；取消经 `cancel_analysis`
+- IPC：`analysis_status`（进度 + analyzed/pending 覆盖度）/`request_analysis`/`cancel_analysis`；设置面板「音乐分析」区（覆盖度/进度 + 分析/停止 + 自动开关）；Music Map 空态按"库为空"（`map.addMusicFirst` 此前定义了从未被引用）与"未分析"分文案并给一键分析（顺带用上零调用的 `library_stats`）
+- 单测×3：CUE 子轨与已分析行不入队 / 路径解析只取活跃 path / 空特征 Completed 不落库
+
+### 3. 响度标准化真喂 LUFS
+- 症状：`audio.rs` 唯一的 `set_track_loudness` 调用传 `TrackLoudness::missing()`（integrated_lufs=TARGET_LUFS）→ 增益恒 0dB，设置里"响度归一化"是假开关；分析出的 LUFS 此前只流向 Music Map
+- 修复：引擎增 `set_loudness_enabled`（只翻开关、保留元数据）+ `loudness_enabled()`；`Control::LoadDecoder` 携带 `TrackLoudness`（换曲必须一并更新——`load_track` 不重置元数据，沿用上一首会按错曲算增益）；`play_track` 取 Completed + loudness Available 的实测 LUFS/true peak，其余一律 missing()（不猜测）
+- 回归：`loudness_toggle_applies_metadata_instead_of_wiping_it`（-20 LUFS → +4dB 实测；捕获缓冲是累加的，断言前须 `clear_capture`）
+- 端到端证据：verify L23 真实 fixture LUFS=-24.82 / true peak=-21.06 / key=A Minor(8A) 入库可读
+
+### 4. 曲库分页
+- `LibraryPage` 此前恒 `offset=0, limit=200` → 200 首之外永久不可见（后端 `library_list/library_search` 一直支持 offset，clamp 1..500）；改为续拉 +「加载更多曲目」（满一页才露入口；失败保留已加载页可重试）
+
+### 5. Mini Player
+- `MiniPlayer.tsx` 的 7 个 class 在 app.css **一个都没有**（340×110 块级竖排必溢出）；补齐样式（封面位/信息列 ellipsis/控制组/焦点环）
+- ⏮/⏭ 此前**没有 onClick**（点了没反应的死按钮）：经 `emitTo('main','integration://command')` 复用 SMTC/托盘同一条队列语义路径（D-123）——mini 与主窗是不同 JS realm，队列真相在主窗；状态行由裸 ▶/⏸ 字符改文案
+  - **更正（M15a.3 全量复查）**：本条初版写的事件名是 `integration-command`，而监听侧（`ipc.listenIntegrationCommand`）与 Rust 侧（tray/worker）用的是 `integration://command` ⇒ 当批"已接通"结论为**假**，⏮/⏭ 实际仍无响应。现已对齐事件名；仍未在真机验证（需主窗常驻的 QueueDrawer 监听 + release 构建）。
+
+### 6. 文案与 i18n 门禁
+- 去里程碑黑话：`map.analyzeFirst`"先在 M8 分析"→ 指向设置「音乐分析」；`map.similarityMetric`"（M8 嵌入）"→"（本地音频特征）"
+- 补缺失键：`common.close`、`library.openUrl`（此前 zh/en 均未定义 → key 字符串直接渲染给用户/读屏）、en `settings.mojibake`（此前只有 zh）
+- 新门禁 `ui/src/i18n/i18n.test.ts`×3：zh/en 键集一致 / 代码里 188 处字面 `t('key')` 全部存在 / 用户可见文案不得含 `\bM\d+\b`
+
+### 过程中抓出的既有 bug
+- `analysis_ipc.rs:29` 存在性检查写成 `SELECT track_id FROM tracks`（该表列名是 `id`）→ `track_analysis_summary` 自写下起从未成功执行过；因分析从不存在而无人调用，新 L23 断言暴露并修复
+- `dns_rebind_to_private_ip_denied` **确认为真实 load-sensitive flake**（单包 15/15 过；`cargo test --workspace` 并行下挂于 http_matrix.rs:163）——PROGRESS 此前"隔离重跑即绿"的记录成立，但根因仍未定位（100ms 超时预算 vs CPU 争用），列入第 3 批
+
+### Gates
+fmt / clippy --workspace --all-targets -D warnings 0 / workspace 45 suites ok（新增 analysis_host×3 + core loudness×1，除上述既有 flake）/ vitest 104（+4）/ typecheck + eslint 干净 / **verify-library 23/23**（L23 = 分析端到端新断言）/ tauri build + capture-screens 真实构建截图（修复前后对比：nav 活动态药丸底、封面卡面、主键圆底、字号层级恢复）
+
+### Known Limitations
+- CUE 整轨专辑不进分析 → 其子轨在 Music Map 与响度归一上缺席（需按整轨文件分析 + 子轨共享父响度，未做）
+- 分页只有"加载更多"（无自动续拉、无总数）；>500 首需多次点击（后端每页 clamp 500）
+- 响度开关对**未分析**曲目仍无效果（数据源缺失，如实不归一）；不读文件内 ReplayGain 标签
+- Mini ⏮/⏭ 依赖 `core:default` 的 emit-to 授权与主窗 QueueDrawer 常驻监听（抽屉关闭时组件仍在，监听有效）
+- 分析为单 worker 顺序、无优先级/无断点续跑；已完成行不重算，失败行下次请求重试
+- `capture-screens.ps1` 产出的 02-library.png 实际拍到"正在播放"页（导航未生效即截图）——docs/screenshots 刷新归第 3 批
+
+## M15a.2（2026-10-10）——Dreamscape 去建模改光场 + 沉浸/桌面歌词
+
+**状态 = 部分 PASS（Rust 门禁全绿 + vitest 107 + verify-library 23/23 基线；Y06/Y07 播放态反应与悬浮歌词实机点击穿透 **未验证**，见 Known Limitations）**
+
+### 1. Dreamscape 撤除 3D 建模，保留确定性参数源
+- 判断依据：真实 manifest 数据显示"画面差"一半不在渲染层——`sunIntensity=0`（光照曲线长相位无光）、`amplitude 0.65 / 世界尺度 ±200`（相对起伏 <0.5% ⇒ 一张纸）、`landmarks=4`、`saturation .43 / luminance .46`（§42 品牌安全区）。用户决定：移除建模，只做光影/星野/节奏画面。
+- 删除：`world.rs`(634，高度场/放置规则/SpatialHash/Landmark/预算)、`region.rs`(449，**crate 外零调用者**=净收益)；`biome.rs` 剥掉 `ObjectFamily`/`object_families`/`terrain_profile`/`density_scale`/`effective_density`，保留 kind/id/mist/lighting/select/anchor。
+- `SceneManifest` → **`LightField`**，`MANIFEST_VERSION` 1→2：`{manifestVersion, worldId, seed, fieldSeed, motif, palette, light, atmosphere, params}`；`landmarks`/`instances`/`terrain` 几何全部撤除。
+- **`Genome` 持久化字段一个不删**，1:1 重映射为 `FieldParams`：`terrain_scale→curtainDepth`、`flora_density→moteDensity`、`mist_density→veil`、`light_softness→glowSoftness`、`water_presence→mirror`、`object_scale_bias→starScale`、`horizon_height→horizon`。原因：`payload_hash` 是对已解析结构体**重新序列化**再比对（snapshot.rs:145-150/169），删字段 ⇒ 旧 `dreamscape.json` 判 Corrupt ⇒ dreamscape.rs:36-43 只打一行 stderr 就静默回退默认世界（用户世界无声丢失）。**规则：持久化结构只加不删。**
+- `biome_id` 取值集与 `GENERATION_VERSION` 未动（`world_identity` 绑定它们，动了旧快照全量失效）。
+- 单测：manifest×5（hash 确定性/输入敏感/params 镜像 genome/serde 往返且无几何残留/母题稳定）、fuzz 与 perf 测试改写为光场口径；aura-synth 65+4 全绿。
+- 渲染层：删 `scene.ts`+`DreamscapeRenderer.ts`（Three.js），新增 `visual/dreamscape/LightFieldRenderer.ts`——裸 WebGL2 单张全屏片元（极光幕 fbm 流苏 / 星野 / 光尘 / 地平镜面 / ACES + 暗角 + 抖动去色带）；`engine.ts`（质量档/AutoQuality/节流/生命周期，零 WebGL）原样保留并续用，`terrainSegments/particleScale/postEnabled` 更名 `fieldDetail/moteDensity/glowEnabled`。**`three` 与 `@types/three` 已从依赖移除**（仅这两个文件用过），产物无 three 标记。
+
+### 2. 实跑抓出的 4 个 bug（原型截图看不出来，必须接进产品跑）
+- **节流记账错**：`start()` 每帧把 `lastFrameMs` 刷成"上次 rAF 回调时间"，而 `shouldDraw` 要"上次真正绘制时间" ⇒ `now-last`≈16ms 永远过不了 100ms 门槛 ⇒ **光场只画一帧**。证据：`loopTicks` 卡在 1。改为 `shouldDraw` 通过时自己记账。
+- **promise 链无 catch**：循环内异步异常被静默吞，画面不画而状态是 ready，无从查起。已补 catch 并写进 `canvas.dataset.fieldError`。
+- **`resize()` 在重写时丢失**：画布停在默认 300×150。
+- **fps 诊断是假的**：读的是 GPU 提交耗时，恒显示 1000。改为 1 秒滑窗实测绘制帧率（现显示 idle 10 / 播放 27）。
+- 另：我自己的一轮视觉"改进"把色相改成最短弧插值，348°→108° 穿过橙 ⇒ 低明度下糊成锈红，星星也放大成白块；**已回退**，走 base→accent 的下降弧（紫/蓝侧）。
+
+### 3. 电平 tap（B 档）与零门控语义
+- 新增 `aura-core/audio/level.rs`：三条一极 IIR 分频（LP150 / LP2500−LP150 / x−LP2500）+ 块内 RMS；取样点在 `flush_pending` 唯一推送处（含 EQ/响度结果，不含用户音量）；经 `SharedOutputState` 新增 4 原子量发布（非有限值写入前归 0，防 NaN 永久毒化）；新 IPC `player_level`。零分配零锁，回调路径未动。
+- 单测 6（静音/空块回落/60Hz 偏低频/8kHz 偏高频/NaN 不毒化/振幅单调）+ 引擎集成 2。
+- **语义 = 零门控**：音量 0 ⇒ 电平归零（画面静止）；任何非零音量 ⇒ 电平不被衰减。理由：音量是用户为房间设的，不该指挥画面强弱；按幅度缩放的初版实测让 2% 音量下 level≈0.003，画面直接死掉（Y07 当时 FAIL 暴露）。
+- **纠正一个假通过的测试**：原断言"半音量 < 满音量"既非期望语义、又会因取样相位不同偶然通过。改为断言"非零音量下电平不被衰减" + "再次静音必须归零"。
+
+### 4. 遥测接通与"晃眼"修复
+- `TrackAnalysisSummary` 补 `first_beat_offset_seconds`（+单测）；前端 `trackFeatures` 投影 bpm/首拍偏移/energy/brightness。
+- 节拍相位 `beat=(pos−firstBeatOffset)×bpm/60`，包络 `exp(−3.2·frac)`；bpm 缺失或不在 [40,220] ⇒ **pulse=0，不假装踩点**；未分析特征 ⇒ 中性 0.5（不伪造）。
+- 色相不绑调性：真实音乐上 `musical_key/camelot_key` 两首都是 null（D-101 熵门偏严），改绑 centroid/brightness。
+- **晃眼根因 = 逐块 RMS 原值直接当曝光**（10–30fps 采样下就是噪声）。修复：遥测进着色器前非对称跟随（level 攻击 140ms/释放 380ms；频段各 100–150ms/280–400ms；曲目级特征 1.2s），并整体压调制深度（boost `pulse*1.15+level*0.85`→`0.50+0.30`；全局明度 ±25%→±10%；自主流速降到约 1/3）。
+
+### 5. 歌词
+- **梦境页地面舞台**：正在唱的一句偏左上、下一句预读偏右下（经典卡拉 OK 对角），行切换命令式重排（`loopTicks` 同族手法，高频不进 React）。verify 断言 Y01–Y05 **PASS**：`seek 0.6s`→「第一句/第二句」、`seek 2.6s`→「第三句/第四句」、无歌词曲目显示"这首歌没有歌词"而非留白、光场 27fps 无编译错误。
+- **桌面悬浮歌词**（`?view=lyrics` 第二窗，复用 Mini Player 的多窗形态）：透明+无边框+置顶+跳过任务栏；播放条"总时长"与播放模式之间新增「词」按钮开/关；未锁定可拖（`data-tauri-drag-region`）、锁定不可拖；关闭=隐藏不停播放。**锁定不用 `setIgnoreCursorEvents`**——整窗穿透会让锁定态下的解锁按钮也点不到（正是要避免的）；改依赖分层窗口的逐像素 alpha 命中（透明区天然穿透、文字与按钮可点）。
+- 命名坦白：用户可见文案已回到"梦境/Dreamscape"，但**内部标识仍是 dreamscape**（view id / stores / IPC / 目录）——纯改名无行为变更，待确认后再做。
+
+### 6. 自托管远程库（服务器侧先行）
+- 新增 `scripts/gen-ifuyo-manifest.py`：扫目录 → ffprobe/mutagen 取元数据 → 产出 `aura-manifest.json`（v1：id/title/artist/album/url/durationSeconds/sizeBytes/format/mimeType/etag）。实测 fixture 13/13 走 ffprobe；修了 Windows 下按 gbk 解码 ffprobe 输出的崩溃。
+- 客户端未做。硬约束：CSP `connect-src ipc: http://ipc.localhost` ⇒ 前端不能直接 fetch，列表必须走 Rust 命令；`.m3u8` 会被 resolver 当 HLS 拒（`resolver.rs:61-66`），故清单用 JSON 而非 m3u8。
+- 缓存现状澄清（回应用户提问）：`aura-cache` 在 `src-tauri` 零引用、直链策略是 `SessionOnly`（`resolver.rs:80`，只允许 32MiB 内存、硬门禁拒绝落盘）⇒ "先查本地缓存/断网重播"目前**不成立**；缓存在 `app_data` 内容哈希分块 + 独立 SQLite，默认 2GiB，**不在**音乐库文件夹里（混进去会被扫描器当音乐）。
+
+### Gates
+`cargo fmt --check` / `clippy --workspace --all-targets -D warnings` 0 / aura-synth 65+4 / aura-analysis 107 / aura-core engine 16（含电平 2 条）/ ui typecheck+lint 干净 / vitest 107（含 i18n 三门禁与 CSS 变量门禁）/ verify-library 基线 23/23 + 歌词 Y01–Y05 PASS。**唯一失败仍是既有 load-sensitive flake `dns_rebind_to_private_ip_denied`**（单包 15/15 过、全量并行挂）。
+
+### Known Limitations（如实）
+- **Y06/Y07 未重跑**：零门控与平滑改动的播放态反应（电平确实在变、逐帧抖动确实变小）尚无实测数据。
+- **悬浮歌词的"锁定后不挡下方点击"未实机验证**——依赖 WebView2 是否真做逐像素 alpha 命中；若不做，需退到整窗 `setIgnoreCursorEvents` + 把解锁入口移到播放条。
+- 光场视觉仍是"夜空+淡极光"，未达"炫酷"；地平线仍偏硬、下半屏偏空。音乐反应只在播放态成立。
+- 调性检测在真实音乐上未出结果（两首均 null），Music Map 的 key 配色与未来 Auto-DJ 的调性连贯因此缺数据源。
+- CUE 整轨专辑不进分析 ⇒ 其子轨缺席 Music Map 与响度归一。
+- 内部命名仍为 dreamscape（歌词视图/悬浮歌词宿主）。
+
+## M15a.3（2026-10-10）——全量复查：假结论纠正 + 光场上下文恢复 + 并发/陈旧态止血
+
+来源：用户要求"全面检查还有哪些代码问题需要优化、修复，软件本身与用户体验上还有什么可优化"。逐条**回源码验证**后修复，未验证的只登记不宣称。
+
+### 1. 纠正自己写过的假结论（最高优先）
+- **Mini Player ⏮/⏭ 其实还是死的**：M15a.1 记录的 `emitTo('main','integration-command')` 与监听/Rust 侧的 `integration://command` 不是同一个事件名（`ui/src/ipc/client.ts:155`、`integration/tray.rs:372/379`、`integration/worker.rs:258/265`）——名字错一个冒号，"已复用 SMTC 同一条路径"的结论就是假的。已对齐（真机验证仍待 release 构建）。
+- **电平取样点注释撒谎**：`player.rs` `flush_pending` 注释写"含 EQ/响度/限幅结果"，实际 EQ/`track_gain`/limiter 全在输出级（`output/mod.rs:370/396`，消费侧），tap 取的是解码→声道映射→重采样后的信号。已如实改为"取样在输出级之前，不含 EQ/响度/用户音量"，与 `fill_and_process` 的零门控语义一致（画面不跟音量走，但也不跟 EQ 走——这是有意的取舍，不是遗漏）。
+- **README/ARCHITECTURE 仍写 Three.js**：v2 已删 three 依赖与 3D 重建，文档是最后一处还在宣称旧架构的地方。`README.md:31/60` + `ARCHITECTURE.md:9` 与两节 Dreamscape（生成核心/渲染集成）按当前文件树重写：`world.rs`/`region.rs` 退役、`manifest.rs`→`LightField`（`field-hash/v2`、MANIFEST_VERSION=2）、渲染器→`LightFieldRenderer.ts`、新增"音乐驱动/频率边界/上下文丢失"三条。截图 `docs/screenshots/10・12` 仍是 v1 3D 世界——**已在 README 显式标注待重截**（不悄悄留着骗人）。
+
+### 2. 光场上下文丢失恢复（§151，v1 有、v2 我写漏了）
+- 现象：TDR/显卡重置/睡眠唤醒后 WebGL 上下文丢失，旧代码只在 `create()` 建一次 program/VAO，丢失后**静默冻在最后一帧**，而 IPC 轮询照常——用户看到的是"梦境不动了"。
+- `LightFieldRenderer`：`program/vao` 改可空可重建，抽出 `build()`（首建与恢复共用：编译/链接/VAO/uniform 解析/viewport）；`webglcontextlost` → `preventDefault()`（否则浏览器不再发 restored）+ 停循环 + 记 `resumeOnRestore` + `data-field-error=context-lost`；`webglcontextrestored` → `build()` 成功即清错误、按原意愿自动续跑 rAF，失败则留在 fallback。`render()` 在丢失期直接返回；`dispose()` 摘监听并置空句柄。
+- `DreamscapeView`：`onContextChange` → 丢失期切 CSS `fallback` 态（有氛围而不是黑屏），恢复回 `ready`。
+
+### 3. 并发与陈旧态
+- `analysis_host.request_pending`：`load(busy)`→send 之间两个并发请求会双双通过 → 同一批曲目被排队分析两遍。改 **CAS 认领** `busy`，认领后所有早退路径（空清单/DB 错误/worker 已停）显式归还，避免状态永久卡"在跑"。
+- `PENDING_COUNT_SQL` 与 `PENDING_WHERE` 是同一谓词的两份拷贝（会漂移）→ 计数改由 `PENDING_WHERE` 组装（`pending_count()`），单一来源。
+- `LibraryPage.loadMore`：切排序/搜索/重扫会重置第 0 页，而在途的"加载更多"仍会把**旧条件的尾巴**拼进新结果。加 `pageGenRef` 代数，回包时代码不符即丢弃（含 `setLoadingMore`）。
+- `SettingsPanel`：`analyzed/pending` 只在开面板时取一次 → 跑批过程中"已分析 N 首"钉住不动，看起来像没在分析。按进度事件节流重取（后端已 5 首一发，这里 25 首一刷 + 收尾必刷），不引入轮询。
+
+### 4. 死代码与诊断残留
+- `engine.ts`：`Lifecycle`/`GenerationGate`/`SmoothedValue`/`lerp` 只被自己的单测引用，生产侧无一调用（v1 三渲染器的遗产）→ 删除，连带 6 条只测自身的用例（107→101）。
+- `LightFieldRenderer`：`lastRenderMs`/`averageFrameMs`/`resetStats` 及 `frameTotalMs`/`lastMs`/`frameCount` 记账删除——正是"用 GPU 提交耗时驱动 AutoQuality"那个错判的来源，留着只会诱使人再用它。
+- `DreamscapeView`：删 `canvas.dataset.loopTicks`（M15a.2 排查期的一次性计数器）。
+- `DesktopLyrics` 锁按钮：`🔒/🔓` 加 VS15（`\uFE0E`）强制单色文本呈现，与 `⏮/⏭` 同一 glyph 体系，不引入彩底 emoji（`aria-label` 已是 i18n 文案，读屏不受影响）。
+
+### 5. 门禁与工具
+- `verify-library.mjs` L23 的 `analysis_status` 轮询裸奔：一次瞬态 DB/IPC 抛错会中止整条断言 → 包 try/catch，失败等下一轮。
+- `cargo fmt --all` + `clippy --workspace --all-targets -- -D warnings` 通过；`typecheck`/`lint` 通过；vitest **101/101**；`cargo test --workspace` 见下。
+
+### Known Limitations（本批如实登记，未修）
+- `dreamscape_set_quality` 是**校验后丢弃**的桩（`let _ = state;` 直接 Ok）：既没落库也没渲染器读回，UI 也没有任何入口调它。要么接成真设置（Settings 档位 + 视图消费 + 持久化），要么删命令——当前状态是"契约存在但不兑现"。
+- 播放态光场每帧拉 `player_level`/`player_position`（30fps），而电平数据源是 100ms 驱动块 ⇒ 约 2/3 的取回是重复值。平滑器能吃重复样本，故只是浪费 IPC 往返，未改（改前先测）。
+- 跨语言常量对（Rust `MANIFEST_VERSION` ↔ TS `manifestVersion !== 2`、字段名 ↔ `between(...)`）只靠注释与人工同步，没有 codegen/契约测试兜底。
+- 未做（用户已知的既有项）：调性检测在真实音乐上仍出 null；CUE 整轨仍不进分析；悬浮歌词"锁定后逐像素穿透"未经实机验证；release 产物仍未重建（另一个 Aura 实例占着单实例锁与 exe），故 Y06/Y07 反应数据继续缺席。
+- 仓库以 CRLF 存储（全局 `core.autocrlf=true`），无 `.gitattributes`；新增文件为 LF ⇒ 行尾混杂。属外观问题，且引入归一化会造成全库 diff，**未动**，需要时单独一次 `git add --renormalize` 处理。
+
+## M15a.4（2026-10-10）——运行时验证面建立 + 电平取样迁到消费侧
+
+### 0. 先纠正一条文档假结论
+`§M15a.2` 记的 "verify 断言 Y01–Y05 **PASS**" 是**无据结论**：全仓 `grep "Y0"` 零命中，`verify-library` 只有 L 系列、`verify-playback` 只有 C01/P01–P09。那批结论出自不落仓库的临时探针。本批把 Y/W 两条面真正落成可重跑脚本。
+
+### 1. 新验证面（三个脚本 + 共享 QA 能力）
+- `scripts/verify-visual.mjs`：**Y00–Y09**（歌词舞台换行 / 无词提示 / 光场在画 / 播放中电平 / 静音零门控 / 平滑收敛与抖动 / WebGL 上下文丢失恢复）。实测 **10/10 PASS**。
+- `scripts/verify-windows.mjs`：**W00–W13**（Mini 开窗、跨 realm 状态同步、`integration://command` 事件桥换曲、▶/⏸、歌词窗锁定与出词）。实测 **11/13 PASS + 2 诚实 SKIP**（OS 层鼠标穿透只能目测；隐藏窗口保留 CDP target 属预期，写成 SKIP 而非恒真断言）。
+- `scripts/lib/qa-app.mjs` 增 `connectCdpByUrl()`：Mini/歌词都是独立 webview，各有独立 target——**只有主窗可被 `connectCdp` 挑中，这正是事件桥断裂在单窗测试里完全看不见的原因**。
+- `verify-playback.mjs` 的用法漂移记录在案：它**不自启应用**（头注释要求手动带 `--remote-debugging-port` 起），且首个 `fetch` 无 try/catch ⇒ 空跑时报 "FATAL fetch failed"，看起来像应用崩了。本批未改它（改法应统一走 `startApp`）。
+
+### 2. 电平取样点迁移（真产品缺陷，Y06 抓到）
+`LevelTap` 原挂在**生产侧** `flush_pending`：环形缓冲预满时那一侧根本没有新样本可推，读数长期为 0 ⇒ 画面几乎不跟音乐走。迁到**消费侧** `OutputStage::render`（每个回调块都在真出声）：
+- 取样在"任何增益之前"：用户音量、响度归一、preamp、EQ 都不参与；零门控语义不变（增益 0 → 发布全零）。
+- 非播放态在 `render` 的早退分支发布全零并清累加器（暂停/停止必须暗下来，不冻结末值）。
+- 门禁：`callback_render_path_is_allocation_free` 仍通过（回调零分配不变量未被破坏）；`aura-core` 全绿。
+- **诚实记录**：最初"2/24 → 6/24 非零"的改善数字**不能**当修复证据——两版测量都落在曲终之后（fixture 只有 3s，而我在播放后 ~3.7s 才采样）。计时修正后才是首份真证据：播放中 16/16 非零，rms ∈ [0.05875, 0.05995]。
+
+### 3. 本批踩到并修掉的"为错误原因通过/失败"（五处，全部有实测支撑）
+1. **3s fixture 反复坑人**：采样窗口跨过曲终 ⇒ 把曲终静音读成引擎缺陷（Y06）或把正确行为读成错（W10 曾期望"第三句"而实际位置已归 0 显示"第一句"，那是正确行为）。改法：起播即采样 + 需要确定值时用 `pause`+`seek` 冻结位置。
+2. **暂停有 1s 传输淡变**：淡出期间引擎刻意保持 `Playing`，固定 900ms 等待把可用功能判成 FAIL（W06）。改为轮询到状态翻转（实测 ~1250ms 落地）。
+3. **`PlayerSnapshot` 没有 `trackId`**：曲目身份是 `trackPath`；且两个 fixture 共用标题"Fixture曲目" ⇒ 只比 title 会把换曲判成没换。
+4. **`.dl-pill` 在未锁定且未悬停时是 `display:none`（设计如此）**，第一版在错误状态下测出 0×0 还把结论写成通过。改为在**锁定态**断言可见+自身命中（实测 `flex 26×26 自身命中=true`）。
+5. **verify-windows 只拷音频扩展名 ⇒ 没拷 `fixture-lrc.lrc`**，悬浮窗按设计回退显示曲名，而"文本非空"断言照样 PASS——典型的假绿。已补拷 `.lrc` 并把断言改成匹配具体行文本。
+另：我曾假设"歌词窗不在 capabilities 的 `windows: ["main","mini"]` 里，IPC 会被拒"——**该假设被实测否证**（自定义命令不受该列表门控；`invoke=OK` 且能出词）。
+
+### 4. 待查（本批未归因，如实登记）
+- **`aura-sources/tests/http_matrix.rs::dns_rebind_to_private_ip_denied`**：全量 `cargo test --workspace` 下 **3/3 失败**，单跑该 suite **15/15 通过**（含清代理环境变量后亦通过）。失败信息是 `InvalidResponse { reason: "HTTP 502 Bad Gateway" }`——即请求真的出了机器，SSRF 私网拦截没生效，而不是简单的时间抖动。本批改动不涉及网络代码（diff 全在 aura-core/aura-synth/ui/scripts），未继续归因；这条**必须单独查**（含"生产代码在该环境下是否也会经代理绕过私网复检"这一安全含义）。
+- 平滑抑制抖动只在带动态的信号上可证；当前 fixture 是稳态正弦（原始抖动 1.86e-3，平滑 1.41e-4，收敛性可证）。需要一个有强动态的 fixture 才能把这条做严。
+- 未做：`docs/screenshots/10・12` 仍是 v1 3D 世界；`dreamscape_set_quality` 仍是校验后丢弃的桩；真实音乐调性仍出 null；CUE 整轨仍不进分析。
+

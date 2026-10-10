@@ -204,6 +204,60 @@ const run = async () => {
     } finally {
       try { ws2?.close(); } catch { /* 已断开 */ }
     }
+
+    // L23 M8 分析接线（本批次新增）：后台 worker 自动跑完 fixture →
+    // 覆盖度归零，且 LUFS 真实入库（响度归一与 Music Map 的数据源）。
+    let astat = null;
+    const aDeadline = Date.now() + 90_000;
+    while (Date.now() < aDeadline) {
+      // 轮询本身可能瞬态失败（DB 被 worker 写锁占用/IPC 无回包）：
+      // 一次抛错不该让 L23 整段中止，吞掉并等下一轮。
+      try {
+        astat = await inv('analysis_status', {});
+        if (astat && astat.pending === 0 && astat.analyzed > 0) break;
+      } catch {
+        /* 重试 */
+      }
+      await sleep(1000);
+    }
+    const flacId = ids['fixture.flac'];
+    let sum = null;
+    let astate = null;
+    try {
+      sum = flacId ? await inv('track_analysis_summary', { trackId: flacId }) : null;
+    } catch (e) {
+      sum = { error: JSON.stringify(e) };
+    }
+    try {
+      astate = flacId ? await inv('track_analysis_state', { trackId: flacId }) : null;
+    } catch (e) {
+      astate = `err:${JSON.stringify(e)}`;
+    }
+    line('L23',
+      !!astat && astat.pending === 0 && astat.analyzed > 0
+        && !!sum && sum.status === 'completed' && typeof sum.integratedLufs === 'number',
+      `分析接线：analyzed=${astat?.analyzed} pending=${astat?.pending} `
+      + `progress=${astat?.progress?.processed}/${astat?.progress?.total} failed=${astat?.progress?.failed}`
+      + `｜id=${flacId} state=${astate}｜summary=${sum ? JSON.stringify(sum).slice(0, 220) : 'null'}`);
+
+    // L24 分析 → Music Map：已分析曲目必须真能建出图（回答"分析有什么用"）。
+    try {
+      await inv('request_map_build', {});
+    } catch (e) {
+      console.log('  map build request failed:', JSON.stringify(e));
+    }
+    let mstat = null;
+    const mDeadline = Date.now() + 60_000;
+    while (Date.now() < mDeadline) {
+      mstat = await inv('get_map_status', {});
+      if (mstat && mstat.status !== 'pending' && mstat.status !== 'building') break;
+      await sleep(1000);
+    }
+    const ov = mstat?.status === 'ready' ? await inv('get_map_overview', {}) : null;
+    line('L24', mstat?.status === 'ready' && !!ov && ov.trackCount > 0,
+      `分析→地图：status=${mstat?.status} msg=${mstat?.message ?? ''} `
+      + `nodes=${ov?.trackCount ?? 0} clusters=${ov?.clusterCount ?? 0} `
+      + `mapped=${ov?.coverage?.mappedTracks ?? 0}/${ov?.coverage?.totalTracks ?? 0}`);
   } finally {
     try {
       ws?.close();

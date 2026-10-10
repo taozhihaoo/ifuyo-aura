@@ -87,6 +87,35 @@ export async function connectCdp(cdpPort = 9223) {
   throw new Error(`CDP attach 失败：${lastErr?.message ?? '超时'}`);
 }
 
+/** 按 URL 片段连接指定窗口（Mini / 桌面歌词都是独立 webview，各自一个
+ *  CDP target；只有主窗可被 connectCdp 挑中，跨窗交互必须能点名连接）。
+ *  超时返回 null——由调用方判 FAIL，而不是抛异常掩盖"窗口根本没开"。 */
+export async function connectCdpByUrl(urlNeedle, cdpPort = 9223, timeoutMs = 12_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastErr = null;
+  while (Date.now() < deadline) {
+    try {
+      const targets = await (await fetch(`http://127.0.0.1:${cdpPort}/json`)).json();
+      const page = targets.find((t) => t.type === 'page' && (t.url ?? '').includes(urlNeedle));
+      if (page) {
+        try {
+          const sess = await attach(page);
+          // 新窗口的 JS realm 需要时间完成启动；探一次再返回。
+          await sess.evalJs('document.readyState');
+          return sess;
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+    } catch (e) {
+      lastErr = e;
+    }
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  if (lastErr) throw new Error(`窗口 ${urlNeedle} 连接失败：${lastErr.message}`);
+  return null;
+}
+
 async function attach(page) {
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   let id = 0;
