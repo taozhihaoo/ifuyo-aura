@@ -943,3 +943,67 @@ mock 的 `trackIdByPath` 返回类型不含 null 被 `tsc` 拦下。
 需要运维把新版生成器传上去重跑一次 cron，且服务器上要有同名 `.lrc`。
 矩阵（同代 release）：**L 24/24、Y 10/10、W 13/15（2 诚实 SKIP）、R 9 PASS/1 SKIP**；
 UI 125/125（新增 remoteLyrics 7 条 + DTO 1 条），`cargo fmt/clippy/test` 全绿。
+
+## M15b.4（2026-10-11）——远程曲目接入队列（在线音乐的传输键与播放模式）
+
+用户报：「播放在线音乐，切换列表循环，点击下一首，无反应」。
+
+### 复现（真机，在线库 11 首）
+
+```text
+① 播放中：state=playing title="火锅底料"
+② 队列项数：0
+④ clicked 下一曲
+⑤ 点击后：title="火锅底料"   换曲=NO
+⑥ 对照（程序化换播另一首）：title="halo halo…" → 换曲=YES
+```
+
+⑥ 是分水岭：**播放本身没坏**，坏的是队列游标。
+
+### 根因不止"下一首"这一条
+
+队列项形状是本地专用的：`QueueItem = { track: TrackSummary }`，`track.id` 是本地库
+自增数字，四条前进路径（`playNext` / `playPrevious` / `playItemAt` /
+`advanceOnTrackEnded` 的 repeatOne 分支）一律调 `ipc.playTrack(id)`。而
+`IfuyoPage.play()` 直接 `ipc.ifuyoPlay(url,…)`，**从不建立队列上下文** →
+在线播放时 `items.length===0`、`currentIndex===-1` → `playNext()` 首行
+`if (!hasNext()) return false` 立刻返回（`hasNext()` 要求 `currentIndex>=0`），
+返回值又被 `void playNext().catch(() => undefined)` 吞掉 → 界面零反馈。
+
+同一条根因连带失效的：曲终自动前进（`advanceOnTrackEnded` 在 `items.length===0`
+就 return false）、上一曲、以及四种播放模式对在线音乐的全部语义——列表循环不循环、
+单曲循环不重播、随机不跳。
+
+### 修法（用户确认范围：只做接线）
+
+- `QueueItem` 放宽为判别联合 `{kind:'local'} | {kind:'remote'}`，新增 `playItem()`
+  统一分派 `playTrack` / `ifuyoPlay`，上述四条前进路径全部改走它。
+- 新增 `playWithRemoteContext(track, context)`；`IfuyoPage` 点击播放时以当前清单建
+  上下文——与本地 §307 双击建上下文同一语义（整体替换，不与本地项混源）。
+- 队列抽屉给远程项加「在线」来源标记（`.queue-src` + i18n `queue.online` zh/en）。
+- **不动** §257 边界语义、**不加**空队列提示：这两条明确留在本轮范围外。
+
+### 顺手发现、未修的独立一条
+
+`playNext/playPrevious` 的边界检查不看播放模式，所以本地曲库在「列表循环」下、
+末曲手动点下一曲同样无反应。循环语义本该回绕，但 `queue.test.ts:48` 有断言
+「边界返回 false（§257）」锁着，改行为要一并改那条断言——留待定夺。
+
+### 验证
+
+新增 `R08`（远程队列项数=清单条数、在线标记数一致、当前项唯一）与 `R09`
+（**真点击**「下一曲」后 `player_snapshot.trackPath` 必须等于清单下一条的 URL）。
+必须是真点击：单测只能证游标逻辑，证不了按钮接得上。
+
+矩阵（与源码同代 release 产物 01:45）：**R 12 PASS / 0 FAIL / 0 SKIP**
+（`R07` 远程歌词首次由 SKIP 转实 PASS：21 行 `synced=true`）、UI vitest
+**130/130**（新增远程队列 5 条）、`tsc --noEmit` 与 `eslint .` 均无输出。
+
+W 如实记为 **10/15**，不是上一轮的 13/15：W08/W09/W11 三条红在悬浮歌词
+锁定/拖拽区——并行会话把锁定实现改成「恒定 DOM + mousedown 门控
+`startDragging()`」，`data-locked` 从容器移到 pill、`data-tauri-drag-region`
+撤掉，而断言仍在读 `.desktop-lyrics` 上的旧属性。属**断言滞后**，不由本轮改动
+引入，但 01:45 的构建把这条在途改动一并打进了产物。
+W01/W04/W05（本地双击起播、Mini ⏭/⏮ 换曲）仍 PASS，说明 `QueueItem` 形状变更
+没有回归本地路径。
+

@@ -6,10 +6,15 @@ import { toast, useUiStore } from '../../state/stores';
 import { ipc } from '../../ipc/client';
 import { useTranslation } from '../../i18n/react';
 import type { TrackSummary } from '../../ipc/types';
+import type { IfuyoTrack } from '../../ipc/ifuyo';
 
-export interface QueueItem {
-  track: TrackSummary;
-}
+/** 队列项有两种来源：本地库 TrackId，或远程清单条目（按 URL 播）。
+ *  §197「全应用唯一 queue 权威」不变，放宽的只是播放目标——此前远程曲目根本
+ *  进不了队列（IfuyoPage 直接 ifuyoPlay，从不建上下文），队列恒空，于是
+ *  next/previous 与四种播放模式对在线音乐全部失效。 */
+export type QueueItem =
+  | { kind: 'local'; track: TrackSummary }
+  | { kind: 'remote'; track: IfuyoTrack };
 
 /** in-memory queue（§48 允许：application-layer in-memory queue）。 */
 const items: QueueItem[] = [];
@@ -20,11 +25,35 @@ function emit() {
   for (const l of listeners) l();
 }
 
+/** 播放目标分派：本地用 TrackId，远程用 URL（Rust 侧仍按严格策略再校验一次）。 */
+async function playItem(item: QueueItem): Promise<void> {
+  if (item.kind === 'local') await ipc.playTrack(item.track.id);
+  else await ipc.ifuyoPlay(item.track.url, item.track.title, item.track.artist);
+}
+
+function itemKey(item: QueueItem): string {
+  return item.kind === 'local' ? `l${item.track.id}` : `r${item.track.url}`;
+}
+
+function itemLabel(item: QueueItem): string {
+  return item.kind === 'local'
+    ? item.track.title ?? item.track.path
+    : item.track.title || item.track.url;
+}
+
 /** §307：双击库内曲目 → 以该曲目为当前项替换队列上下文（真实 next/previous）。 */
 export function playWithQueueContext(track: TrackSummary, context: TrackSummary[]) {
   items.length = 0;
-  for (const tr of context) items.push({ track: tr });
-  currentIndex = items.findIndex((it) => it.track.id === track.id);
+  for (const tr of context) items.push({ kind: 'local', track: tr });
+  currentIndex = items.findIndex((it) => it.kind === 'local' && it.track.id === track.id);
+  emit();
+}
+
+/** 远程同理：以远程清单为上下文，否则在线播放时队列恒空、传输键全部失效。 */
+export function playWithRemoteContext(track: IfuyoTrack, context: IfuyoTrack[]) {
+  items.length = 0;
+  for (const tr of context) items.push({ kind: 'remote', track: tr });
+  currentIndex = items.findIndex((it) => it.kind === 'remote' && it.track.url === track.url);
   emit();
 }
 
@@ -51,7 +80,7 @@ export async function playNext(): Promise<boolean> {
   emit();
   const item = items[currentIndex];
   if (!item) return false;
-  await ipc.playTrack(item.track.id);
+  await playItem(item);
   return true;
 }
 
@@ -61,7 +90,7 @@ export async function playPrevious(): Promise<boolean> {
   emit();
   const item = items[currentIndex];
   if (!item) return false;
-  await ipc.playTrack(item.track.id);
+  await playItem(item);
   return true;
 }
 
@@ -71,7 +100,7 @@ export function playItemAt(index: number) {
   currentIndex = index;
   emit();
   const item = items[index];
-  if (item) void ipc.playTrack(item.track.id).catch(() => undefined);
+  if (item) void playItem(item).catch(() => undefined);
 }
 
 /** §307 queue remove：移除任意项；当前项之前的移除使游标前移。 */
@@ -144,7 +173,7 @@ export function advanceOnTrackEnded(): boolean {
       const i = currentIndex >= 0 ? currentIndex : 0;
       const item = items[i];
       if (!item) return false;
-      void ipc.playTrack(item.track.id).catch(() => undefined);
+      void playItem(item).catch(() => undefined);
       return true;
     }
     case 'repeatAll': {
@@ -245,19 +274,20 @@ export function QueueDrawer() {
       ) : (
         <ul className="queue-list">
           {items.map((item, i) => (
-            <li key={`${item.track.id}-${i}`} className="queue-item">
+            <li key={`${itemKey(item)}-${i}`} className="queue-item">
               <button
                 className={`queue-play${i === currentIndex ? ' current' : ''}`}
                 aria-current={i === currentIndex ? 'true' : undefined}
                 onClick={() => playItemAt(i)}
               >
                 {i === currentIndex ? '▶ ' : ''}
-                {item.track.title ?? item.track.path}
+                {itemLabel(item)}
+                {item.kind === 'remote' && <span className="queue-src">{t('queue.online')}</span>}
               </button>
               <button
                 className="icon-btn queue-remove"
                 onClick={() => removeAt(i)}
-                aria-label={`${t('queue.remove')} ${item.track.title ?? item.track.path}`}
+                aria-label={`${t('queue.remove')} ${itemLabel(item)}`}
                 title={t('queue.remove')}
               >
                 ✕

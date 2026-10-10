@@ -125,6 +125,60 @@ const run = async () => {
     const openUrl = await probeCode(sess, 'play_input', { input: 'http://127.0.0.1:9/x.mp3' });
     line('R06', !String(openUrl).startsWith('NO-VALUE') && openUrl !== 'SOURCE_BLOCKED',
       `play_input 私网回环 → ${openUrl}（不应被策略拒绝；连接失败属预期）`);
+
+    // ---- R08/R09 远程队列接线（用户报的"点下一首无反应"）----
+    // 根因：远程播放从不建队列上下文 → 队列恒空 → playNext 首行守卫
+    // !hasNext() 直接 return false，返回值又被 void 吞掉 → 界面零反馈。
+    // 这里必须用**真实点击**取证：单测只能证明游标逻辑，证明不了按钮接得上。
+    let pair = -1;
+    for (let i = 0; i + 1 < list.tracks.length; i += 1) {
+      if (list.tracks[i]?.durationSeconds !== null && list.tracks[i + 1]?.durationSeconds !== null) {
+        pair = i;
+        break;
+      }
+    }
+    if (pair < 0) {
+      line('R08', 'skip', '清单里没有相邻的两条可播曲目，无法验队列前进');
+      line('R09', 'skip', '同上');
+    } else {
+      await evalJs(`document.querySelectorAll('.ifuyo-row')[${pair}]?.click(); 1`);
+      let s = null;
+      const endNext = Date.now() + 20_000;
+      while (Date.now() < endNext) {
+        await sleep(700);
+        s = await inv('player_snapshot', {});
+        if (s?.state === 'playing') break;
+      }
+      // 队列抽屉里的项数 = 清单条数（上下文真的建立了）
+      await evalJs(
+        `(()=>{const b=[...document.querySelectorAll('.side-btn')].find(x=>/队列/.test(x.textContent||''));` +
+        `b?.click();return 1})()`,
+      );
+      await sleep(700);
+      const qItems = await evalJs(`document.querySelectorAll('.queue-item').length`)
+        .then((r) => r.result?.value ?? 0);
+      const qOnline = await evalJs(`document.querySelectorAll('.queue-src').length`)
+        .then((r) => r.result?.value ?? 0);
+      const cur = await evalJs(`document.querySelectorAll('.queue-play.current').length`)
+        .then((r) => r.result?.value ?? 0);
+      line('R08', s?.state === 'playing' && qItems === list.tracks.length &&
+          qOnline === list.tracks.length && cur === 1,
+        `远程队列：${qItems} 项（在线标记 ${qOnline}）当前项 ${cur}，清单 ${list.tracks.length} 首，` +
+          `正在播="${s?.title}"`);
+
+      // 点「下一曲」：游标必须真的走到下一条（比对清单 URL，不是比"看起来在播"）
+      const wantNext = list.tracks[pair + 1].url;
+      const btn = await evalJs(
+        `(()=>{const b=[...document.querySelectorAll('button')].find(x=>(x.title||'')==='下一曲');` +
+        `if(!b)return 'NO-BUTTON';b.click();return b.title})()`,
+      ).then((r) => r.result?.value);
+      await sleep(2500);
+      const s2 = await inv('player_snapshot', {});
+      line('R09', btn === '下一曲' && s2?.trackPath === wantNext,
+        `点下一曲：按钮=${btn}，播到="${s2?.title}" ` +
+          `path=${String(s2?.trackPath).slice(-28)}（期望 …${wantNext.slice(-28)}）`);
+      await inv('stop', {});
+    }
   } catch (e) {
     line('R-ERR', false, `异常：${String(e?.message ?? e).slice(0, 200)}`);
   } finally {

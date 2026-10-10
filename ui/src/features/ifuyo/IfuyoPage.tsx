@@ -9,6 +9,7 @@ import { ipc } from '../../ipc/client';
 import { errorToI18nKey } from '../../ipc/errors';
 import { fmtDuration, type IfuyoList, type IfuyoTrack } from '../../ipc/ifuyo';
 import { registerRemoteLyrics } from '../../ipc/remoteLyrics';
+import { playWithRemoteContext } from '../queue/QueueDrawer';
 import { useTranslation } from '../../i18n/react';
 import { usePlayerStore, useUiStore } from '../../state/stores';
 
@@ -37,8 +38,11 @@ export function IfuyoPage() {
     void load();
   }, [load]);
 
-  const play = async (track: IfuyoTrack) => {
+  const play = async (track: IfuyoTrack, context: IfuyoTrack[]) => {
     setBusyUrl(track.url);
+    // 先建队列上下文再播：没有它，队列恒空 → 上一曲/下一曲与四种播放模式
+    // 对在线音乐全部失效（playNext 的首行守卫直接 return false）。
+    playWithRemoteContext(track, context);
     try {
       await ipc.ifuyoPlay(track.url, track.title, track.artist);
     } catch (e) {
@@ -99,7 +103,7 @@ export function IfuyoPage() {
                   <button
                     type="button"
                     className={`ifuyo-row${isCurrent ? ' playing' : ''}`}
-                    onClick={() => void play(track)}
+                    onClick={() => void play(track, data.tracks)}
                     disabled={busyUrl !== null}
                   >
                     <span className="ifuyo-title">{track.title}</span>

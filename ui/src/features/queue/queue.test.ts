@@ -2,7 +2,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../ipc/client', () => ({
-  ipc: { playTrack: vi.fn(async () => undefined) },
+  ipc: {
+    playTrack: vi.fn(async () => undefined),
+    ifuyoPlay: vi.fn(async () => 'played'),
+  },
 }));
 
 import { ipc } from '../../ipc/client';
@@ -18,9 +21,11 @@ import {
   playNext,
   playPrevious,
   playWithQueueContext,
+  playWithRemoteContext,
   removeAt,
 } from './QueueDrawer';
 import type { TrackSummary } from '../../ipc/types';
+import type { IfuyoTrack } from '../../ipc/ifuyo';
 
 function track(id: number): TrackSummary {
   return {
@@ -36,6 +41,21 @@ function track(id: number): TrackSummary {
 }
 
 beforeEach(() => clearQueue());
+
+function remote(n: number): IfuyoTrack {
+  return {
+    id: `a${n}.mp3`,
+    title: `Remote ${n}`,
+    artist: `Artist ${n}`,
+    album: null,
+    url: `https://ifuyo.com/audio/a${n}.mp3`,
+    durationSeconds: null,
+    sizeBytes: 1024,
+    format: 'mp3',
+    etag: null,
+    lyricsUrl: null,
+  };
+}
 
 describe('queue engine（§197）', () => {
   it('playWithQueueContext 设定上下文与游标', () => {
@@ -143,5 +163,73 @@ describe('操作反馈（M12.7）', () => {
     const seq = useUiStore.getState().noticeSeq;
     clearQueue();
     expect(useUiStore.getState().noticeSeq).toBe(seq);
+  });
+});
+
+describe('远程队列项（修：在线音乐播放时队列恒空 → 传输键与播放模式全废）', () => {
+  beforeEach(() => {
+    while (getPlayMode() !== 'order') cyclePlayMode();
+    vi.mocked(ipc.playTrack).mockClear();
+    vi.mocked(ipc.ifuyoPlay).mockClear();
+  });
+
+  it('playWithRemoteContext 建上下文与游标；项是 remote 来源', () => {
+    playWithRemoteContext(remote(2), [remote(1), remote(2), remote(3)]);
+    const { items, currentIndex } = getQueueState();
+    expect(items).toHaveLength(3);
+    expect(currentIndex).toBe(1);
+    expect(items[0]?.kind).toBe('remote');
+  });
+
+  it('远程 next/previous 走 ifuyoPlay(url)，不碰本地 playTrack', async () => {
+    playWithRemoteContext(remote(1), [remote(1), remote(2)]);
+    expect(await playNext()).toBe(true);
+    expect(ipc.ifuyoPlay).toHaveBeenLastCalledWith(
+      'https://ifuyo.com/audio/a2.mp3',
+      'Remote 2',
+      'Artist 2',
+    );
+    expect(ipc.playTrack).not.toHaveBeenCalled();
+    expect(await playPrevious()).toBe(true);
+    expect(ipc.ifuyoPlay).toHaveBeenLastCalledWith(
+      'https://ifuyo.com/audio/a1.mp3',
+      'Remote 1',
+      'Artist 1',
+    );
+  });
+
+  it('远程曲终自动前进：repeatAll 回绕、repeatOne 重播同一 URL', () => {
+    playWithRemoteContext(remote(2), [remote(1), remote(2)]);
+    cyclePlayMode(); // repeatAll
+    expect(advanceOnTrackEnded()).toBe(true);
+    expect(ipc.ifuyoPlay).toHaveBeenLastCalledWith(
+      'https://ifuyo.com/audio/a1.mp3',
+      'Remote 1',
+      'Artist 1',
+    );
+    expect(getQueueState().currentIndex).toBe(0);
+
+    vi.mocked(ipc.ifuyoPlay).mockClear();
+    playWithRemoteContext(remote(1), [remote(1)]);
+    while (getPlayMode() !== 'repeatOne') cyclePlayMode();
+    expect(advanceOnTrackEnded()).toBe(true);
+    expect(ipc.ifuyoPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it('order 模式下远程播完不前进（与本地同语义）', () => {
+    playWithRemoteContext(remote(1), [remote(1), remote(2)]);
+    expect(advanceOnTrackEnded()).toBe(false);
+    expect(ipc.ifuyoPlay).not.toHaveBeenCalled();
+  });
+
+  it('本地↔远程切换上下文：来源不混，removeAt 后游标仍自洽', () => {
+    playWithQueueContext(track(1), [track(1), track(2)]);
+    expect(getQueueState().items[0]?.kind).toBe('local');
+    playWithRemoteContext(remote(1), [remote(1), remote(2), remote(3)]);
+    const kinds = getQueueState().items.map((it) => it.kind);
+    expect(kinds).toEqual(['remote', 'remote', 'remote']);
+    removeAt(0);
+    expect(getQueueState().currentIndex).toBe(0);
+    expect(hasNext()).toBe(true);
   });
 });
