@@ -188,7 +188,6 @@ pub fn run() {
             dreamscape::dreamscape_set_camera,
             dreamscape::dreamscape_open,
             dreamscape::dreamscape_close,
-            dreamscape::dreamscape_set_quality,
             dreamscape::dreamscape_set_environment,
             analysis_ipc::track_analysis_summary,
             analysis_ipc::analysis_visual_summary,

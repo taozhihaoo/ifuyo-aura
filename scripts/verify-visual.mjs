@@ -58,7 +58,7 @@ const run = async () => {
   const fixtures = join(process.cwd(), 'tests', 'fixtures');
   const musicDir = mkdtempSync(join(tmpdir(), 'aura-vis-'));
   // 只拷播放需要的三份：带 LRC / 无歌词 / 短音效
-  for (const f of ['fixture-lrc.mp3', 'fixture-lrc.lrc', 'fixture-notags.mp3', 'fixture.flac']) {
+  for (const f of ['fixture-lrc.mp3', 'fixture-lrc.lrc', 'fixture-notags.mp3', 'fixture.flac', 'fixture-dyn.mp3']) {
     cpSync(join(fixtures, f), join(musicDir, f));
   }
   const all = readdirSync(musicDir);
@@ -79,6 +79,7 @@ const run = async () => {
     }
     const idOf = (f) => tracks.find((t) => t.path && t.path.endsWith(f))?.id ?? null;
     const lrcId = idOf('fixture-lrc.mp3');
+    const dynId = idOf('fixture-dyn.mp3');
     const noTagId = idOf('fixture-notags.mp3');
     line('Y00', tracks.length >= 3 && lrcId !== null && noTagId !== null,
       `扫描 ${all.length} 个文件 → ${tracks.length} 首（lrc=${lrcId} notags=${noTagId}）`);
@@ -165,41 +166,48 @@ const run = async () => {
     // 前两版都在这里翻车：1) 拿"还在从 0 爬升的跟随器"当抖动（收敛≠抖动）；
     // 2) 用未映射的 rms 抖动去比已映射的 telemetry（量纲不同）。正确做法：
     // 先等跟随器收敛，再把原始读数过同一个 mapLevel 映射后逐拍对比。
-    // fixture 是稳态正弦 ⇒ 原始抖动本身≈0，此时"平滑更有价值"不可证，
-    // 如实 SKIP 并打印数字，而不是让断言恒真。
+    // 必须用**动态包络** fixture（RMS 2.9× 起伏）：恒定正弦下原始抖动≈0，
+    // "平滑是否在压抖动"根本不可证伪，只能测收敛。
     const clamp01 = (v) => Math.min(1, Math.max(0, v));
     await inv('set_volume', { volume: 1 });
-    await inv('play_track', { trackId: lrcId });
-    await sleep(900); // 收敛期（攻击 τ=0.14s，0.9s ≈ 6τ）；fixture 只有 3s，窗口必须省着用
-    const pairs = [];
-    for (let i = 0; i < 10; i += 1) {
-      const pos = await inv('player_position', {});
-      if (pos > 2.8) break; // 逼近曲终就停手，别把静音尾段算进抖动
-      const [lv, telRaw] = await Promise.all([
-        inv('player_level', {}),
-        canvasDiag(sess).then((d) => d?.tel ?? null),
-      ]);
-      if (telRaw) pairs.push({ mapped: clamp01(lv.rms * 2.6), sm: JSON.parse(telRaw).level, pos });
-      await sleep(120);
-    }
-    const jitter = (arr) =>
-      arr.length < 2 ? null : arr.slice(1).reduce((s, v, k) => s + Math.abs(v - arr[k]), 0) / (arr.length - 1);
-    const rawJ = jitter(pairs.map((p) => p.mapped));
-    const smJ = jitter(pairs.map((p) => p.sm));
-    const converged =
-      pairs.length > 0 && Math.abs(pairs[pairs.length - 1].mapped - pairs[pairs.length - 1].sm) < 0.05;
-    const lastPos = pairs.at(-1)?.pos ?? null;
-    if (pairs.length < 3) {
-      line('Y08', 'skip', `播放窗口内只取到 ${pairs.length} 组配对读数（3s fixture 太短，需带动态的 fixture）`);
-    } else if (lastPos !== null && lastPos >= 2.9) {
-      line('Y08', false, `采样窗口逼近曲终（末位置=${lastPos.toFixed(2)}），读数不可信`);
-    } else if (rawJ !== null && rawJ < 1e-3) {
-      line('Y08', 'skip',
-        `稳态正弦原始抖动≈0（mapped=${rawJ.toExponential(1)} vs 平滑=${smJ?.toExponential(1)}）——` +
-          `收敛性可证（${converged}），抖动抑制需要带动态的 fixture 才能证`);
+    if (dynId === null) {
+      // 不允许静默退回恒定正弦——那样 Y08 会"通过"却什么都没证明。
+      line('Y08', false, '动态 fixture fixture-dyn.mp3 未入库（dynId=null），抖动抑制不可证');
     } else {
-      line('Y08', converged && smJ !== null && smJ <= rawJ,
-        `收敛=${converged} 抖动 raw=${rawJ?.toExponential(2)} smooth=${smJ?.toExponential(2)}`);
+      await inv('play_track', { trackId: dynId });
+      await sleep(900); // 收敛期（攻击 τ=0.14s，0.9s ≈ 6τ）
+      const pairs = [];
+      for (let i = 0; i < 14; i += 1) {
+        const pos = await inv('player_position', {});
+        if (pos > 5.8) break; // 逼近曲终就停手，别把静音尾段算进抖动
+        const [lv, telRaw] = await Promise.all([
+          inv('player_level', {}),
+          canvasDiag(sess).then((d) => d?.tel ?? null),
+        ]);
+        if (telRaw) pairs.push({ mapped: clamp01(lv.rms * 2.6), sm: JSON.parse(telRaw).level, pos });
+        await sleep(120);
+      }
+      const jitter = (arr) =>
+        arr.length < 2 ? null : arr.slice(1).reduce((s, v, k) => s + Math.abs(v - arr[k]), 0) / (arr.length - 1);
+      const mappedSeries = pairs.map((p) => p.mapped);
+      const rawJ = jitter(mappedSeries);
+      const smJ = jitter(pairs.map((p) => p.sm));
+      const span = mappedSeries.length ? Math.max(...mappedSeries) - Math.min(...mappedSeries) : 0;
+      // 判据全部**相对信号自身幅度**，不用魔法常数：
+      //   · 抖动必须被压掉 ≥25%（smJ < 0.75·rawJ），"勉强小一点"不算数；
+      //   · 平均跟踪误差 < 0.5·span（跟随器跑偏时误差≈span；τ=0.14s 对 3s 周期
+      //     包络的物理滞后本就≈0.15 绝对值，用绝对阈值会正好落在噪声带上——
+      //     上一版 <0.15 三次跑出 0.1455/0.1492/0.1529，一半一半，那是判据错）。
+      const trackErr = pairs.length
+        ? pairs.reduce((acc, p) => acc + Math.abs(p.mapped - p.sm), 0) / pairs.length
+        : null;
+      const lastPos = pairs.at(-1)?.pos ?? null;
+      line('Y08',
+        pairs.length >= 6 && span > 0.02 && rawJ !== null && smJ !== null &&
+          smJ < rawJ * 0.75 && trackErr !== null && trackErr < span * 0.5,
+        `动态 fixture：span=${span.toFixed(4)} 逐拍抖动 raw=${rawJ?.toExponential(2)} → smooth=${smJ?.toExponential(2)} ` +
+          `比值=${((smJ ?? 0) / (rawJ ?? 1)).toFixed(2)}(需<0.75) 跟踪误差=${trackErr?.toFixed(4)}(需<${(span * 0.5).toFixed(4)}) ` +
+          `样本=${pairs.length}（末位置=${lastPos?.toFixed(2)}s）`);
     }
 
     // ---- Y09：WebGL 上下文丢失 → fallback；恢复 → 自动续画 ----

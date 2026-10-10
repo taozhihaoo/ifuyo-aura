@@ -181,24 +181,6 @@ pub fn dreamscape_close(
     ))
 }
 
-/// §256/§141 set_quality：UI 渲染档位偏好（渲染器消费；后端校验合法值，
-/// 幂等——同值重复设置无副作用）。
-#[tauri::command]
-pub fn dreamscape_set_quality(
-    state: tauri::State<'_, crate::ipc::AppState>,
-    quality: String,
-) -> CmdResult<()> {
-    let _ = state;
-    match quality.as_str() {
-        "low" | "medium" | "high" | "auto" => Ok(()),
-        other => Err(AppError::new(
-            "INTERNAL",
-            format!("invalid quality: {other}"),
-            false,
-        )),
-    }
-}
-
 /// §100/§101/§256 set_environment：用户显式环境控制——冻结/解冻
 /// （B 级手动 time-of-day/weather 预设留待后续；Auto/Frozen 已可用）。
 #[tauri::command]

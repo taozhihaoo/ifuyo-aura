@@ -2,7 +2,7 @@
 // 扫描→元数据→封面→搜索→播放→重扫幂等 全旅程（隔离资料目录）。
 //
 // 运行：node scripts/verify-library.mjs（自动启停应用，勿手动开 9223）
-import { cpSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connectCdp, startApp, stopApp } from './lib/qa-app.mjs';
@@ -109,8 +109,19 @@ const run = async () => {
     line('L12', after.tracks === before.tracks, `重扫幂等：${before.tracks} → ${after.tracks}`);
 
     // L-13 库统计精确值（library_stats 列名 bug 回归：曾恒 0）
-    line('L13', after.tracks === 19 && after.artists === 3 && after.albums === 3,
-      `stats 精确值：tracks=${after.tracks}(19) artists=${after.artists}(3) albums=${after.albums}(3)`);
+    // 期望值由 fixture 集合推导，不写死数字：加一条 fixture 就改一次常数，
+    // 迟早会变成"改测试迁就实现"（本次新增 fixture-dyn.mp3 正撞在这上面）。
+    // 曲目数 = 音频文件数 + CUE 子轨数（整轨主行在子轨展开后被停用，不计数）。
+    const cuePath = join(fixtures, 'fixture-cue.cue');
+    const cueTracks = existsSync(cuePath)
+      ? readFileSync(cuePath, 'utf-8')
+          .split(/\r?\n/)
+          .filter((l) => /^\s*TRACK\s+\d+\s+AUDIO/i.test(l)).length
+      : 0;
+    const expectTracks = files.length + cueTracks;
+    line('L13', after.tracks === expectTracks && after.artists === 3 && after.albums === 3,
+      `stats 精确值：tracks=${after.tracks}(${expectTracks}=${files.length}+cue${cueTracks}) ` +
+      `artists=${after.artists}(3) albums=${after.albums}(3)`);
 
     // L-14 封面缩略图列（M13.2）：5 个带封面 fixture → 曲库可视行渲染 <img>
     await inv('library_list', { sort: 'title', limit: 50, offset: 0 });

@@ -77,6 +77,16 @@ def main() -> None:
         "-c:a", "flac",
         str(OUT / "fixture.flac"))
 
+    # 6.5) 动态包络：幅度按 ~3s 周期在 0.06..0.91 之间起伏（lavfi aevalsrc
+    #      确定性合成，无随机）。其余 fixture 都是恒定正弦，无法证伪
+    #      "平滑是否真的在压抖动"——Y10 需要这条才有意义。
+    #      实测（8kHz 单声道、250ms 窗）RMS 在 0.204..0.586 之间，比值 2.9×。
+    run("-f", "lavfi",
+        "-i", "aevalsrc=(0.06+0.85*abs(sin(PI*t/1.5)))*sin(440*2*PI*t):s=44100:d=6",
+        *out_opts, *meta,
+        "-c:a", "libmp3lame", "-b:a", "128k", "-id3v2_version", "3",
+        str(OUT / "fixture-dyn.mp3"))
+
     # 7) LRC 对：mp3（无歌词标签）+ 同名 .lrc（时间戳行）
     run(*audio_args(4), *cover_map, *out_opts, *meta,
         "-c:a", "libmp3lame", "-b:a", "128k", "-id3v2_version", "3",

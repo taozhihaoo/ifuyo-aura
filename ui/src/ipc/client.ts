@@ -85,8 +85,6 @@ export const ipc = {
   // §256/§257：幂等 open/close（重复调用无副作用）。
   dreamscapeOpen: () => call<DreamscapeStateDto>('dreamscape_open'),
   dreamscapeClose: () => call<DreamscapeStateDto>('dreamscape_close'),
-  dreamscapeSetQuality: (quality: 'low' | 'medium' | 'high' | 'auto') =>
-    call<void>('dreamscape_set_quality', { quality }),
   dreamscapeSetEnvironment: (frozen: boolean) =>
     call<DreamscapeStateDto>('dreamscape_set_environment', { frozen }),
   dreamscapeAdvance: (ticks: number) => call<DreamscapeStateDto>('dreamscape_advance', { ticks }),
