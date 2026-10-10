@@ -95,7 +95,12 @@ describe('IfuyoPage', () => {
       screen.getByText('青花瓷').closest('button')?.click();
     });
     await waitFor(() =>
-      expect(mocks.ifuyoPlay).toHaveBeenCalledWith('https://ifuyo.com/audio/a.mp3'),
+      // 标题/艺术家要一起传：否则播放条只能显示 percent-encoded 的 URL 末段
+      expect(mocks.ifuyoPlay).toHaveBeenCalledWith(
+        'https://ifuyo.com/audio/a.mp3',
+        '青花瓷',
+        '周杰伦',
+      ),
     );
     // 提示写进真实 ui store（不 mock 它，避免漏导出第三个 hook）
     await waitFor(() => expect(useUiStore.getState().notice).toBeTruthy());

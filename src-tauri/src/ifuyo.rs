@@ -172,6 +172,20 @@ fn build_list(
     })
 }
 
+/// UI 传入的元数据字符串按 SMTC 面同一上限截断（char 边界，不切半个汉字）。
+/// 空白视为缺失——不往媒体面板写一串空格。
+fn clip_meta(v: Option<String>) -> Option<String> {
+    let t = v?.trim().to_string();
+    if t.is_empty() {
+        return None;
+    }
+    let end = t
+        .char_indices()
+        .nth(SecurityLimits::MAX_METADATA_CHARS)
+        .map_or(t.len(), |(i, _)| i);
+    Some(t[..end].to_string())
+}
+
 /// 拉取并校验远程清单。错误面：网络/解析/版本分开报，`recoverable=true` 让 UI
 /// 可以重试（清单是幂等 GET）。
 #[tauri::command]
@@ -203,8 +217,17 @@ pub fn ifuyo_list(state: State<'_, AppState>) -> CmdResult<IfuyoListDto> {
 }
 
 /// 播放远程曲目（直连流式；本地缓存优先是下一批的面）。
+///
+/// `title`/`artist` 来自清单：不传的话播放条只能拿 URL 末段回退显示（远程路径是
+/// percent-encoded，用户会看到 `%E7%8E%B0…`）。UI 传入的字符串按 SMTC 面同一
+/// 上限截断，不信任长度。
 #[tauri::command]
-pub fn ifuyo_play(state: State<'_, AppState>, url: String) -> CmdResult<String> {
+pub fn ifuyo_play(
+    state: State<'_, AppState>,
+    url: String,
+    title: Option<String>,
+    artist: Option<String>,
+) -> CmdResult<String> {
     // 先用 Arc 副本判定，避免把 state 借出去后又移动它。
     let blocklist = std::sync::Arc::clone(&state.blocklist);
     let policy = aura_sources::url_policy::NetworkPolicy::deny_private();
@@ -215,10 +238,20 @@ pub fn ifuyo_play(state: State<'_, AppState>, url: String) -> CmdResult<String> 
             false,
         ));
     }
+    let (title, artist) = (clip_meta(title), clip_meta(artist));
+    let meta =
+        (title.is_some() || artist.is_some()).then_some(crate::integration::CurrentTrackMeta {
+            track_id: None,
+            title,
+            artist,
+            album: None,
+            album_artist: None,
+            artwork_id: None,
+        });
     crate::ipc::play_input_impl(
         &state,
         url,
-        None,
+        meta,
         None,
         aura_core::TrackLoudness::missing(),
         &state.http_strict,
@@ -339,5 +372,30 @@ mod tests {
         assert_eq!(stem_from_url("https://x/a.mp4a"), "a");
         assert_eq!(stem_from_url("https://x/dir"), "dir");
         assert_eq!(stem_from_url("https://x/a.mp3?tk=1"), "a");
+    }
+
+    /// UI 传入的标题/艺术家会写进 SMTC 与快照：必须按 char 边界截断，
+    /// 且空白视为缺失（否则媒体面板出现一串空格）。
+    #[test]
+    fn clip_meta_bounds_and_blank_handling() {
+        assert_eq!(clip_meta(None), None);
+        assert_eq!(clip_meta(Some("   ".into())), None);
+        assert_eq!(
+            clip_meta(Some(" 青花瓷 ".into())).as_deref(),
+            Some("青花瓷")
+        );
+        let long = "周".repeat(SecurityLimits::MAX_METADATA_CHARS + 50);
+        let clipped = clip_meta(Some(long)).expect("clip");
+        assert_eq!(
+            clipped.chars().count(),
+            SecurityLimits::MAX_METADATA_CHARS,
+            "必须正好截在上限，且不切出半个字符"
+        );
+        // ASCII 长串同样按字符数截，不按字节（字节切会 panic 在字符中间）
+        let ascii = "a".repeat(SecurityLimits::MAX_METADATA_CHARS + 10);
+        assert_eq!(
+            clip_meta(Some(ascii)).expect("clip2").len(),
+            SecurityLimits::MAX_METADATA_CHARS
+        );
     }
 }

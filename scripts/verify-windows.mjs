@@ -197,26 +197,72 @@ const run = async () => {
     } catch (e) {
       ipcErr = String(e?.message ?? e).slice(0, 160);
     }
-    // 冻结在 2.6s 再读：暂停态下位置保持，歌词行因此是确定值
-    await main.inv('pause', {});
-    await sleep(1300); // 让 1s 传输淡变落地
+    // 冻结取值：必须**在曲终之前** seek 再 pause，并且断言真的停在 paused。
+    // 上一版先 pause 再等 1.3s，3s 的 fixture 早已播完进 stopped —— 而"停止
+    // 后清空桌面"是新规则，于是读到空串被误报成"出词功能坏了"。
+    await main.inv('play_track', { trackId: lrcId });
+    await sleep(400);
     await main.inv('seek', { positionSeconds: 2.6 });
-    await sleep(1500); // 悬浮窗 500ms 快照 + 100ms 位置轮询，留足两拍
+    await main.inv('pause', {});
+    let frozen = null;
+    for (let i = 0; i < 14; i += 1) {
+      await sleep(200);
+      frozen = await main.inv('player_snapshot', {});
+      if (frozen?.state === 'paused') break;
+    }
+    await sleep(900); // 悬浮窗 500ms 快照 + 100ms 位置轮询，留两拍
     const dlNow = await text(dl, '.dl-now');
-    const playing = (await snap(main));
+    // 期望行由**实际停住的位置**推导，而不是写死"第三句"：暂停含 1s 淡出，
+    // 淡出期间引擎仍在消费缓冲（位置继续走），写死断言会把正确行为判成 FAIL。
+    const lyr = lrcId === null ? null : await main.inv('lyrics_for_track', { trackId: lrcId });
+    const pos = frozen?.positionSeconds ?? 0;
+    let want = '';
+    for (const l of lyr?.lines ?? []) {
+      if (typeof l.timeSeconds === 'number' && l.timeSeconds <= pos) want = l.text;
+    }
     line('W10',
-      ipcErr === null && lrcRow >= 0 && dlNow === '第三句',
-      `歌词窗 IPC 与出词：invoke=${ipcErr ?? 'OK'} 冻结 2.6s 当前行="${dlNow}"` +
-        `（期望 第三句；主窗 ${playing.state}/${(playing.pos ?? 0).toFixed(2)}s）`);
+      ipcErr === null && lyr?.synced === true && frozen?.state === 'paused' && dlNow === want && want !== '',
+      `歌词窗出词：invoke=${ipcErr ?? 'OK'} 主窗=${frozen?.state}@${pos.toFixed(2)}s ` +
+        `当前行="${dlNow}"（按位置推导="${want}"，共 ${lyr?.lines?.length ?? 0} 行）`);
 
-    line('W11', 'skip', '真正的鼠标穿透（锁定时点下方窗口）需肉眼确认——CDP 无法验证 OS 层命中测试');
+    // ---- W11 悬浮歌词：可拖区属性 / 居中 / 锁定后禁拖 ----
+    // Tauri 只认 mousedown 目标元素自身的 drag-region 属性：文本 <p> 盖满窗口，
+    // 属性只标容器时"未锁定也拖不动"（用户报的第 2 条）。
+    const dragState = await dl.evalJs(
+      `(()=>{const box=document.querySelector('.desktop-lyrics');
+        const now=document.querySelector('.dl-now');
+        return {unlockedHasDrag: box?.hasAttribute('data-tauri-drag-region') === true
+                  && now?.hasAttribute('data-tauri-drag-region') === true,
+                align: getComputedStyle(now ?? document.body).textAlign};})()`,
+    ).then((r) => r.result?.value);
+    await click(dl, '.dl-pill'); // 锁定
+    await sleep(400);
+    const lockedDrag = await dl.evalJs(
+      `document.querySelector('.dl-now')?.hasAttribute('data-tauri-drag-region') === false`,
+    ).then((r) => r.result?.value);
+    await click(dl, '.dl-pill'); // 解锁回去
+    line('W11', dragState?.unlockedHasDrag === true && dragState?.align === 'center' && lockedDrag === true,
+      `可拖=${dragState?.unlockedHasDrag} 对齐=${dragState?.align} 锁定后禁拖=${lockedDrag}`);
+
+    // ---- W12 停止播放后桌面上不得留字 ----
+    await main.inv('stop', {});
+    await sleep(1400);
+    const afterStop = await dl.evalJs(
+      `JSON.stringify({now:document.querySelector('.dl-now')?.textContent ?? null,
+         next:document.querySelector('.dl-next')?.textContent ?? null})`,
+    ).then((r) => r.result?.value);
+    const as = afterStop ? JSON.parse(afterStop) : {};
+    line('W12', (as.now ?? '') === '' && (as.next ?? '') === '',
+      `停止后清空：now="${as.now}" next="${as.next}"（此前永久留"未在播放"）`);
+
+    line('W13', 'skip', '真正的鼠标穿透（锁定时点下方窗口）需肉眼确认——CDP 无法验证 OS 层命中测试');
 
     await click(main, '.pb-lyrics'); // 关闭歌词窗
     await sleep(800);
     const still = await connectCdpByUrl('view=lyrics', 9223, 1500);
     // 关闭=隐藏（不停播放），Chromium 会为隐藏窗口保留 target，所以这里不能
     // 断言"target 消失"——写成 SKIP 只报观测值，不做恒真断言。
-    line('W13', 'skip', `再点「词」后歌词 target：${still ? '仍在（隐藏窗口保留 target，属预期）' : '已不可连接'}`);
+    line('W14', 'skip', `再点「词」后歌词 target：${still ? '仍在（隐藏窗口保留 target，属预期）' : '已不可连接'}`);
   } catch (e) {
     line('W-ERR', false, `异常：${e.message}`);
   } finally {

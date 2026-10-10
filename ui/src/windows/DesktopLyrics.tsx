@@ -97,11 +97,24 @@ export function DesktopLyrics() {
     let ticks = 0;
     let position = 0;
     let title = '';
+    let hasTrack = false;
+    let stateName = '';
 
     const paint = () => {
       const now = nowRef.current;
       const next = nextRef.current;
       if (!now || !next) return;
+      // 没有曲目 / 已停止：两行清空。此前这里会落到 `title || t('np.noTrack')`
+      // 分支，把"未在播放"永久留在桌面上——透明窗上没有歌词却有一行字，用户
+      // 第一反应是"这窗卡住了"。
+      if (!hasTrack || stateName === 'stopped') {
+        if (idxRef.current !== -3) {
+          now.textContent = '';
+          next.textContent = '';
+          idxRef.current = -3;
+        }
+        return;
+      }
       const lines = lyricsRef.current?.lines ?? [];
       if (lines.length === 0 || !lyricsRef.current?.synced) {
         // 无同步歌词：主行显示曲名（悬浮窗上留白只会让人以为坏了）。
@@ -137,6 +150,8 @@ export function DesktopLyrics() {
           if (!alive) return;
           const p = s.trackPath ?? null;
           title = s.title ?? '';
+          hasTrack = p !== null;
+          stateName = s.state ?? '';
           if (p !== pathRef.current) {
             pathRef.current = p;
             idxRef.current = -1;
@@ -162,14 +177,18 @@ export function DesktopLyrics() {
     // t 随 locale 稳定；轮询只读 ref
   }, [t]);
 
+  // 未锁定：容器与两行文本都标 drag region——Tauri 只认 mousedown 目标元素
+  // 自身的属性（TitleBar 同款坑），文本 <p> 盖满窗口，只标容器就拖不动。
+  const drag = locked ? {} : { 'data-tauri-drag-region': true };
+
   return (
     <div
       className="desktop-lyrics"
       data-locked={locked ? 'true' : 'false'}
-      {...(locked ? {} : { 'data-tauri-drag-region': true })}
+      {...drag}
     >
-      <p className="dl-now" ref={nowRef} aria-live="polite" />
-      <p className="dl-next" ref={nextRef} aria-hidden />
+      <p className="dl-now" ref={nowRef} aria-live="polite" {...drag} />
+      <p className="dl-next" ref={nextRef} aria-hidden {...drag} />
       <button
         type="button"
         className="dl-pill"

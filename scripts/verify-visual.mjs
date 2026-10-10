@@ -140,7 +140,7 @@ const run = async () => {
     const mx = Math.max(...rms);
     const nonZero = rms.filter((v) => v > 0).length;
     line('Y06', mx - mn > 1e-4 && nonZero >= rms.length * 0.9 && posLast < 3.0,
-      `播放中 pos=${posFirst.toFixed(2)}→${posLast.toFixed(2)} 24k… ` +
+      `播放中 pos=${posFirst.toFixed(2)}→${posLast.toFixed(2)} ` +
         `rms ∈ [${mn.toFixed(5)}, ${mx.toFixed(5)}] 非零=${nonZero}/${rms.length}`);
 
     // ---- Y07：静音时电平归零（零门控；不是按音量缩放） ----

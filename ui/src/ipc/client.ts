@@ -104,7 +104,9 @@ export const ipc = {
     return v;
   },
   // 远程曲目播放走严格策略客户端（deny_private）；缓存优先是下一批。
-  ifuyoPlay: (url: string) => call<string>('ifuyo_play', { url }),
+  // 标题/艺术家一并传过去：否则播放条只能显示 percent-encoded 的 URL 末段。
+  ifuyoPlay: (url: string, title?: string | null, artist?: string | null) =>
+    call<string>('ifuyo_play', { url, title: title ?? null, artist: artist ?? null }),
   dreamscapeRegenerate: (input: string) => call<DreamscapeStateDto>('dreamscape_regenerate', { input }),
   dreamscapeExportSeed: () => call<string>('dreamscape_export_seed'),
   dreamscapeImportSeed: (input: string) => call<DreamscapeStateDto>('dreamscape_import_seed', { input }),

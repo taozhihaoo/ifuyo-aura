@@ -302,12 +302,14 @@ pub(crate) fn play_input_impl(
     let mut icy_rx: Option<std::sync::mpsc::Receiver<aura_sources::model::StreamMetadataEvent>> =
         None;
     use aura_sources::model::SourceKind;
-    let title = resolved
-        .meta
-        .track
-        .title
-        .clone()
-        .or(resolved.meta.stream.icy_name.clone());
+    // 快照标题优先取调用方给的已知元数据：远程清单的 URL 末段是
+    // percent-encoded，只靠 resolver/文件名回退会把 "%E7%8E%B0…" 显示给用户。
+    // 没有已知值时才退回 resolver 真实值（icy_name/station），仍不猜。
+    let title = known_meta
+        .as_ref()
+        .and_then(|m| m.title.clone())
+        .or_else(|| resolved.meta.track.title.clone())
+        .or_else(|| resolved.meta.stream.icy_name.clone());
     let display: String = match resolved.kind {
         SourceKind::Local => {
             let path = resolved

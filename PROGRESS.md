@@ -883,3 +883,32 @@ fmt / clippy --workspace --all-targets -D warnings 0 / workspace 45 suites ok（
   需要缓存保留策略的用户可见开关 + DECISIONS（分片二）。
 - 列表没有分页/搜索（当前清单规模无需）；封面未从远端取（清单 v1 无 artwork 字段）。
 - 清单地址硬编码；换主机需要重跑生成器（url 前缀已烘进清单）。
+
+## M15b.1（2026-10-10）——用户实机反馈修三处（远程标题 / 桌面歌词残留 / 拖不动+居中）
+
+用户跑真实曲库后报的三条，全部先定位再修，并各配一条可重跑断言：
+
+1. **远程播放显示 `%E7%8E%B0…`**：两个原因叠在一起——(a) `known_meta` 只喂 SMTC 元数据，
+   快照标题走 `resolved.meta`，远程 URL 没有标签就是 null；(b) UI 的 `fileBaseName` 回退
+   从不 percent-decode。修法：`play_input_impl` 的标题优先级改为
+   `known_meta.title → resolver track.title → icy_name`（仍不猜），`ifuyo_play` 把清单的
+   title/artist 传进去（并按 SMTC 上限做 char 边界截断，UI 传入长度不可信），
+   `fileBaseName` 补 percent-decode + 去 query/fragment（畸形转义退回原串，不崩）。
+   断言 R03b：`snapshot.title === 清单 title` → PASS（修前 FAIL 拿到 null）。
+2. **"未在播放"永久刻在桌面上**：paint 的无词分支用了 `title || t('np.noTrack')`，停止播放
+   后不清空。新规则：无曲目或 stopped → 两行清空；paused 保留当前行（暂停是为了看词）。
+   断言 W12：stop 后 `now===''&&next===''` → PASS。
+3. **拖不动 + 没居中**：`data-tauri-drag-region` 只标在容器上，而文本 `<p>` 盖满窗口——
+   Tauri 只认 mousedown 目标元素自身的属性（TitleBar 早就踩过同一个坑并写了注释）。
+   改为未锁定时容器与两行文本都带该属性，锁定后全部撤掉；文字居中（含 padding 对称化）。
+   断言 W11：未锁定 `dl-now` 有 drag 属性 + `text-align: center` + 锁定后属性消失 → PASS。
+
+### 这一轮我又写错的两处测试（都被自己的断言抓到）
+- W10 先 `pause` 再等 1.3s 去读"第三句"：暂停含 1s 淡出，淡出期间引擎仍在消费缓冲、
+  **位置会继续走**（实测停在 3.61s → 正确显示"第四句"）。写死期望值把正确行为判成 FAIL，
+  改为按实际位置从 LRC 推导期望行。
+- 同一批里"停止后清空"这条新规则也让旧的 W10 取词流程失效（fixture 只有 3s，早已进
+  stopped）——两条规则叠加时，先改测试的取数方式再谈产品是否有 bug。
+
+矩阵（与源码同代 release 产物）：**Y 10/10、W 13/15（2 诚实 SKIP）、R 9/9**；
+`cargo fmt`/`clippy -D warnings`/workspace 66 套件 0 失败、UI 116/116。

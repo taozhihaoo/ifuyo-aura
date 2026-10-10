@@ -1,6 +1,6 @@
 // §253/§254/§255/§256：时长与数值安全。
 import { describe, expect, it } from 'vitest';
-import { clampNumber, formatDuration, safeProgress } from './format';
+import { clampNumber, fileBaseName, formatDuration, safeProgress } from './format';
 
 describe('formatDuration（§253/§254）', () => {
   it('mm:ss（<1h）', () => {
@@ -43,5 +43,25 @@ describe('safeProgress（§256）', () => {
     expect(safeProgress(30, null)).toBe(0);
     expect(safeProgress(30, 0)).toBe(0);
     expect(safeProgress(Number.NaN, 100)).toBe(0);
+  });
+});
+
+describe('fileBaseName（远程 URL 与本地路径回退）', () => {
+  it('远程 percent-encoded 路径段还原成中文（此前直接显示 %E7%8E%B0…）', () => {
+    expect(fileBaseName('https://ifuyo.com/audio/%E7%8E%B0%E5%9C%A8.mp3')).toBe('现在');
+  });
+
+  it('去掉 query/fragment 与扩展名', () => {
+    expect(fileBaseName('https://h/a.m4a?tk=1#x')).toBe('a');
+  });
+
+  it('本地路径与 verbatim 前缀', () => {
+    // String.raw：普通字符串里 \m/\歌 会被 TS 吃掉反斜杠，测不到分隔符分支。
+    expect(fileBaseName(String.raw`M:\music\歌手 - 歌名.flac`)).toBe('歌手 - 歌名');
+    expect(fileBaseName(String.raw`\\?\C:\music\a.mp3`)).toBe('a');
+  });
+
+  it('畸形转义不崩（退回原串）', () => {
+    expect(fileBaseName('https://h/%E0%A4%A.mp3')).toBe('%E0%A4%A');
   });
 });

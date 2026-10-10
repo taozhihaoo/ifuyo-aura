@@ -90,6 +90,14 @@ const run = async () => {
     const p2 = (await inv('player_snapshot', {})).positionSeconds ?? 0;
     line('R03', playIdx >= 0 && st?.state === 'playing' && p2 - p1 >= 0.5,
       `远程流播放（第 ${playIdx} 行）：state=${st?.state} pos ${p1.toFixed(2)}→${p2.toFixed(2)}s`);
+
+    // ---- R03b 播放条标题必须是清单里的可读曲名 ----
+    // 此前远程播放只显示 "%E7%8E%B0…"：清单里的 title/artist 没传下去，
+    // UI 只能拿 percent-encoded 的 URL 末段回退。
+    const want = list.tracks[playIdx];
+    line('R03b', typeof st?.title === 'string' && st.title.includes('%') === false &&
+        (want?.title === undefined || st?.title === want.title),
+      `远程标题：snapshot.title="${st?.title}"（清单="${want?.title}"）`);
     await inv('stop', {});
 
     // ---- R04/R05 策略面：远程清单入口必须拒绝私网地址 ----

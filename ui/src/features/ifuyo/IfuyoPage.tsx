@@ -36,7 +36,7 @@ export function IfuyoPage() {
   const play = async (track: IfuyoTrack) => {
     setBusyUrl(track.url);
     try {
-      await ipc.ifuyoPlay(track.url);
+      await ipc.ifuyoPlay(track.url, track.title, track.artist);
     } catch (e) {
       // 远程失败原因多样（网络/解码/被拦截），如实提示而不是静默不变。
       setNotice(t(errorToI18nKey(e)));

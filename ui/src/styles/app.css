@@ -1026,12 +1026,16 @@ html.desktop-lyrics-root #root {
   flex-direction: column;
   justify-content: center;
   gap: 6px;
-  padding: 10px 46px 10px 16px;
+  /* 左右对称：文字居中后不再需要为右上角 pill 让出单边空间（pill 只在
+     hover/锁定态出现，浮在文字之上）。 */
+  padding: 10px 16px;
   box-sizing: border-box;
   user-select: none;
 }
 .dl-now {
   margin: 0;
+  /* 悬浮歌词居中（此前左对齐 + 右侧给 pill 让位，视觉整体偏左）。 */
+  text-align: center;
   font-size: var(--font-size-xl);
   font-weight: 600;
   line-height: 1.3;
@@ -1046,7 +1050,7 @@ html.desktop-lyrics-root #root {
   font-size: var(--font-size-md);
   line-height: 1.3;
   color: rgba(255, 255, 255, 0.55);
-  text-align: right;
+  text-align: center;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
   overflow: hidden;
   text-overflow: ellipsis;

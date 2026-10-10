@@ -29,12 +29,20 @@ export function safeProgress(position: number, duration: number | null | undefin
   return Math.min(position / duration, 1);
 }
 
-/** 无标签曲目的展示回退：文件路径 → 去目录/verbatim `\\?\` 前缀/扩展名的
- *  文件名（M13.1：曲库此前直接显示完整路径，丑且暴露目录结构）。 */
+/** 无标签曲目的展示回退：文件路径/远程 URL → 去目录/verbatim `\\?\` 前缀/
+ *  query/扩展名的文件名（M13.1：曲库此前直接显示完整路径，丑且暴露目录结构）。 */
 export function fileBaseName(path: string): string {
   const clean = path.replace(/^\\\\\?\\/, '');
-  const name = clean.split(/[\\/]/).pop() ?? clean;
-  return name.replace(/\.[^.]+$/, '') || name;
+  const noQuery = clean.split(/[?#]/)[0] ?? clean;
+  const name = noQuery.split(/[\\/]/).pop() ?? noQuery;
+  const stem = name.replace(/\.[^.]+$/, '') || name;
+  // 远程 URL 的路径段是 percent-encoded，不解码就会把 "%E7%8E%B0…" 显示给用户。
+  // decodeURIComponent 对畸形转义会抛，抛了退回原串（显示丑好过崩）。
+  try {
+    return decodeURIComponent(stem);
+  } catch {
+    return stem;
+  }
 }
 
 /** 曲目标题展示：title 空白（null/''/全空格）→ 文件名回退。 */
