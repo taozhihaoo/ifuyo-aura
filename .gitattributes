@@ -1,0 +1,16 @@
+# 只钉会在两个平台间变形的类型。故意不写 `* text=auto`：本仓库历史 blob 里
+# 大量 .rs/.ts 以 CRLF 入库，全局归一化会在下次 checkout 制造一次全库 diff。
+#
+# shell 脚本必须是 LF：开发者机器 core.autocrlf=true，检出后 .sh 会变 CRLF，
+# 上传到 Linux 服务器就是 `bash\r: command not found` / shebang 失效——表现为
+# "脚本在本地没问题、传上去跑不起来"，很难一眼联想到行尾。
+*.sh text eol=lf
+*.py text eol=lf
+
+# 构建产物与二进制不参与换行/差异处理。
+*.png binary
+*.jpg binary
+*.flac binary
+*.m4a binary
+*.aiff binary
+*.ogg binary
