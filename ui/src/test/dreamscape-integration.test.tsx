@@ -37,6 +37,9 @@ vi.mock('../ipc/client', () => ({
     listenIntegrationCommand: vi.fn(async () => vi.fn()),
     listenTrackEnded: vi.fn(async () => vi.fn()),
     listenIntegrationNavigate: vi.fn(async () => vi.fn()),
+    playerLevel: vi.fn(async () => null),
+    playerPosition: vi.fn(async () => 0),
+    trackFeatures: vi.fn(async () => null),
 
   },
 }));
@@ -49,7 +52,7 @@ const winMocks = vi.hoisted(() => ({
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => winMocks }));
 
 import App from '../App';
-import { DreamscapeRenderer } from '../visual/dreamscape/DreamscapeRenderer';
+import { LightFieldRenderer } from '../visual/dreamscape/LightFieldRenderer';
 import { DREAMSCAPE_ENABLED, useUiStore } from '../state/stores';
 
 afterEach(() => {
@@ -68,12 +71,10 @@ afterEach(() => {
 });
 
 describe('§277 renderer 失败 fallback', () => {
-  it('jsdom 无 WebGL：create() 返回 false 不抛异常', () => {
-    const r = new DreamscapeRenderer();
+  it('jsdom 无 WebGL2：create() 返回 null 且不抛异常（§278 不悬挂 loading）', () => {
     const canvas = document.createElement('canvas');
-    expect(() => r.create(canvas)).not.toThrow();
-    expect(r.create(canvas)).toBe(false);
-    r.dispose(); // disposed 前状态仍是 created → dispose 合法
+    expect(() => LightFieldRenderer.create(canvas)).not.toThrow();
+    expect(LightFieldRenderer.create(canvas)).toBeNull();
   });
 
   it('manifest 加载失败 → fallback 状态 + 不白屏（§275）', async () => {

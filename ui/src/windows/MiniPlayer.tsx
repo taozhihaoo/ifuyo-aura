@@ -36,6 +36,14 @@ export function useMiniPlayerOpener() {
   }, [miniPlayerOpen, setMiniPlayerOpen]);
 }
 
+/** 队列真相在主窗（每个 webview 是独立 JS realm），next/previous 经
+ *  事件桥交回主窗处理——与 SMTC/托盘同一条路径（D-123）。 */
+function requestTransport(cmd: 'next' | 'previous'): void {
+  void import('@tauri-apps/api/event').then(({ emitTo }) => {
+    void emitTo('main', 'integration://command', { cmd }).catch(() => undefined);
+  });
+}
+
 export function MiniPlayer() {
   const snapshot = usePlayerStore((s) => s.snapshot);
   const { t } = useTranslation();
@@ -55,21 +63,40 @@ export function MiniPlayer() {
 
   return (
     <div className="mini-player" data-tauri-drag-region>
-      <div className="mini-artwork" aria-hidden>♪</div>
+      <div className="mini-artwork" aria-hidden>
+        ♪
+      </div>
       <div className="mini-info">
-        <div className="mini-title">{snapshot?.title ?? t('np.noTrack')}</div>
-        <div className="mini-state">{playing ? '▶' : '⏸'}</div>
+        <div className="mini-title" title={snapshot?.trackPath ?? undefined}>
+          {snapshot?.title ?? t('np.noTrack')}
+        </div>
+        <div className="mini-state">{playing ? t('np.playingNow') : t('np.pausedState')}</div>
       </div>
       <div className="mini-controls">
-        <button className="mini-btn" aria-label={t('controls.previous')}>⏮</button>
         <button
+          type="button"
           className="mini-btn"
+          aria-label={t('controls.previous')}
+          onClick={() => requestTransport('previous')}
+        >
+          ⏮
+        </button>
+        <button
+          type="button"
+          className="mini-btn mini-btn-primary"
           aria-label={playing ? t('controls.pause') : t('controls.play')}
           onClick={() => (playing ? ipc.pause() : ipc.play()).catch(() => undefined)}
         >
           {playing ? '⏸' : '▶'}
         </button>
-        <button className="mini-btn" aria-label={t('controls.next')}>⏭</button>
+        <button
+          type="button"
+          className="mini-btn"
+          aria-label={t('controls.next')}
+          onClick={() => requestTransport('next')}
+        >
+          ⏭
+        </button>
       </div>
     </div>
   );

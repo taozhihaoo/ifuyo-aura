@@ -3,6 +3,7 @@
 
 use tauri::Manager;
 
+pub mod analysis_host;
 pub mod analysis_ipc;
 pub mod audio;
 pub mod dreamscape;
@@ -57,6 +58,19 @@ pub fn run() {
             .map_err(|e| format!("audio init failed: {e}"))?;
             let library = library::LibraryState::open(&data_dir)?;
             let settings = library.settings.lock().expect("settings").clone();
+            // M8 分析宿主：worker 自带一条 DB 连接（WAL + busy_timeout，与
+            // 扫描/查询并发）；启动时补齐未分析曲目，扫描后再补一次。
+            let db_path = library
+                .service
+                .lock()
+                .map_err(|_| "library state lock")?
+                .database()
+                .path();
+            let analysis =
+                std::sync::Arc::new(analysis_host::AnalysisHost::spawn(&handle, db_path));
+            if settings.analysis_auto {
+                let _ = analysis.request_pending();
+            }
             // M15a：标签乱码修复开关（扫描线程读取原子量）。
             aura_library::metadata::mojibake::set_mojibake_fix(settings.mojibake_fix);
             // 启动即应用持久化设置（§114/§155 启动优先级 3）。
@@ -90,6 +104,7 @@ pub fn run() {
                 blocklist,
                 dreamscape,
                 map,
+                analysis,
                 integration: integration.clone(),
             });
             // §118 初始化顺序：… → Windows Integration worker → SMTC → Tray。
@@ -134,6 +149,7 @@ pub fn run() {
             ipc::app_info,
             ipc::player_snapshot,
             ipc::player_position,
+            ipc::player_level,
             ipc::play,
             ipc::pause,
             ipc::stop,
@@ -173,6 +189,9 @@ pub fn run() {
             analysis_ipc::track_analysis_summary,
             analysis_ipc::analysis_visual_summary,
             analysis_ipc::track_analysis_state,
+            analysis_host::analysis_status,
+            analysis_host::request_analysis,
+            analysis_host::cancel_analysis,
             map_ipc::get_map_status,
             map_ipc::get_map_overview,
             map_ipc::get_map_nodes,

@@ -73,6 +73,10 @@ pub enum Control {
         title: Option<String>,
         /// 快照展示标识（本地路径或流 URL）。
         display: String,
+        /// M8 响度元数据（分析出的 LUFS/true peak；未分析 = missing）。
+        /// 换曲必须一并更新——`load_track` 不重置元数据，沿用上一首会让
+        /// 响度归一按错误的曲目算增益。
+        loudness: aura_core::TrackLoudness,
     },
     SetCrossfade(f64),
     SetLoudness(bool),
@@ -89,6 +93,8 @@ pub struct AudioHandle {
     position_frames: Arc<AtomicU64>,
     sample_rate: Arc<AtomicU64>,
     revision: Arc<AtomicU64>,
+    /// 与驱动线程共享的原子面（电平探针读取）。
+    shared: aura_core::output::SharedOutputState,
     /// CPAL 输出流所有权——**必须随句柄存活**。此前流绑定在 start()
     /// 的局部变量上，返回即 drop，回调永不触发（表现为"播放中但位置
     /// 不走"）；Mutex 仅用于满足 Arc<AudioHandle> 的 Sync 要求。
@@ -111,6 +117,8 @@ impl AudioHandle {
 
         // D-064：消费端移交外部真实输出；此后驱动线程只 fill+process。
         let (consumer, shared_out, eq_out) = engine.detach_consumer_for_external_output()?;
+        // 句柄侧留一份共享状态克隆（只读电平探针；与驱动线程同一组原子量）。
+        let shared_for_handle = shared_out.clone();
         let output = aura_core::output::device::CpalOutput::open_default(
             consumer,
             shared_out.clone(),
@@ -162,6 +170,7 @@ impl AudioHandle {
                                 duration_seconds,
                                 title,
                                 display,
+                                loudness,
                             } => {
                                 st.duration_seconds = duration_seconds;
                                 // 换曲使旧传输挂起失效：若上一首的停止/暂停
@@ -173,6 +182,7 @@ impl AudioHandle {
                                 pending_transport = None;
                                 want_fade_in = false;
                                 let _ = engine.load_track(decoder);
+                                engine.set_track_loudness(loudness, engine.loudness_enabled());
                                 let _ = poster.post(AudioCommand::Stop);
                                 let mut snap = snap2.lock().expect("snap");
                                 snap.track_path = Some(display);
@@ -184,9 +194,7 @@ impl AudioHandle {
                                 rev2.store(snap.revision, Ordering::Relaxed);
                             }
                             Control::SetCrossfade(s) => engine.set_crossfade_seconds(s),
-                            Control::SetLoudness(on) => {
-                                engine.set_track_loudness(aura_core::TrackLoudness::missing(), on);
-                            }
+                            Control::SetLoudness(on) => engine.set_loudness_enabled(on),
                             Control::SetEqPreset(i) => {
                                 let presets = aura_core::dsp::EQ_PRESETS;
                                 engine.set_eq_preset(&presets[i.min(presets.len() - 1)]);
@@ -306,8 +314,15 @@ impl AudioHandle {
             position_frames: position,
             sample_rate: rate,
             revision,
+            shared: shared_for_handle,
             _output: Mutex::new(output),
         })
+    }
+
+    /// 当前电平探针（无锁原子读；驱动线程每轮刷新）。
+    #[must_use]
+    pub fn level(&self) -> aura_core::LevelProbe {
+        self.shared.level()
     }
 
     #[must_use]

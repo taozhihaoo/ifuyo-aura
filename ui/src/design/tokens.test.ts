@@ -23,4 +23,27 @@ describe('design tokens', () => {
     // 动效 120~240ms
     expect(Object.values(motion)).toEqual(['120ms', '180ms', '240ms']);
   });
+
+  // 生成链门禁：样式表引用的每个 var(--x) 必须有定义。未定义时整条声明
+  // 按 CSS 级联语义失效（background/字号/transition 静归零），而 TS 侧
+  // token 断言全绿拦不住——该校验必须落在 CSS 这一侧。
+  it('defines every CSS variable the stylesheets reference', () => {
+    const sheets = import.meta.glob<string>('../**/*.css', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    });
+    // glob 失配会让本断言空转，先钉住它确实扫到样式表。
+    expect(Object.keys(sheets).length).toBeGreaterThan(1);
+    const defined = new Set<string>();
+    const referenced = new Set<string>();
+    for (const raw of Object.values(sheets)) {
+      // 注释里的 var(--color-*) 示例不算引用。
+      const css = raw.replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const m of css.matchAll(/(--[\w-]+)\s*:/g)) if (m[1]) defined.add(m[1]);
+      for (const m of css.matchAll(/var\(\s*(--[\w-]+)/g)) if (m[1]) referenced.add(m[1]);
+    }
+    const missing = [...referenced].filter((v) => !defined.has(v)).sort();
+    expect(missing, `未定义的 CSS 变量：${missing.join(', ')}`).toEqual([]);
+  });
 });

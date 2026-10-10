@@ -19,12 +19,15 @@ import { SettingsPanel } from './features/settings/SettingsPanel';
 import { QueueDrawer } from './features/queue/QueueDrawer';
 import { PlayerBar } from './features/playerbar/PlayerBar';
 import { isMiniPlayer, MiniPlayer, useMiniPlayerOpener } from './windows/MiniPlayer';
+import { DesktopLyrics, isDesktopLyrics, useDesktopLyricsOpener } from './windows/DesktopLyrics';
 import { translate } from './i18n';
 
 export default function App() {
   const isMini = isMiniPlayer();
+  const isLyricsOverlay = isDesktopLyrics();
   const { t } = useTranslation();
   useMiniPlayerOpener();
+  useDesktopLyricsOpener();
   const view = useUiStore((s) => s.view);
   const setView = useUiStore((s) => s.setView);
   const setPaletteOpen = useUiStore((s) => s.setPaletteOpen);
@@ -55,6 +58,7 @@ export default function App() {
           locale: s.language === 'en' ? 'en' : 'zh-CN',
           updatesAutoCheck: s.updatesAutoCheck,
           mojibakeFix: s.mojibakeFix,
+          analysisAuto: s.analysisAuto,
           uiScale: s.uiScale,
           reducedMotion: s.reducedMotion,
           loudnessEnabled: s.loudnessEnabled,
@@ -184,6 +188,9 @@ export default function App() {
 
   if (isMini) {
     return <MiniPlayer />;
+  }
+  if (isLyricsOverlay) {
+    return <DesktopLyrics />;
   }
 
   return (

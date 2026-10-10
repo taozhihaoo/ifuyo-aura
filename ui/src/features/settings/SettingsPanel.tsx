@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { toast, useSettingsStore, useUiStore } from '../../state/stores';
 import { ipc } from '../../ipc/client';
+import type { AnalysisStatus } from '../../ipc/types';
 import { useTranslation } from '../../i18n/react';
 import type { Locale } from '../../i18n';
 import { updateService, useUpdateStore } from '../update/UpdateService';
@@ -51,6 +52,35 @@ export function SettingsPanel() {
     setCrossfade(s.crossfadeSeconds);
   }, [s.crossfadeSeconds, open]);
 
+  // M8 分析覆盖度（Music Map 与响度归一的数据源）。
+  const [analysis, setAnalysis] = useState<AnalysisStatus | null>(null);
+  const refreshAnalysis = () => {
+    void ipc.analysisStatus().then(setAnalysis).catch(() => undefined);
+  };
+  useEffect(() => {
+    if (!open) return;
+    refreshAnalysis();
+    const un = ipc.listenAnalysisProgress((p) => {
+      setAnalysis((a) => (a ? { ...a, progress: p } : a));
+      // 覆盖度（analyzed/pending）只在开面板时取一次，跑批过程中会钉住不
+      // 动，看上去像没在分析。进度事件本身已是"每 5 首一发"，据其节流重取。
+      if (!p.running || p.processed % 25 === 0) refreshAnalysis();
+    });
+    return () => {
+      void un.then((f) => f());
+    };
+    // open 变化时重挂；覆盖度经进度事件节流重取，不做轮询
+  }, [open]);
+  const runAnalysis = () => {
+    void ipc
+      .requestAnalysis()
+      .then((queued) => {
+        toast(t('settings.analysisQueued', { count: queued }), 'success');
+        refreshAnalysis();
+      })
+      .catch(() => toast(t('settings.analysisFailed'), 'error'));
+  };
+
   if (!open) return null;
 
   const persist = (patch: {
@@ -58,6 +88,7 @@ export function SettingsPanel() {
     uiScale?: number;
     reducedMotion?: boolean;
     mojibakeFix?: boolean;
+    analysisAuto?: boolean;
     loudnessEnabled?: boolean;
     crossfadeSeconds?: number;
     eqEnabled?: boolean;
@@ -72,6 +103,7 @@ export function SettingsPanel() {
       updatesAutoCheck: patch.updatesAutoCheck ?? s.updatesAutoCheck,
       reducedMotion: patch.reducedMotion ?? s.reducedMotion,
       mojibakeFix: patch.mojibakeFix ?? s.mojibakeFix,
+      analysisAuto: patch.analysisAuto ?? s.analysisAuto,
       loudnessEnabled: patch.loudnessEnabled ?? s.loudnessEnabled,
       crossfadeSeconds: patch.crossfadeSeconds ?? s.crossfadeSeconds,
       eqEnabled: patch.eqEnabled ?? s.eqEnabled,
@@ -213,6 +245,56 @@ export function SettingsPanel() {
             onChange={(e) => {
               s.setAll({ ...s, mojibakeFix: e.target.checked });
               persist({ mojibakeFix: e.target.checked });
+            }}
+          />
+        </label>
+
+        {/* M8 分析：Music Map 与响度归一的数据源（后台单 worker）。 */}
+        <div className="settings-row settings-analysis">
+          <span>{t('settings.analysis')}</span>
+          <div className="settings-analysis-controls">
+            <span className="settings-analysis-status" role="status">
+              {analysis === null
+                ? t('settings.analysisUnknown')
+                : analysis.progress.running
+                  ? t('settings.analysisRunning', {
+                      processed: analysis.progress.processed,
+                      total: analysis.progress.total,
+                    })
+                  : t('settings.analysisCoverage', {
+                      analyzed: analysis.analyzed,
+                      pending: analysis.pending,
+                    })}
+            </span>
+            {analysis?.progress.running ? (
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={() => void ipc.cancelAnalysis().catch(() => undefined)}
+              >
+                {t('settings.analysisCancel')}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={runAnalysis}
+                disabled={analysis === null || analysis.pending === 0}
+              >
+                {t('settings.analysisRun')}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <label className="settings-row">
+          <span>{t('settings.analysisAuto')}</span>
+          <input
+            type="checkbox"
+            checked={s.analysisAuto}
+            onChange={(e) => {
+              s.setAll({ ...s, analysisAuto: e.target.checked });
+              persist({ analysisAuto: e.target.checked });
             }}
           />
         </label>

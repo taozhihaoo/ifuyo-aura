@@ -1,7 +1,7 @@
 // Typed IPC client（§11）：invoke 封装 + AppError 归一。
 import { invoke } from '@tauri-apps/api/core';
-import { isAppError, type AppSettings, type PlayerSnapshot, type ScanProgress, type SortKey, type TrackSummary } from './types';
-import { isDreamscapeState, isSceneManifest, type DreamscapeStateDto, type SceneManifest } from './dreamscape';
+import { isAppError, type AnalysisProgress, type AnalysisStatus, type AppSettings, type PlayerLevel, type PlayerSnapshot, type ScanProgress, type SortKey, type TrackFeatures, type TrackSummary } from './types';
+import { isDreamscapeState, isLightField, type DreamscapeStateDto, type LightField } from './dreamscape';
 import {
   isMapNeighborDto,
   isMapNodeDto,
@@ -27,6 +27,7 @@ export const ipc = {
   appInfo: () => call<{ name: string; version: string; slogan: string; phase: string }>('app_info'),
   playerSnapshot: () => call<PlayerSnapshot>('player_snapshot'),
   playerPosition: () => call<number>('player_position'),
+  playerLevel: () => call<PlayerLevel>('player_level'),
   play: () => call<void>('play'),
   pause: () => call<void>('pause'),
   stop: () => call<void>('stop'),
@@ -48,6 +49,26 @@ export const ipc = {
   scanFolder: (path: string) => call<void>('scan_folder', { path }),
   cancelScan: () => call<void>('cancel_scan'),
   libraryStats: () => call<{ tracks: number; artists: number; albums: number }>('library_stats'),
+  // ---- M8 分析（Music Map 与响度归一的数据源）----
+  analysisStatus: () => call<AnalysisStatus>('analysis_status'),
+  requestAnalysis: () => call<number>('request_analysis'),
+  cancelAnalysis: () => call<void>('cancel_analysis'),
+  listenAnalysisProgress: (cb: (p: AnalysisProgress) => void) =>
+    import('@tauri-apps/api/event').then(({ listen }) =>
+      listen<AnalysisProgress>('analysis-progress', (ev) => cb(ev.payload)),
+    ),
+  /** 可视化用特征投影（未分析 → null；绝不伪造）。 */
+  trackFeatures: async (trackId: number): Promise<TrackFeatures | null> => {
+    const s = await call<Record<string, number | null> | null>('track_analysis_summary', { trackId });
+    if (!s) return null;
+    const num = (k: string) => (typeof s[k] === 'number' && Number.isFinite(s[k]) ? (s[k] as number) : null);
+    return {
+      bpm: num('bpm'),
+      firstBeatOffsetSeconds: num('firstBeatOffsetSeconds'),
+      energy: num('energy'),
+      brightness: num('brightness'),
+    };
+  },
   getSettings: () => call<AppSettings>('get_settings'),
   saveSettings: (settings: AppSettings) => call<void>('save_settings', { settings }),
   listenScanProgress: (cb: (p: ScanProgress) => void) =>
@@ -68,10 +89,10 @@ export const ipc = {
   dreamscapeSetEnvironment: (frozen: boolean) =>
     call<DreamscapeStateDto>('dreamscape_set_environment', { frozen }),
   dreamscapeAdvance: (ticks: number) => call<DreamscapeStateDto>('dreamscape_advance', { ticks }),
-  // §253：manifest 经 validation-first 守卫，畸形数据不进渲染层。
-  dreamscapeManifest: async (): Promise<SceneManifest> => {
+  // §253：光场清单经 validation-first 守卫，畸形数据不进渲染层。
+  dreamscapeManifest: async (): Promise<LightField> => {
     const m = await call<unknown>('dreamscape_manifest');
-    if (!isSceneManifest(m)) throw { code: 'DREAMSCAPE_CORRUPT', message: 'invalid manifest', recoverable: false };
+    if (!isLightField(m)) throw { code: 'DREAMSCAPE_CORRUPT', message: 'invalid light field', recoverable: false };
     return m;
   },
   dreamscapeRegenerate: (input: string) => call<DreamscapeStateDto>('dreamscape_regenerate', { input }),

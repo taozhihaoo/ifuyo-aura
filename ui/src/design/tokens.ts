@@ -28,8 +28,9 @@ export const text = {
   secondary: 'rgba(255, 255, 255, 0.60)',
 } as const;
 
-/** 圆角：14px（Charter §27） */
+/** 圆角：14px（Charter §27）；sm 用于行内控件与缩略图。 */
 export const radius = {
+  sm: '8px',
   md: '14px',
 } as const;
 
@@ -47,4 +48,9 @@ export const motion = {
   fast: '120ms',
   base: '180ms',
   slow: '240ms',
+} as const;
+
+/** 缓动曲线：入场/状态变化统一减速。 */
+export const ease = {
+  out: 'cubic-bezier(0.22, 1, 0.36, 1)',
 } as const;

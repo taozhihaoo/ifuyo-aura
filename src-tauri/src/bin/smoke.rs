@@ -59,6 +59,15 @@ fn main() {
                 .map_err(|e| format!("dreamscape init failed: {e}"))?;
             let map = aura_shell_lib::map_ipc::MapHost::open(&tmp_ref)
                 .map_err(|e| format!("map init failed: {e}"))?;
+            let analysis = Arc::new(aura_shell_lib::analysis_host::AnalysisHost::spawn(
+                &handle,
+                library
+                    .service
+                    .lock()
+                    .expect("library lock")
+                    .database()
+                    .path(),
+            ));
             app.manage(AppState {
                 audio: Arc::new(audio),
                 library: Arc::new(library),
@@ -67,6 +76,7 @@ fn main() {
                 blocklist,
                 dreamscape,
                 map,
+                analysis,
                 integration: aura_shell_lib::integration::Shared::new(),
             });
             Ok(())

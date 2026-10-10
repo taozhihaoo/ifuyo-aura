@@ -86,7 +86,16 @@ export function LibraryPage() {
   }, [query]);
 
   // 数据加载：搜索 or 列表；library-changed → 保持查询重取（§152）。
+  // §85 分页：后端支持 offset，但此前恒取第 0 页 → 200 首之外的曲目
+  // 永久不可见（真实曲库常见量级）。
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  // 分页代数：排序/搜索/重扫会重置为第 0 页。在途的"加载更多"据此作废，
+  // 否则旧条件的尾巴会拼到新结果后面（列表混入不匹配的曲目）。
+  const pageGenRef = useRef(0);
   useEffect(() => {
+    pageGenRef.current += 1;
+    setLoadingMore(false);
     let alive = true;
     setState({ kind: 'loading' });
     void (async () => {
@@ -95,6 +104,7 @@ export function LibraryPage() {
           ? await ipc.librarySearch(debounced, PAGE_SIZE, 0)
           : await ipc.libraryList(sort, PAGE_SIZE, 0);
         if (!alive) return;
+        setHasMore(tracks.length === PAGE_SIZE);
         setState(tracks.length === 0 && !debounced ? { kind: 'empty' } : { kind: 'ready', tracks });
       } catch {
         if (alive) setState({ kind: 'error' });
@@ -104,6 +114,24 @@ export function LibraryPage() {
       alive = false;
     };
   }, [debounced, sort, refreshNonce]);
+
+  const loadMore = async () => {
+    if (state.kind !== 'ready' || loadingMore) return;
+    const gen = pageGenRef.current;
+    setLoadingMore(true);
+    try {
+      const next = debounced
+        ? await ipc.librarySearch(debounced, PAGE_SIZE, state.tracks.length)
+        : await ipc.libraryList(sort, PAGE_SIZE, state.tracks.length);
+      if (gen !== pageGenRef.current) return; // 条件已变，这批过期
+      setHasMore(next.length === PAGE_SIZE);
+      setState({ kind: 'ready', tracks: [...state.tracks, ...next] });
+    } catch {
+      // 已加载页保留；再点一次即可重试。
+    } finally {
+      if (gen === pageGenRef.current) setLoadingMore(false);
+    }
+  };
 
   // §88/§151：scan progress / library-changed 事件；扫描完成 → toast 反馈。
   const prevScan = useRef<ScanProgress | null>(null);
@@ -319,6 +347,17 @@ export function LibraryPage() {
             })}
           </div>
         </div>
+      )}
+
+      {state.kind === 'ready' && hasMore && (
+        <button
+          type="button"
+          className="btn library-more"
+          onClick={() => void loadMore()}
+          disabled={loadingMore}
+        >
+          {t('library.loadMore')}
+        </button>
       )}
     </section>
   );

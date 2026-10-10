@@ -25,6 +25,8 @@ function fmt(sec: number): string {
 export function PlayerBar() {
   const snapshot = usePlayerStore((s) => s.snapshot);
   const setView = useUiStore((s) => s.setView);
+  const desktopLyricsOpen = useUiStore((s) => s.desktopLyricsOpen);
+  const setDesktopLyricsOpen = useUiStore((s) => s.setDesktopLyricsOpen);
   const { t } = useTranslation();
   const trackId = useCurrentTrackId();
   const artwork = useArtwork(trackId);
@@ -139,8 +141,17 @@ export function PlayerBar() {
         </div>
       </div>
 
-      {/* 右：模式 + 音量 */}
+      {/* 右：桌面歌词开关 + 模式 + 音量 */}
       <div className="pb-right">
+        <button
+          className={`icon-btn pb-lyrics${desktopLyricsOpen ? ' active' : ''}`}
+          aria-label={t('desktopLyrics.toggle')}
+          title={t('desktopLyrics.toggle')}
+          aria-pressed={desktopLyricsOpen}
+          onClick={() => setDesktopLyricsOpen(!desktopLyricsOpen)}
+        >
+          {t('desktopLyrics.badge')}
+        </button>
         <button
           className="icon-btn"
           aria-label={t(`playMode.${playMode}`)}

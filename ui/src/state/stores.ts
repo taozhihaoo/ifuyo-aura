@@ -7,7 +7,7 @@ import type { Locale } from '../i18n';
  * 功能开关：Dreamscape（M7）。当前版本对外停用——入口（导航/palette/
  * 托盘）全部隐藏，后端模块保留（改回 true 即整功能恢复）。
  */
-export const DREAMSCAPE_ENABLED = false;
+export const DREAMSCAPE_ENABLED = true;
 
 export type ViewId = 'now-playing' | 'library' | 'map' | 'dreamscape';
 
@@ -20,6 +20,7 @@ interface UiState {
   queueOpen: boolean;
   settingsOpen: boolean;
   miniPlayerOpen: boolean;
+  desktopLyricsOpen: boolean;
   sidebarCollapsed: boolean;
   /** 全局用户反馈（i18n key，§187/§189；null = 无）。 */
   notice: string | null;
@@ -35,6 +36,7 @@ interface UiState {
   setQueueOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setMiniPlayerOpen: (open: boolean) => void;
+  setDesktopLyricsOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   setNotice: (key: string | null, kind?: NoticeKind) => void;
   setDreamscapeOpen: (open: boolean) => void;
@@ -47,6 +49,7 @@ export const useUiStore = create<UiState>((set) => ({
   queueOpen: false,
   settingsOpen: false,
   miniPlayerOpen: false,
+  desktopLyricsOpen: false,
   sidebarCollapsed: false,
   notice: null,
   noticeKind: 'info',
@@ -58,6 +61,7 @@ export const useUiStore = create<UiState>((set) => ({
   setQueueOpen: (queueOpen) => set({ queueOpen }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setMiniPlayerOpen: (miniPlayerOpen) => set({ miniPlayerOpen }),
+  setDesktopLyricsOpen: (desktopLyricsOpen) => set({ desktopLyricsOpen }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setNotice: (notice, kind = 'info') =>
     set((s) => ({ notice, noticeKind: kind, noticeSeq: s.noticeSeq + 1 })),
@@ -107,6 +111,7 @@ export interface SettingsState {
   locale: Locale;
   updatesAutoCheck: boolean;
   mojibakeFix: boolean;
+  analysisAuto: boolean;
   uiScale: number;
   reducedMotion: boolean;
   loudnessEnabled: boolean;
@@ -119,6 +124,7 @@ export interface SettingsState {
     locale: Locale;
     updatesAutoCheck: boolean;
     mojibakeFix: boolean;
+    analysisAuto: boolean;
     uiScale: number;
     reducedMotion: boolean;
     loudnessEnabled: boolean;
@@ -136,6 +142,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   locale: 'zh-CN',
   updatesAutoCheck: true,
   mojibakeFix: true,
+  analysisAuto: true,
   uiScale: 1.0,
   reducedMotion: false,
   loudnessEnabled: false,

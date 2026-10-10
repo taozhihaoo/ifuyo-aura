@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ipc } from '../../ipc/client';
 import type { MapOverviewDto, MapStatusDto } from '../../ipc/map';
-import { usePlayerStore } from '../../state/stores';
+import { toast, usePlayerStore } from '../../state/stores';
 import { useTranslation } from '../../i18n/react';
 import { MapDataModel, loadSavedView, saveView } from './mapData';
 import { consumeMapCommand, consumeMapFocus } from './mapBus';
@@ -154,6 +154,42 @@ export function MapPage() {
   };
 
   const emptyLibrary = status?.status === 'pending';
+  // 空态要分清三件事：库里没歌 / 有歌但没分析 / 已分析但没构建地图。
+  const [preflight, setPreflight] = useState<{
+    libraryEmpty: boolean;
+    analyzed: number;
+    pending: number;
+  } | null>(null);
+  const refreshPreflight = useCallback(() => {
+    void Promise.all([ipc.libraryStats(), ipc.analysisStatus()])
+      .then(([lib, analysis]) => {
+        setPreflight({
+          libraryEmpty: lib.tracks === 0,
+          analyzed: analysis.analyzed,
+          pending: analysis.pending,
+        });
+      })
+      .catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    if (status?.status !== 'pending') return;
+    refreshPreflight();
+    // 分析跑完 → 空态自动切到"可以构建地图"，不用用户手动刷新。
+    let wasRunning = false;
+    const un = ipc.listenAnalysisProgress((p) => {
+      if (wasRunning && !p.running) refreshPreflight();
+      wasRunning = p.running;
+    });
+    return () => {
+      void un.then((f) => f());
+    };
+  }, [status?.status, refreshPreflight]);
+  const runAnalysis = (): void => {
+    void ipc
+      .requestAnalysis()
+      .then((queued) => toast(t('settings.analysisQueued', { count: queued }), 'success'))
+      .catch(() => toast(t('settings.analysisFailed'), 'error'));
+  };
   const body = useMemo(() => {
     if (error !== null) {
       return (
@@ -199,7 +235,33 @@ export function MapPage() {
             </button>
           </>
         )}
-        {!building && emptyLibrary && <p className="map-status">{t('map.analyzeFirst')}</p>}
+        {!building && emptyLibrary && (
+          <>
+            <p className="map-status">
+              {preflight === null
+                ? t('map.checking')
+                : preflight.libraryEmpty
+                  ? t('map.addMusicFirst')
+                  : preflight.pending > 0
+                    ? t('map.analyzeFirst')
+                    : preflight.analyzed > 0
+                      ? t('map.buildReady', { count: preflight.analyzed })
+                      : t('map.nothingToMap')}
+            </p>
+            {preflight !== null && !preflight.libraryEmpty && preflight.pending > 0 && (
+              <button className="primary-btn" onClick={runAnalysis}>
+                {t('settings.analysisRun')}
+              </button>
+            )}
+            {preflight !== null &&
+              preflight.analyzed > 0 &&
+              preflight.pending === 0 && (
+                <button className="primary-btn" onClick={requestBuild}>
+                  {t('map.buildNow')}
+                </button>
+              )}
+          </>
+        )}
         {!building && (status?.status === 'stale' || status?.status === 'failed') && (
           <>
             <p className="map-status">
@@ -222,7 +284,7 @@ export function MapPage() {
         )}
       </div>
     );
-  }, [error, ready, status, overview, building, emptyLibrary, searchMatches, command, currentTrackId, selectedTrackId, t]);
+  }, [error, ready, status, overview, building, emptyLibrary, preflight, searchMatches, command, currentTrackId, selectedTrackId, t]);
 
   return (
     <section className="map-page" aria-label={t('map.title')}>

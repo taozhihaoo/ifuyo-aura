@@ -47,6 +47,9 @@ pub struct AppState {
     pub dreamscape: crate::dreamscape::DreamscapeHost,
     /// Music Map 会话宿主（M9 中篇；derived data §65 持久化在 app_data）。
     pub map: crate::map_ipc::MapHost,
+    /// M8 分析宿主（后台 worker；扫描后/手动触发，Music Map 与响度归一的
+    /// 数据源）。Arc：扫描线程完成后需要跨线程触发。
+    pub analysis: Arc<crate::analysis_host::AnalysisHost>,
     /// M10 Windows Integration 共享槽（meta/queue/icy/diagnostics）。
     pub integration: crate::integration::Shared,
 }
@@ -74,6 +77,27 @@ pub fn player_snapshot(state: State<'_, AppState>) -> CmdResult<PlayerSnapshot> 
 #[tauri::command]
 pub fn player_position(state: State<'_, AppState>) -> CmdResult<f64> {
     Ok(state.audio.position_seconds())
+}
+
+/// 电平探针（驱动线程每轮刷新的实时能量；可视化/光场消费，§14 同 rAF 面）。
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerLevelDto {
+    pub rms: f32,
+    pub low: f32,
+    pub mid: f32,
+    pub high: f32,
+}
+
+#[tauri::command]
+pub fn player_level(state: State<'_, AppState>) -> CmdResult<PlayerLevelDto> {
+    let p = state.audio.level();
+    Ok(PlayerLevelDto {
+        rms: p.rms,
+        low: p.low,
+        mid: p.mid,
+        high: p.high,
+    })
 }
 
 /// 播放。
@@ -153,6 +177,8 @@ pub fn play_track(state: State<'_, AppState>, track_id: i64) -> CmdResult<()> {
             path = real.to_string();
         }
     }
+    // M15a 后续：响度归一的数据源——分析出的 LUFS 此前只流向 Music Map。
+    let loudness = track_loudness(&state, track_id);
     // §41/§42：应用层提供 M3 真实 metadata（SMTC 不自查 SQLite）。
     let meta = state.library.service.lock().ok().and_then(|service| {
         service
@@ -168,7 +194,7 @@ pub fn play_track(state: State<'_, AppState>, track_id: i64) -> CmdResult<()> {
                 artwork_id: t.artwork_id.map(|a| a.0),
             })
     });
-    play_input_impl(state, path, meta, cue).map(|_| ())
+    play_input_impl(state, path, meta, cue, loudness).map(|_| ())
 }
 
 /// M15a：曲目 CUE 子轨区间（cue_start/cue_duration 双非空才有效）。
@@ -182,6 +208,35 @@ fn track_cue_range(state: &AppState, track_id: i64) -> Option<(f64, f64)> {
     )
     .ok()
     .flatten()
+}
+
+/// M8 响度元数据：`Completed` 且 loudness `Available` 的曲目取实测
+/// LUFS/true peak；其余一律 `missing()`（增益恒 1.0，不猜测）。
+fn track_loudness(state: &AppState, track_id: i64) -> aura_core::TrackLoudness {
+    use aura_analysis::domain::{AnalysisStatus, FeatureAvailability};
+    let missing = aura_core::TrackLoudness::missing();
+    let Ok(service) = state.library.service.lock() else {
+        return missing;
+    };
+    let Ok(Some(analysis)) = aura_analysis::store::AnalysisStore::load_by_track(
+        service.database().connection(),
+        track_id,
+    ) else {
+        return missing;
+    };
+    if analysis.status != AnalysisStatus::Completed
+        || analysis.loudness_availability != FeatureAvailability::Available
+    {
+        return missing;
+    }
+    match analysis.loudness {
+        Some(l) => aura_core::TrackLoudness {
+            integrated_lufs: f64::from(l.integrated_lufs),
+            true_peak_db: f64::from(l.true_peak_dbtp),
+            loudness_available: true,
+        },
+        None => missing,
+    }
 }
 
 /// M13.1：Local 源无元数据时的标题回退——文件名 stem
@@ -200,7 +255,13 @@ fn local_stem_title(path: &str) -> Option<String> {
 /// Local Source 分支处理（存在性/扩展名校验在 Rust 侧，§192）。
 #[tauri::command]
 pub fn play_input(state: State<'_, AppState>, input: String) -> CmdResult<String> {
-    play_input_impl(state, input, None, None)
+    play_input_impl(
+        state,
+        input,
+        None,
+        None,
+        aura_core::TrackLoudness::missing(),
+    )
 }
 
 fn play_input_impl(
@@ -208,6 +269,7 @@ fn play_input_impl(
     input: String,
     known_meta: Option<crate::integration::CurrentTrackMeta>,
     cue: Option<(f64, f64)>,
+    loudness: aura_core::TrackLoudness,
 ) -> CmdResult<String> {
     let resolved = aura_sources::resolver::resolve_input(&input, &state.http, &state.blocklist)
         .map_err(from_source_err)?;
@@ -245,6 +307,7 @@ fn play_input_impl(
                     duration_seconds,
                     title,
                     display: path.clone(),
+                    loudness,
                 })
                 .map_err(|e| from_err("AUDIO_UNAVAILABLE", e, true))?;
             path
@@ -269,6 +332,7 @@ fn play_input_impl(
                     duration_seconds: None, // Live：无确定时长（§57）
                     title,
                     display: url.clone(),
+                    loudness,
                 })
                 .map_err(|e| from_err("AUDIO_UNAVAILABLE", e, true))?;
             url
@@ -324,6 +388,7 @@ fn play_input_impl(
                     duration_seconds,
                     title,
                     display: stream.url.clone(),
+                    loudness,
                 })
                 .map_err(|e| from_err("AUDIO_UNAVAILABLE", e, true))?;
             stream.url
@@ -663,6 +728,13 @@ pub fn scan_folder(app: AppHandle<Wry>, state: State<'_, AppState>, path: String
     }
     let lib = Arc::clone(&state.library);
     let app2 = app.clone();
+    let analysis = Arc::clone(&state.analysis);
+    let analyze_after_scan = state
+        .library
+        .settings
+        .lock()
+        .map(|s| s.analysis_auto)
+        .unwrap_or(false);
     std::thread::spawn(move || {
         let _ = lib.scan_root_blocking(std::path::Path::new(&path), |p: ScanProgressDto| {
             let _ = app2.emit("scan-progress", &p);
@@ -679,6 +751,10 @@ pub fn scan_folder(app: AppHandle<Wry>, state: State<'_, AppState>, path: String
             },
         );
         let _ = app2.emit("library-changed", ());
+        if analyze_after_scan {
+            // 新曲目立即排队分析（后台单 worker；已在跑则忽略本次请求）。
+            let _ = analysis.request_pending();
+        }
     });
     Ok(())
 }

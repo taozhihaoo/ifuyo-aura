@@ -46,6 +46,10 @@ pub struct AppSettings {
     /// M15a：Latin-1 声明下 GBK 标签乱码自动修复（默认开；双轨防误判）。
     #[serde(default = "default_true")]
     pub mojibake_fix: bool,
+    /// M8 分析接线：扫描后自动排队分析（默认开；Music Map 与响度归一
+    /// 的数据源）。
+    #[serde(default = "default_true")]
+    pub analysis_auto: bool,
     #[serde(default = "default_scale")]
     pub ui_scale: f32,
     #[serde(default)]
@@ -82,6 +86,7 @@ impl Default for AppSettings {
             language: default_language(),
             updates_auto_check: true,
             mojibake_fix: true,
+            analysis_auto: true,
             ui_scale: default_scale(),
             reduced_motion: false,
             loudness_enabled: false,

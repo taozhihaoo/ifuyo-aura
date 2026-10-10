@@ -26,7 +26,7 @@ pub fn track_analysis_summary(
     let conn = service.database().connection();
     let exists: Option<i64> = conn
         .query_row(
-            "SELECT track_id FROM tracks WHERE id = ?1",
+            "SELECT id FROM tracks WHERE id = ?1",
             rusqlite::params![track_id],
             |r| r.get(0),
         )

@@ -864,3 +864,225 @@ input[type='range']:active::-webkit-slider-thumb { transform: scale(1.3); }
 /* 播放条存在时：queue 抽屉与 toast 让出底栏高度 */
 .app-root:not([data-view='now-playing']) .queue-drawer { bottom: 64px; }
 .app-root:not([data-view='now-playing']) .notice-bar { bottom: 80px; }
+
+/* ---- 曲库分页（§85：后端支持 offset，取完一页才露出续拉入口）---- */
+.library-more {
+  display: block;
+  margin: 10px auto 0;
+}
+
+/* ---- 设置：分析区（Music Map / 响度归一的数据源）---- */
+.settings-analysis-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.settings-analysis-status {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-align: right;
+}
+
+/* ---- Mini Player（340×110 独立窗；此前 7 个 class 全无样式）---- */
+.mini-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  height: 100vh;
+  padding: 10px 12px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+.mini-artwork {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-low);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-lg);
+}
+.mini-info {
+  flex: 1;
+  min-width: 0;
+}
+.mini-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+.mini-state {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+.mini-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.mini-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+.mini-btn:hover { background: var(--surface-high); }
+.mini-btn:focus-visible { outline: 2px solid var(--color-sky); }
+.mini-btn-primary { width: 34px; height: 34px; color: var(--color-rose); }
+
+/* ---- 沉浸歌词舞台（覆盖"地面"半屏；两句对角排布） ----
+   正在唱的一句偏左上、下一句预读偏右下；行切换时由命令式重排。 */
+.lyric-stage {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  bottom: 0;
+  pointer-events: none;
+}
+.lyric-now {
+  position: absolute;
+  left: 6%;
+  right: 34%;
+  top: 10%;
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--color-text);
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.72);
+  white-space: pre-wrap;
+}
+.lyric-next {
+  position: absolute;
+  right: 6%;
+  left: 40%;
+  bottom: 12%;
+  margin: 0;
+  text-align: right;
+  font-size: var(--font-size-lg);
+  line-height: 1.4;
+  color: var(--color-text-muted);
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
+  white-space: pre-wrap;
+}
+/* 无歌词 / 纯文本歌词：主行居中成一段 */
+.lyric-stage[data-empty="true"] .lyric-now {
+  left: 10%;
+  right: 10%;
+  top: 34%;
+  text-align: center;
+  font-size: var(--font-size-lg);
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+.lyric-enter {
+  animation: lyric-in var(--motion-slow) var(--ease-out);
+}
+@keyframes lyric-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lyric-enter {
+    animation: none;
+  }
+}
+
+/* ---- 桌面悬浮歌词（透明置顶窗；背景必须全透明才能靠 alpha 命中穿透） ---- */
+html.desktop-lyrics-root,
+html.desktop-lyrics-root body,
+html.desktop-lyrics-root #root {
+  background: transparent !important;
+  overflow: hidden;
+}
+.desktop-lyrics {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 46px 10px 16px;
+  box-sizing: border-box;
+  user-select: none;
+}
+.dl-now {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  line-height: 1.3;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 18px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dl-next {
+  margin: 0;
+  font-size: var(--font-size-md);
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: right;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dl-pill {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+/* 未锁定：悬停才出把手（平时是纯歌词，不挂一个灰块）；
+   锁定：常驻可见——否则没有解锁入口。 */
+.desktop-lyrics:hover .dl-pill,
+.desktop-lyrics[data-locked="true"] .dl-pill {
+  display: flex;
+}
+.dl-enter {
+  animation: dl-in var(--motion-normal) var(--ease-out);
+}
+@keyframes dl-in {
+  from { opacity: 0; transform: translateY(8px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dl-enter { animation: none; }
+}
+.pb-lyrics { font-size: var(--font-size-xs); font-weight: 600; }
+.pb-lyrics.active { color: var(--color-rose); }
