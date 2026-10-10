@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ipc } from '../ipc/client';
-import { lyricsForPath } from '../ipc/remoteLyrics';
+import { lyricsForPath, registerRemoteLyrics } from '../ipc/remoteLyrics';
 import type { LyricsDto } from '../ipc/client';
 import { useSettingsStore, useUiStore } from '../state/stores';
 import { useTranslation } from '../i18n/react';
@@ -101,6 +101,16 @@ export function DesktopLyrics() {
     return () => undefined;
   }, []);
 
+  // M15b 修复：悬浮窗是独立 JS realm——远程歌词登记表（audioUrl→lyricsUrl）
+  // 在主窗 IfuyoPage 里，本 realm 的表永远为空 → 远程曲目在悬浮窗永远无词
+  // （主窗词面正常、悬浮窗不动=用户报告）。挂载时自取一次清单登记。
+  useEffect(() => {
+    void ipc
+      .ifuyoList()
+      .then((data) => registerRemoteLyrics(data.tracks))
+      .catch(() => undefined);
+  }, []);
+
   // 数据轮询：位置 100ms（歌词换行要跟上），快照 500ms（换曲检测）。
   useEffect(() => {
     let alive = true;
@@ -186,14 +196,21 @@ export function DesktopLyrics() {
     // t 随 locale 稳定；轮询只读 ref
   }, [t]);
 
-  // 未锁定：容器与两行文本都标 drag region——Tauri 只认 mousedown 目标元素
-  // 自身的属性（TitleBar 同款坑），文本 <p> 盖满窗口，只标容器就拖不动。
-  const drag = locked ? {} : { 'data-tauri-drag-region': true };
+  // 未锁定时拖动：程序化 startDragging（M15b 闪烁修复）。此前用增删
+  // 容器/两行文本的 data-tauri-drag-region 属性实现锁定——锁定切换 =
+  // 三个整窗元素的属性变更 → 透明分层窗整面重绘闪一帧。改为恒定 DOM +
+  // mousedown 门控：锁定切换只剩 pill 自身的微小变更。
+  const onMouseDown = (e: React.MouseEvent) => {
+    if (locked || e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('button')) return;
+    e.preventDefault();
+    void getCurrentWindow().startDragging();
+  };
 
   return (
-    <div className="desktop-lyrics" {...drag}>
-      <p className="dl-now" ref={nowRef} aria-live="polite" {...drag} />
-      <p className="dl-next" ref={nextRef} aria-hidden {...drag} />
+    <div className="desktop-lyrics" onMouseDown={onMouseDown}>
+      <p className="dl-now" ref={nowRef} aria-live="polite" />
+      <p className="dl-next" ref={nextRef} aria-hidden />
       <button
         type="button"
         className="dl-pill"

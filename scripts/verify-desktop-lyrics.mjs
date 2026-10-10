@@ -74,10 +74,21 @@ const run = async () => {
     );
   // 视图切换会瞬时重挂载（M15b 远程清单加载后自动切视图）——重试点击
   const clickLyrics = async () => {
-    for (let i = 0; i < 30; i += 1) {
-      const r = await main.ev("document.querySelector('.pb-lyrics')?.click() ?? 'no-btn'");
-      if (r !== 'no-btn') return;
-      await sleep(500);
+    // 应用会在清单加载后自动切视图（PlayerBar 随之消失）——重试时重新导航
+    for (let i = 0; i < 20; i += 1) {
+      const diag = await main.ev(
+        "JSON.stringify({pb:!!document.querySelector('.pb-lyrics'), view:document.querySelector('.app-root')?.dataset.view})",
+      );
+      console.log(`  [try ${i}] ${diag}`);
+      // click() 返回 undefined——不能用 ?? 判定（undefined 是 nullish）
+      const r = await main.ev(
+        "(() => { const b = document.querySelector('.pb-lyrics'); if (!b) return 'no-btn'; b.click(); return 'clicked'; })()",
+      );
+      if (r === 'clicked') return;
+      await main.ev(
+        "[...document.querySelectorAll('.nav-btn,.side-btn')].find((b) => b.textContent.includes('音乐库') || b.textContent.includes('Library'))?.click();1",
+      );
+      await sleep(700);
     }
     throw new Error('按钮消失（重试耗尽）');
   };

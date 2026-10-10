@@ -516,6 +516,12 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .queue-play:hover { background: var(--surface-low); }
+/* 队列项来源标记：远程项与本地项在同一个队列里，得看得出是谁。 */
+.queue-src {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
 
 /* ---- Aurora ---- */
 .aurora-canvas {
