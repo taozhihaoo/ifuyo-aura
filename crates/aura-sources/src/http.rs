@@ -163,6 +163,13 @@ impl HttpClient {
                 .user_agent(USER_AGENT)
                 .connect_timeout(config.connect_timeout)
                 .dns_resolver(resolver.clone())
+                // §18 的私网复检发生在**我们自己的解析器**里；一旦有代理，
+                // 目标主机名交给代理去解析，这层检查根本不会被调用——实测
+                // 设了 ALL_PROXY/HTTP_PROXY 时 `rebind.test` 直接出了公网
+                // （拿到上游 502）。所以环境代理必须显式禁用，而不是默认继承。
+                // 代价：确实需要经代理出网的场景不支持，要做得做成显式开关
+                // （涉及威胁模型，改动需写进 DECISIONS）。
+                .no_proxy()
                 .redirect(reqwest::redirect::Policy::custom(move |attempt| {
                     // §16：每一跳全部重新校验（首个 URL 合法 ≠ 目的地合法）。
                     if attempt.previous().len() >= max_redirects {

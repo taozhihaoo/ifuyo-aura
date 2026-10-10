@@ -144,6 +144,14 @@ fn redirect_to_private_ip_under_allow_policy() {
 }
 
 /// §18：DNS rebinding 仿真 —— 公网域名解析到私网 IP，解析层复检必须拒绝。
+///
+/// 回归命令（本测试曾在环境有 ALL_PROXY/HTTP_PROXY 时**静默失效**：请求交给
+/// 代理解析，我们的解析器复检一次都没跑到，实测出了公网拿回 502；修法是
+/// 客户端显式 `no_proxy()`）：
+///   ALL_PROXY=http://127.0.0.1:7890 HTTP_PROXY=http://127.0.0.1:7890 \
+///     cargo test -p aura-sources --test http_matrix dns_rebind
+/// 不把代理写进测试代码：reqwest 在读环境变量发生在构建客户端时，而集成测试
+/// 二进制内多线程并行，进程级环境变量会污染同批次其它用例（结论不可信）。
 #[test]
 fn dns_rebind_to_private_ip_denied() {
     let mut cfg = allow_private(HttpConfig::default());
