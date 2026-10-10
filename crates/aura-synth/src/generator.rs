@@ -1,15 +1,15 @@
 //! Versioned generator（§108/§109）：seed + generation_version + genome +
-//! environment → SceneManifest。
+//! environment → [`LightField`]（光场参数）。
 //!
 //! 契约（§109）：输入输出均为纯数据；无 IO、无时钟、无全局状态。
 //! 未来 GeneratorV2 并行共存，旧世界仍用旧规则打开（§106/§107）。
+//! v2 起输出不再包含 3D 世界（`World` 已随建模一并撤除）。
 
 use crate::biome::Biome;
 use crate::env::EnvironmentState;
 use crate::genome::Genome;
-use crate::manifest::SceneManifest;
+use crate::manifest::LightField;
 use crate::seed::{world_identity, DreamscapeSeed};
-use crate::world::World;
 
 /// 生成分代（§108）。
 pub const SUPPORTED_GENERATION_VERSION: u16 = 1;
@@ -18,8 +18,7 @@ pub const SUPPORTED_GENERATION_VERSION: u16 = 1;
 #[derive(Debug, Clone, PartialEq)]
 pub struct GenerationOutput {
     pub world_id: u64,
-    pub world: World,
-    pub manifest: SceneManifest,
+    pub field: LightField,
 }
 
 /// V1 生成器（§108）。
@@ -37,13 +36,9 @@ impl GeneratorV1 {
     ) -> GenerationOutput {
         let biome = Biome::select(seed, genome);
         let world_id = world_identity(seed, Self::VERSION, biome.kind.id().as_bytes());
-        let world = World::generate(seed, genome, &biome);
-        let manifest =
-            SceneManifest::from_world(world_id, &world, env, biome.effective_mist_bias());
         GenerationOutput {
+            field: LightField::new(world_id, seed, genome, &biome, env),
             world_id,
-            world,
-            manifest,
         }
     }
 }
@@ -68,6 +63,7 @@ pub const fn generation_supported(v: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::env::EnvironmentState;
 
     #[test]
     fn contract_deterministic() {
@@ -77,7 +73,7 @@ mod tests {
         let a = GeneratorV1::generate(&seed, &genome, &env);
         let b = GeneratorV1::generate(&seed, &genome, &env);
         assert_eq!(a, b, "§109：同输入同输出");
-        assert_eq!(a.manifest.scene_hash(), b.manifest.scene_hash());
+        assert_eq!(a.field.scene_hash(), b.field.scene_hash());
         assert_eq!(a.world_id, b.world_id);
     }
 
@@ -88,10 +84,6 @@ mod tests {
         assert!(
             !generation_supported(2),
             "§106：未知代 → 上层显示 unavailable"
-        );
-        assert_eq!(
-            SeedParseError::UnsupportedGeneration(2),
-            SeedParseError::UnsupportedGeneration(2)
         );
     }
 
@@ -106,7 +98,6 @@ mod tests {
             out.world_id,
             world_identity(&seed, 1, biome.kind.id().as_bytes())
         );
+        assert_eq!(out.field.world_id, out.world_id);
     }
-
-    use crate::env::EnvironmentState;
 }

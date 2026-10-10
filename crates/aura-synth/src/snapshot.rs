@@ -275,15 +275,15 @@ impl DreamscapeSession {
         self.last_mutation_tick = now;
     }
 
-    /// 当前世界场景（manifest 视图；§81 路径的逻辑步）。
+    /// 当前光场参数（渲染层唯一输入；§81 路径的逻辑步）。
     #[must_use]
-    pub fn manifest(&self) -> crate::manifest::SceneManifest {
-        let world = crate::world::World::generate(&self.seed, &self.genome, &self.biome);
-        crate::manifest::SceneManifest::from_world(
+    pub fn field(&self) -> crate::manifest::LightField {
+        crate::manifest::LightField::new(
             self.world_id,
-            &world,
+            &self.seed,
+            &self.genome,
+            &self.biome,
             &self.environment,
-            self.biome.effective_mist_bias(),
         )
     }
 
@@ -398,7 +398,7 @@ mod tests {
         assert_eq!(restored.event_log, s.event_log);
         assert_eq!(restored.biome.kind, s.biome.kind);
         // 逻辑态 → 场景一致（scene_hash 相等，§81/§114）。
-        assert_eq!(restored.manifest().scene_hash(), s.manifest().scene_hash());
+        assert_eq!(restored.field().scene_hash(), s.field().scene_hash());
     }
 
     #[test]

@@ -1,21 +1,19 @@
 //! 病态种子 / 非法输入 stress & fuzz（§249–§253/§168/§169）：
-//! 任意输入不 panic；预算在极端 genome 下仍成立；manifest 有界。
+//! 任意输入不 panic；极端 genome 下光场参数仍有限；光场清单极小。
 
 use aura_synth::biome::Biome;
 use aura_synth::env::EnvironmentState;
-use aura_synth::genome::Genome;
-use aura_synth::manifest::SceneManifest;
-use aura_synth::seed::DreamscapeSeed;
+use aura_synth::genome::{Genome, GenomeField};
+use aura_synth::manifest::LightField;
+use aura_synth::seed::{world_identity, DreamscapeSeed};
 use aura_synth::snapshot::DreamscapeSession;
-use aura_synth::world::{validate_world, World, MAX_LANDMARKS, MAX_OBJECTS, MAX_PARTICLES};
 
-/// §249 pathological seeds：高密度/大地形/极端色温 genome。
+/// §249 pathological genomes：极端 genome 参数仍全部有限、序列化仍极小。
 #[test]
 fn stress_pathological_genomes_bounded() {
     for i in 0..30u64 {
         let seed = DreamscapeSeed::from_input(&format!("stress{i}"));
         let mut g = Genome::from_seed(&seed);
-        // 极端组合：全部推到边界。
         g.set(
             GenomeField::FloraDensity,
             if i % 2 == 0 { 1.0 } else { 0.0 },
@@ -25,17 +23,29 @@ fn stress_pathological_genomes_bounded() {
         g.set(GenomeField::WaterPresence, 1.0);
         g.set(GenomeField::ColorTemperature, 1.0);
         let biome = Biome::select(&seed, &g);
-        let world = World::generate(&seed, &g, &biome);
-        assert_eq!(validate_world(&world), Ok(()), "极端 genome 仍产出合法世界");
-        assert!(
-            world.objects.len() <= MAX_OBJECTS + MAX_PARTICLES,
-            "§63 预算"
-        );
-        assert!(world.landmarks.len() <= MAX_LANDMARKS);
         let env = EnvironmentState::initial(&seed, i * 999);
-        let manifest = SceneManifest::from_world(1, &world, &env, biome.effective_mist_bias());
-        let json = serde_json::to_string(&manifest).unwrap();
-        assert!(json.len() < 256 * 1024, "§115 manifest 有界");
+        let wid = world_identity(&seed, 1, biome.kind.id().as_bytes());
+        let field = LightField::new(wid, &seed, &g, &biome, &env);
+        for v in field.params.as_scalars().into_iter().chain([
+            field.light.sun_intensity,
+            field.light.ambient_intensity,
+            field.light.horizon_glow,
+            field.atmosphere.fog,
+            field.atmosphere.wind,
+            field.atmosphere.mist_bias,
+            field.palette.base_hue,
+            field.palette.saturation,
+            field.palette.luminance,
+        ]) {
+            assert!(v.is_finite(), "§249 极端 genome 下参数必须有限");
+        }
+        let json = serde_json::to_string(&field).unwrap();
+        assert!(
+            json.len() < 4096,
+            "§115 光场清单必须极小：{} bytes",
+            json.len()
+        );
+        assert!(field.scene_hash() != 0, "hash 必须有效");
     }
 }
 
@@ -50,7 +60,7 @@ fn invalid_seed_inputs_never_panic() {
         "a",
         &"x".repeat(100_000),
         "日本語のシード",
-        "🌍🚀🌌",
+        "🌍🚀",
         "DS-",
         "DS-!!!!-!!!!-!!!!",
         "DS-00000-0000-0000",
@@ -66,10 +76,15 @@ fn invalid_seed_inputs_never_panic() {
         assert_eq!(s1, s2, "任意输入确定性");
         let g = Genome::from_seed(&s1);
         let b = Biome::select(&s1, &g);
-        let w = World::generate(&s1, &g, &b);
-        assert_eq!(validate_world(&w), Ok(()));
+        let env = EnvironmentState::initial(&s1, 0);
+        let field = LightField::new(1, &s1, &g, &b, &env);
+        assert_eq!(
+            field.scene_hash(),
+            LightField::new(1, &s2, &g, &b, &env).scene_hash()
+        );
         let session = DreamscapeSession::new(s1, 0);
         let _ = session.export_seed();
+        let _ = session.field();
     }
 }
 
@@ -84,7 +99,7 @@ fn fuzz_seed_parser_property() {
         state ^= state << 17;
         state
     };
-    for round in 0..500 {
+    for round in 0..500u64 {
         let len = (next() % 64) as usize;
         let bytes: Vec<u8> = (0..len)
             .map(|_| {
@@ -102,12 +117,11 @@ fn fuzz_seed_parser_property() {
         let seed = DreamscapeSeed::from_input(input);
         let g = Genome::from_seed(&seed);
         let b = Biome::select(&seed, &g);
-        let w = World::generate(&seed, &g, &b);
-        let _ = validate_world(&w);
+        let env = EnvironmentState::initial(&seed, round);
+        let field = LightField::new(1, &seed, &g, &b, &env);
+        assert!(field.params.as_scalars().iter().all(|v| v.is_finite()));
         if round % 50 == 0 {
-            let env = EnvironmentState::initial(&seed, round);
-            let m = SceneManifest::from_world(1, &w, &env, b.effective_mist_bias());
-            let _ = m.scene_hash();
+            let _ = field.scene_hash();
         }
     }
 }
@@ -132,20 +146,10 @@ fn fuzz_snapshot_parser_never_panics() {
             .into_bytes(),
     ];
     for payload in &malformed {
-        // 路径不存在 → Err（不 panic）。
-        let dir = std::env::temp_dir().join("aura-m7-fuzz-does-not-exist");
-        let _ = std::fs::remove_dir_all(&dir);
-        let _ = std::fs::create_dir_all(&dir);
-        let path = dir.join("dreamscape.json");
-        std::fs::write(&path, payload).unwrap();
-        // Host::open 是 panic-free 路径（内部 fallback）——直接调 load 语义。
         let parsed: Result<aura_synth::snapshot::DreamscapeSnapshot, _> =
             serde_json::from_slice(payload);
         if let Ok(snap) = parsed {
             let _ = snap.validate(); // 合法 JSON 也要过校验门
         }
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }
-
-use aura_synth::genome::GenomeField;

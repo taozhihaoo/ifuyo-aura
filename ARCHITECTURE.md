@@ -6,7 +6,7 @@
 ## 总体分层
 
 ```text
-UI (React 18 + TypeScript + Vite + Zustand + Three.js)
+UI (React 18 + TypeScript + Vite + Zustand + WebGL2)
  ↓
 Tauri IPC（typed commands + events，allowlist + input validation）
  ↓
@@ -178,9 +178,9 @@ ring buffer 容量按帧对齐（Engine 默认 buffer/8 = 渲染块）。overrun
 - **测试栈**（§181–§183）：vitest + jsdom + @testing-library（渲染/a11y/键盘矩阵/挂载卫生 42 项）；桌面冒烟 `--bin smoke`（真实 Wry 装配 + 启动计时）。
 - **键盘图**（D-078）：Ctrl+K/Esc/Space/Ctrl+F/Alt+1/2/3/Ctrl+Q/Ctrl+M；Esc 全局可退出任一浮层（§183 无死路）。
 
-### Dreamscape 世界生成核心（M7 上篇）
+### Dreamscape 生成核心（M7 上篇 → v2 参数源）
 
-`crates/aura-synth`（§7 职责边界）：`seed → genome → environment → procedural generation → scene manifest`；无 Three.js/WebGL/React/Tauri/audio/SQLite/HTTP。
+`crates/aura-synth`（§7 职责边界）：`seed → genome → environment → LightField 参数`；无 WebGL/React/Tauri/audio/SQLite/HTTP。
 
 ```text
 src/
@@ -188,34 +188,36 @@ src/
   rng.rs        # SplitMix64 命名流 + 桶派生（D-080）
   genome.rs     # 有界参数 + 小步 mutation 记录（D-081）
   env.rs        # 绝对 tick → 相位/天气/光态 + 约束 palette（D-082）
-  biome.rs      # 五原型六要素 + per-seed 变异（§43–46）
-  world.rs      # 地形/放置/spatial hash/landmark/预算（D-083）
+  biome.rs      # 五原型 + per-seed 变异；变异轴直接映射光场参数（§43–46）
   events.rs     # 稀有事件 + 日志重放过期（D-084）
-  manifest.rs   # SceneManifest + scene_hash（D-085）
+  manifest.rs   # LightField（curtainDepth/moteDensity/veil/glowSoftness/
+                # mirror/starScale/horizon + palette + motif）+ scene_hash
   generator.rs  # GeneratorV1 版本化契约（§108/§109）
-  region.rs     # 区域流式：worker/epoch 取消/LRU（D-086）
   snapshot.rs   # Snapshot/Session/缺省世界（D-087）
 ```
 
-- 确定性合同：同 seed+generation_version+environment → RNG 序列/manifest/scene_hash 逐位一致；世界逻辑只接受逻辑 tick。
-- 分层：synth 只做「世界是什么」；shell `dreamscape.rs` 装配会话与 `dreamscape.json` 逻辑态持久化（§127）+ 9 个 typed IPC 命令；渲染（下篇 Three.js）消费 manifest/DTO。
-- 版本轴：seed_version / generation_version / genome·env·world·manifest·snapshot 各自版本常量；升级 = 显式 DECISIONS。
+- **v2 去建模**（D-083/D-086 随之退役）：`world.rs`（地形/放置/spatial hash/landmark/预算）与 `region.rs`（区域流式）已删除——程序化 3D 重建的实际观感不达标准，生成层的价值在**确定性参数**而非几何体。
+- 确定性合同不变：同 seed+generation_version+environment → RNG 序列/manifest/scene_hash 逐位一致（`field-hash/v2`，MANIFEST_VERSION=2）；世界逻辑只接受逻辑 tick。
+- 快照兼容：持久化结构受 `payload_hash` 重序列化约束 ⇒ **只增字段、不删字段**。
+- 分层：synth 只做「这一场光是什么」；shell `dreamscape.rs` 装配会话与 `dreamscape.json` 逻辑态持久化（§127）+ typed IPC 命令；渲染（下篇）消费 LightField DTO。
 
-### Dreamscape 渲染与集成（M7 下篇）
+### Dreamscape 渲染与集成（M7 下篇 → v2 光场）
 
 ```text
 ui/src/visual/dreamscape/
-  engine.ts             # 纯逻辑：质量档/AutoQuality/节流/GenerationGate/Lifecycle
-  scene.ts              # manifest→GL：程序化地形/InstancedMesh/landmark/粒子 + Disposables
-  DreamscapeRenderer.ts # 生命周期编排（create/loadWorld/start/pause/resume/resize/dispose）
-ui/src/features/dreamscape/DreamscapeView.tsx  # React 集成壳
+  engine.ts             # 纯逻辑：质量档/AutoQuality/节流（无 GL 依赖，可单测）
+  LightFieldRenderer.ts # 裸 WebGL2：单张全屏三角形片元着色器（极光幕/星野/
+                        # 光尘/镜面 + ACES+vignette+dither）；uniform 一次解析、
+                        # 逐帧零分配；上下文丢失自动重建（§151）
+ui/src/features/dreamscape/DreamscapeView.tsx  # React 集成壳 + 歌词舞台
 ```
 
+- **音乐驱动**：引擎侧 `LevelTap`（RMS + 150/2500Hz 三分频，取样点在 EQ/响度之前、不含用户音量）经 `player_level` IPC 上抛；节拍包络由 `bpm/first_beat_offset/position` 推导。快变量（电平）非对称平滑（攻击快、释放慢），慢变量（曲目 energy/brightness）1.2s 级跟随——逐帧噪声直接喂亮度就是"晃眼"。
 - **单渲染器规则**（§130/§131/D-091）：dreamscape 视图卸载 AuroraCanvas；Mini 永不渲染 Dreamscape。
-- **状态分层**（§269–§273）：Zustand 只存 dreamscapeOpen/status；manifest 走 renderer ref；相机渲染器本地、持久化仅 compact CameraState。
-- **频率边界**（§263/§264/§265–§267）：IPC 低频推进（2s=30 逻辑分钟）+ 按需拉取；插值/平滑全在渲染器本地。
-- **失败路径**（§274–§277）：FeatureBoundary + CSS fallback 场景 + 用户世界状态不污染；GL 不可用 → create 返回 false → 立即 fallback（不悬挂 loading §278）。
-- **确定性**（§171/§172）：逻辑 manifest/scene_hash 为准；GPU 视觉允许像素级差异（地形由 terrain patch 参数在渲染端确定性重建）。
+- **状态分层**（§269–§273）：Zustand 只存 dreamscapeOpen/status；LightField 走 ref；高频遥测只进渲染器，不进 React state。
+- **频率边界**（§263/§264/§265–§267）：环境推进 2s=30 逻辑分钟；电平轮询按目标帧率节流（idle 10 / 播放 30 / 隐藏 2 / reduced 5fps）。
+- **失败路径**（§274–§277）：FeatureBoundary + CSS fallback 场景 + 用户世界状态不污染；GL 不可用 → `create()` 返回 null → 立即 fallback（不悬挂 loading §278）；失败原因经 `canvas[data-field-error]` 本地诊断。上下文丢失 → 切 fallback，`webglcontextrestored` 后重建 GL 对象并自动续跑。
+- **确定性**（§171/§172）：逻辑 manifest/scene_hash 为准；GPU 视觉允许像素级差异。
 - **键盘**（§198/§285）：Esc 分层退出（palette→dreamscape→抽层）；palette 四命令（open/regenerate/copy seed/save snapshot §197）。
 
 ### 分析基建（M8 上篇）

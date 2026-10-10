@@ -228,14 +228,14 @@ pub fn dreamscape_advance(
     Ok(dto)
 }
 
-/// 场景清单（下篇渲染层消费；§109 输出）。
+/// 光场清单（渲染层唯一输入；§109 输出。命令名保留 `manifest` 语义）。
 #[tauri::command]
 pub fn dreamscape_manifest(
     state: tauri::State<'_, crate::ipc::AppState>,
-) -> CmdResult<aura_synth::manifest::SceneManifest> {
+) -> CmdResult<aura_synth::manifest::LightField> {
     let host = &state.dreamscape;
     let s = host.session.lock().expect("dreamscape lock");
-    Ok(s.manifest())
+    Ok(s.field())
 }
 
 /// 显式再生（§103：仅用户主动）。

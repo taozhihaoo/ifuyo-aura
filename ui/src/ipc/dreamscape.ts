@@ -1,16 +1,13 @@
 // Dreamscape typed IPC 契约（§255/§110）：与 src-tauri/src/dreamscape.rs +
-// aura-synth manifest DTO 一一镜像。禁止 any；解析前置校验（§253
-// validation-first：畸形 manifest 拒绝而非渲染崩溃）。
+// aura-synth 光场 DTO 一一镜像。禁止 any；解析前置校验（§253
+// validation-first：畸形数据拒绝而非渲染崩溃）。
+//
+// v2：Dreamscape 不再建模 3D 世界（terrain 高度场 / landmark / instance
+// 数组全部撤除），改为音乐驱动的极光光场——契约只剩参数。
 
 export interface DreamscapeSeedDto {
   value: number;
   seedVersion: number;
-}
-
-export interface DreamscapeTerrainPatch {
-  amplitude: number;
-  frequency: number;
-  terrainSeed: number;
 }
 
 export interface DreamscapePalette {
@@ -33,40 +30,40 @@ export interface DreamscapeAtmosphere {
   mistBias: number;
 }
 
-export type LandmarkKind = 'OldTree' | 'StandingStone' | 'StillPool' | 'Arch' | 'GlowCluster';
-
-export interface DreamscapeLandmark {
-  id: number;
-  kind: LandmarkKind;
-  x: number;
-  y: number;
-  z: number;
-  radius: number;
-  rotation: number;
+/** 光场形态参数（genome 语义重映射；全部 [0,1]）。 */
+export interface DreamscapeFieldParams {
+  /** 幕帘纵深与层叠 */
+  curtainDepth: number;
+  /** 光尘密度 */
+  moteDensity: number;
+  /** 雾幕不透明度 */
+  veil: number;
+  /** 辉光扩散半径 */
+  glowSoftness: number;
+  /** 地平镜面强度 */
+  mirror: number;
+  /** 星野尺度与疏密 */
+  starScale: number;
+  /** 地平线高度 */
+  horizon: number;
 }
 
-export type ObjectFamily = 'flora' | 'stone' | 'water' | 'light' | 'particle' | 'landmark';
+export type FieldMotif = 'veil' | 'cascade' | 'radiance' | 'drift';
 
-export interface DreamscapeInstanceGroup {
-  family: ObjectFamily;
-  x: number[];
-  z: number[];
-  scale: number[];
-  rotation: number[];
-  nonce: number[];
-}
+const MOTIFS: readonly string[] = ['veil', 'cascade', 'radiance', 'drift'];
 
-export interface SceneManifest {
+/** 光场清单（渲染层唯一输入）。 */
+export interface LightField {
   manifestVersion: number;
   /** u64（JSON number；UI 不做身份比较，仅透传）。 */
   worldId: number;
   seed: DreamscapeSeedDto;
-  terrain: DreamscapeTerrainPatch;
+  fieldSeed: number;
+  motif: FieldMotif;
   palette: DreamscapePalette;
   light: DreamscapeLight;
   atmosphere: DreamscapeAtmosphere;
-  landmarks: DreamscapeLandmark[];
-  instances: DreamscapeInstanceGroup[];
+  params: DreamscapeFieldParams;
 }
 
 /** §168/§169 数值安全：非有限值一律拒绝。 */
@@ -74,20 +71,26 @@ function finite(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
-function finiteArray(v: unknown): v is number[] {
-  return Array.isArray(v) && v.every(finite);
+function inUnit(v: unknown): v is number {
+  return finite(v) && v >= 0 && v <= 1;
 }
 
-/** manifest 前置校验（§253：畸形输入拒绝；上限检查 §115/§254）。 */
-export function isSceneManifest(v: unknown): v is SceneManifest {
+/** 逐字段区间必须与 Rust `GenomeField::bounds` 一致——放宽会漏放畸形，
+ *  收紧会把真实光场判非法（视图永久 fallback）。 */
+function between(v: unknown, lo: number, hi: number): v is number {
+  return finite(v) && v >= lo && v <= hi;
+}
+
+/** 光场前置校验（§253：畸形输入拒绝；参数必须落在声明区间内）。 */
+export function isLightField(v: unknown): v is LightField {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
-  if (o.manifestVersion !== 1) return false;
-  if (!finite(o.worldId)) return false;
+  // 版本双端硬钉：Rust MANIFEST_VERSION 改动必须同步这里。
+  if (o.manifestVersion !== 2) return false;
+  if (!finite(o.worldId) || !finite(o.fieldSeed)) return false;
   const seed = o.seed as Record<string, unknown> | undefined;
   if (!seed || !finite(seed.value) || seed.seedVersion !== 1) return false;
-  const t = o.terrain as Record<string, unknown> | undefined;
-  if (!t || !finite(t.amplitude) || !finite(t.frequency) || !finite(t.terrainSeed)) return false;
+  if (typeof o.motif !== 'string' || !MOTIFS.includes(o.motif)) return false;
   const p = o.palette as Record<string, unknown> | undefined;
   if (
     !p ||
@@ -100,29 +103,22 @@ export function isSceneManifest(v: unknown): v is SceneManifest {
     return false;
   }
   const li = o.light as Record<string, unknown> | undefined;
-  if (!li || !finite(li.sunIntensity) || !finite(li.ambientIntensity) || !finite(li.horizonGlow)) {
+  if (!li || !inUnit(li.sunIntensity) || !inUnit(li.ambientIntensity) || !inUnit(li.horizonGlow)) {
     return false;
   }
   const at = o.atmosphere as Record<string, unknown> | undefined;
-  if (!at || !finite(at.fog) || !finite(at.wind) || !finite(at.mistBias)) return false;
-  if (!Array.isArray(o.landmarks) || o.landmarks.length > 16) return false;
-  for (const lm of o.landmarks) {
-    const m = lm as Record<string, unknown>;
-    if (!finite(m.id) || !finite(m.x) || !finite(m.y) || !finite(m.z)) return false;
-    if (typeof m.kind !== 'string') return false;
-  }
-  if (!Array.isArray(o.instances) || o.instances.length > 12) return false;
-  let total = 0;
-  for (const g of o.instances) {
-    const m = g as Record<string, unknown>;
-    if (typeof m.family !== 'string') return false;
-    if (!finiteArray(m.x) || !finiteArray(m.z) || !finiteArray(m.scale) || !finiteArray(m.rotation)) {
-      return false;
-    }
-    total += (m.x as number[]).length;
-  }
-  // §115/§63 预算：manifest 实例总数超界 → 拒绝（防 object-count abuse）。
-  return total <= 2048;
+  if (!at || !inUnit(at.fog) || !inUnit(at.wind) || !inUnit(at.mistBias)) return false;
+  const pa = o.params as Record<string, unknown> | undefined;
+  if (!pa) return false;
+  return (
+    between(pa.curtainDepth, 0.5, 4.0) &&
+    inUnit(pa.moteDensity) &&
+    inUnit(pa.veil) &&
+    inUnit(pa.glowSoftness) &&
+    inUnit(pa.mirror) &&
+    between(pa.starScale, 0.5, 2.0) &&
+    inUnit(pa.horizon)
+  );
 }
 
 /** 会话状态 DTO（dreamscape_state 命令）。 */

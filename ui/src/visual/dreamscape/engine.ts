@@ -1,6 +1,6 @@
 // Dreamscape 渲染引擎的纯逻辑层（§128–§150/§265–§267/§287）。
 // 全部决策（质量档/节流/插值/取消）在此模块——无 WebGL 依赖，可单测；
-// GL 装配在 scene.ts / DreamscapeRenderer.ts。
+// GL 装配在 LightFieldRenderer.ts（裸 WebGL2，无 three）。
 
 /** 质量档（§141）。 */
 export type QualityMode = 'low' | 'medium' | 'high' | 'auto';
@@ -11,18 +11,18 @@ export interface QualitySettings {
   level: QualityLevel;
   /** 内部分辨率 cap（§150：4K×200% 不失控）。 */
   pixelRatioCap: number;
-  /** 地形网格细分。 */
-  terrainSegments: number;
-  /** 粒子数量比例（§142）。 */
-  particleScale: number;
-  /** 后处理开关（§139 可关闭降级）。 */
-  postEnabled: boolean;
+  /** fbm 迭代层数（光场细节；取代 3D 地形网格密度）。 */
+  fieldDetail: number;
+  /** 光尘密度系数。 */
+  moteDensity: number;
+  /** 辉光/镜面反射等叠加层。 */
+  glowEnabled: boolean;
 }
 
 export const QUALITY_SETTINGS: Record<QualityLevel, QualitySettings> = {
-  low: { level: 'low', pixelRatioCap: 1.0, terrainSegments: 32, particleScale: 0.35, postEnabled: false },
-  medium: { level: 'medium', pixelRatioCap: 1.25, terrainSegments: 64, particleScale: 0.7, postEnabled: false },
-  high: { level: 'high', pixelRatioCap: 1.5, terrainSegments: 96, particleScale: 1.0, postEnabled: true },
+  low: { level: 'low', pixelRatioCap: 1.0, fieldDetail: 3, moteDensity: 0.35, glowEnabled: false },
+  medium: { level: 'medium', pixelRatioCap: 1.25, fieldDetail: 4, moteDensity: 0.7, glowEnabled: true },
+  high: { level: 'high', pixelRatioCap: 1.75, fieldDetail: 5, moteDensity: 1.0, glowEnabled: true },
 };
 
 /** Auto 控制器（§142/§143：按帧时长升降档 + 迟滞冷却，不震荡）。 */
@@ -93,101 +93,4 @@ export function shouldRender(nowMs: number, lastFrameMs: number, fps: number): b
 /** 钳制到 [0,1]。 */
 export function clamp01(t: number): number {
   return Math.min(Math.max(t, 0), 1);
-}
-
-/** 环境目标插值（§266：renderer 本地平滑；§34/§37/§163 无突变）。 */
-export function lerp(current: number, target: number, t: number): number {
-  return current + (target - current) * clamp01(t);
-}
-
-/** 遥测平滑（§267：backend 低频快照 → renderer 本地平滑）。 */
-export class SmoothedValue {
-  private value: number;
-  constructor(initial: number, private readonly speedPerSecond = 2.0) {
-    this.value = initial;
-  }
-  get(): number {
-    return this.value;
-  }
-  /** 向 target 以固定速率推进（dt 秒）。 */
-  step(target: number, dtSeconds: number): number {
-    const delta = target - this.value;
-    const maxStep = this.speedPerSecond * dtSeconds;
-    if (Math.abs(delta) <= maxStep) {
-      this.value = target;
-    } else {
-      this.value += Math.sign(delta) * maxStep;
-    }
-    return this.value;
-  }
-}
-
-/** 生成请求顺序保护（§258–§261：generation_id，最新者胜）。 */
-export class GenerationGate {
-  private latest = 0;
-  private settled = new Set<number>();
-
-  /** 开启新代；返回 generation_id。 */
-  begin(): number {
-    this.latest += 1;
-    this.settled.add(this.latest);
-    // 只保留近期代（有界，§219 精神）。
-    if (this.settled.size > 8) {
-      const min = this.latest - 7;
-      for (const id of this.settled) {
-        if (id < min) this.settled.delete(id);
-      }
-    }
-    return this.latest;
-  }
-
-  /** 该代是否仍为最新（完成回调里检查；陈旧代丢弃 §259/§260）。 */
-  isCurrent(id: number): boolean {
-    return id === this.latest;
-  }
-
-  /** 世界加载完成标记（用于「陈旧代完成不得覆盖新世界」测试）。 */
-  complete(id: number): boolean {
-    if (!this.settled.has(id) || id !== this.latest) return false;
-    return true;
-  }
-}
-
-/** 渲染器生命周期状态机（§129；非法迁移抛错由调用方防御）。 */
-export type LifecycleState =
-  | 'idle'
-  | 'created'
-  | 'loading'
-  | 'ready'
-  | 'rendering'
-  | 'paused'
-  | 'contextLost'
-  | 'disposed';
-
-export class Lifecycle {
-  private state: LifecycleState = 'idle';
-
-  get(): LifecycleState {
-    return this.state;
-  }
-
-  can(next: LifecycleState): boolean {
-    const allowed: Record<LifecycleState, LifecycleState[]> = {
-      idle: ['created'],
-      created: ['loading', 'disposed'],
-      loading: ['ready', 'disposed'],
-      ready: ['rendering', 'disposed'],
-      rendering: ['paused', 'contextLost', 'disposed'],
-      paused: ['rendering', 'contextLost', 'disposed'],
-      contextLost: ['rendering', 'disposed'], // §151 恢复后重建
-      disposed: [],
-    };
-    return allowed[this.state].includes(next);
-  }
-
-  transition(next: LifecycleState): boolean {
-    if (!this.can(next)) return false;
-    this.state = next;
-    return true;
-  }
 }

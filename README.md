@@ -28,7 +28,7 @@ Music Map 根据本地音频分析结果，把音乐库组织成可探索的相�
 | Aurora 视觉（WebGL fbm，播放响应） | ✅ |
 | Win11 Mica（Win10 solid fallback） | ✅ |
 | Music Map（相似度地图：构建/Canvas 渲染/搜索/过滤） | ✅ |
-| Dreamscape（程序化世界：seed/演化/稀有事件/快照 + Three.js 渲染） | ✅ |
+| Dreamscape（确定性光场：seed/演化/稀有事件/快照 + 音乐驱动 WebGL2 渲染） | ✅ |
 | Windows 媒体控件（SMTC） | ✅（系统面板显示当前曲目；面板自身行为随 Windows 版本） |
 | 媒体键 | ✅（经 SMTC；无自定义全局快捷键） |
 | 系统托盘 | ✅（播放控制/视图入口/退出；菜单跟随应用语言） |
@@ -57,7 +57,7 @@ Music Map 根据本地音频分析结果，把音乐库组织成可探索的相�
 ## 当前限制（如实）
 
 - Aurora FPS 绝对值未在真实 GPU 桌面环境采样（机制已内建：`canvas[data-fps]`）；Mica 视觉效果需 Win11 实机确认（API + fallback 已就绪）。
-- Dreamscape 为第一版视觉（无阴影/后处理特效栈）；full-screen 模式、手动天气预设、多世界 slots 未实现。数小时桌面 soak 未在本环境执行。
+- Dreamscape v2 为光场视觉（fbm 极光幕 + 星野 + 光尘 + 镜面；单张全屏片元着色器，无几何建模/阴影/后处理栈），由曲目特征与实时电平驱动；full-screen 模式、手动天气预设、多世界 slots 未实现。`docs/screenshots/10・12` 仍是 v1 3D 世界截图，待重截。数小时桌面 soak 未在本环境执行。
 - 音乐分析：合成 fixture 全过；真实音乐 BPM/Key 精度未做基准评估（算法为经典统计法，非 ML）。
 - 数小时级桌面 soak 未在本开发环境执行（远程虚拟显示）；本地复测脚本见 `docs/PERF.md`。
 - 安装包（NSIS bundle）未签名；M6 已实际产出 unsigned 产物（`tauri build`）。
