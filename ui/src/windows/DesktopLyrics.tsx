@@ -39,6 +39,8 @@ export function useDesktopLyricsOpener(): void {
         return;
       }
       if (!open) return;
+      // visible:false：窗口先创建、内容加载完（tauri://load）再显示——
+      // 否则创建瞬间会出现"空窗/透明帧闪一下"（用户报告的首次点击闪烁）。
       const w = new WebviewWindow(LABEL, {
         url: 'index.html?view=lyrics',
         title: 'ifuyo Aura',
@@ -51,8 +53,14 @@ export function useDesktopLyricsOpener(): void {
         resizable: false,
         shadow: false,
         focus: false,
+        visible: false,
       });
       windowSeen = true;
+      // 双保险：load 事件 + 短延时兜底（事件早于监听挂载时不丢显示）
+      w.once('tauri://load', () => void w.show().catch(() => undefined));
+      setTimeout(() => void w.isVisible().then((v) => {
+        if (!v) void w.show().catch(() => undefined);
+      }), 2000);
       w.once('tauri://error', () => setOpen(false));
     });
     return () => {
