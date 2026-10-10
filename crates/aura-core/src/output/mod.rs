@@ -30,6 +30,8 @@ pub struct SharedOutputState {
     pub target_gain_bits: Arc<AtomicU32>,
     /// 音轨静态增益（loudness × preamp；f32 bits）。
     pub track_gain_bits: Arc<AtomicU32>,
+    /// 电平探针（驱动线程写入 → 可视化读取；f32 bits ×4，无锁）。
+    pub level_bits: Arc<[std::sync::atomic::AtomicU32; 4]>,
     /// 播放状态（控制面发布；设备回调据此决定静音/推进位置——暂停时
     /// 位置必须停住 §183）。
     playback_state_bits: Arc<AtomicU32>,
@@ -54,6 +56,12 @@ impl SharedOutputState {
             underruns: Arc::new(AtomicU64::new(0)),
             target_gain_bits: Arc::new(AtomicU32::new(1.0f32.to_bits())),
             track_gain_bits: Arc::new(AtomicU32::new(1.0f32.to_bits())),
+            level_bits: Arc::new([
+                AtomicU32::new(0),
+                AtomicU32::new(0),
+                AtomicU32::new(0),
+                AtomicU32::new(0),
+            ]),
             playback_state_bits: Arc::new(AtomicU32::new(state_bits(PlaybackState::Stopped))),
             fade_cmd: Arc::new(AtomicU32::new(FADE_CMD_NONE)),
             fade_progress_frames: Arc::new(AtomicU64::new(0)),
@@ -140,6 +148,31 @@ impl SharedOutputState {
         self.track_gain_bits.store(v.to_bits(), Ordering::Release);
     }
 
+    /// 发布电平探针（驱动线程；非有限值一律按 0 处理，避免原子量被 NaN
+    /// 永久污染——读取侧无法自愈）。
+    pub fn set_level(&self, probe: crate::audio::level::LevelProbe) {
+        let clean = |v: f32| if v.is_finite() { v.max(0.0) } else { 0.0 };
+        for (slot, v) in self
+            .level_bits
+            .iter()
+            .zip([probe.rms, probe.low, probe.mid, probe.high])
+        {
+            slot.store(clean(v).to_bits(), Ordering::Release);
+        }
+    }
+
+    /// 读取当前电平（可视化侧；无锁、无分配）。
+    #[must_use]
+    pub fn level(&self) -> crate::audio::level::LevelProbe {
+        let load = |i: usize| f32::from_bits(self.level_bits[i].load(Ordering::Acquire));
+        crate::audio::level::LevelProbe {
+            rms: load(0),
+            low: load(1),
+            mid: load(2),
+            high: load(3),
+        }
+    }
+
     fn track_gain(&self) -> f32 {
         f32::from_bits(self.track_gain_bits.load(Ordering::Acquire))
     }
@@ -190,6 +223,10 @@ pub struct OutputStage {
     last_eq_version: u32,
     /// limiter 开关（生产默认开；测试 provenance 可关，D-034）。
     limiter_enabled: bool,
+    /// 电平探针（可视化面）。取样必须在**消费侧**：生产侧（解码 push 时）
+    /// 在环形缓冲预满时根本没有数据可推——实测播放 1.5s 内 24 次读数 22 次
+    /// 为 0，画面几乎不动。消费回调每块都真的在出声，读数因此持续新鲜。
+    level: crate::audio::level::LevelTap,
     /// 上一块渲染状态（检测 Playing↔非 Playing 切换，做短淡变消爆音 §突刺）。
     last_state: PlaybackState,
     /// 淡变长度（帧，10ms @当前采样率；§突刺消爆音）。
@@ -221,6 +258,10 @@ impl OutputStage {
             local_eq: crate::dsp::EqCoeffs::passthrough(),
             last_eq_version: 0,
             limiter_enabled: true,
+            level: crate::audio::level::LevelTap::new(
+                sample_rate.get(),
+                usize::from(channels.get()),
+            ),
             last_state: PlaybackState::Stopped,
             fade_frames: sample_rate.get() as usize / 100, // 10ms
             fade_phase: TransportFade::None,
@@ -279,6 +320,11 @@ impl OutputStage {
         // §183：淡出后位置冻结。
         if state != PlaybackState::Playing {
             let ch = usize::from(self.channels.get());
+            // 非播放态一律发布"静音电平"：暂停/停止时画面必须暗下来，
+            // 不能冻结在最后一次读数（finish_block 顺带清掉累加器，下一段
+            // 播放从干净状态起算）。
+            let _ = self.level.finish_block();
+            shared.set_level(crate::audio::level::LevelProbe::default());
             let was_playing = self.last_state == PlaybackState::Playing;
             self.last_state = state;
             if !was_playing {
@@ -330,7 +376,19 @@ impl OutputStage {
             }
         }
 
+        // 电平探针：取"任何增益之前"的信号——用户音量、响度归一、preamp、
+        // EQ 都不参与。语义是零门控而非按音量缩放：静音（增益 0）时画面
+        // 必须静止，但任何非零音量下亮度不随音量衰减，否则视觉替房间音量
+        // 站台（实测 2% 音量时画面几乎全黑）。underrun 补的静音也在 out 里，
+        // 读数如实反映"这一块实际出声的能量"。
+        self.level.push(out);
         let target = shared.target_gain();
+        let mut probe = self.level.finish_block();
+        if target <= 0.0 {
+            probe = crate::audio::level::LevelProbe::default();
+        }
+        shared.set_level(probe);
+
         self.smoother.set_target(target);
         self.smoother.process(out);
         // 音轨静态增益（loudness × preamp，§44 第一级）

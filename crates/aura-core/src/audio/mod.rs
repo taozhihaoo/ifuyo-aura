@@ -3,4 +3,5 @@
 pub mod buffer;
 pub mod crossfade;
 pub mod gain;
+pub mod level;
 pub mod position;

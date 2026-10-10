@@ -52,6 +52,48 @@ fn loudness_disabled_is_unity() {
     );
 }
 
+/// 开关只翻 enabled：元数据必须留在引擎里。应用侧曾用
+/// `set_track_loudness(missing(), on)` 表达"开"，把元数据一并擦成
+/// TARGET_LUFS → 增益恒 0dB，响度归一在真实应用里从未生效。
+#[test]
+fn loudness_toggle_applies_metadata_instead_of_wiping_it() {
+    // 捕获缓冲是累加的（clear_capture 才归零），断言一律取本轮块末值。
+    let (mut engine, mut poster) = engine_48k();
+    engine.set_limiter_enabled(false);
+    engine.set_track_loudness(
+        TrackLoudness {
+            integrated_lufs: -20.0,
+            true_peak_db: -10.0,
+            loudness_available: true,
+        },
+        false,
+    );
+    load_dc_track(&mut engine, 0.25);
+    poster.post(AudioCommand::Play).unwrap();
+
+    engine.clear_capture();
+    let _ = engine.render_for_frames(4_800);
+    assert!((engine.capture()[0] - 0.25).abs() < 1e-6, "关闭时不动增益");
+
+    engine.set_loudness_enabled(true);
+    engine.clear_capture();
+    let _ = engine.render_for_frames(4_800);
+    let boosted = engine.capture()[0];
+    assert!(
+        (boosted - 0.25 * 10f32.powf(4.0 / 20.0)).abs() < 1e-3,
+        "开关联动既有元数据（-20 LUFS → +4dB）: {boosted}"
+    );
+    assert!(engine.loudness_enabled());
+
+    engine.set_loudness_enabled(false);
+    engine.clear_capture();
+    let _ = engine.render_for_frames(4_800);
+    assert!(
+        (engine.capture()[0] - 0.25).abs() < 1e-6,
+        "再次关闭回落到 unity"
+    );
+}
+
 #[test]
 fn loudness_minus16_unity_quieter_boosts_louder_attenuates() {
     // -16 LUFS → 0dB；-20 → +4dB；-12 → -4dB（fixture 1–3，无峰值约束）

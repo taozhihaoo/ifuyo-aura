@@ -24,6 +24,7 @@ pub use audio::crossfade::{
     crossfade_frames, equal_power_gains, CROSSFADE_DEFAULT_SECONDS, CROSSFADE_MAX_SECONDS,
 };
 pub use audio::gain::{GainSmoother, SMOOTHING_WINDOW_MS};
+pub use audio::level::{LevelProbe, LevelTap};
 pub use audio::position::PositionTracker;
 pub use decoder::flac::FlacDecoder;
 pub use decoder::pcm::{map_channels, map_channels_into, PcmBuffer};

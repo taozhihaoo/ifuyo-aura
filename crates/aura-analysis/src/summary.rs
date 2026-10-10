@@ -16,6 +16,8 @@ pub struct TrackAnalysisSummary {
     pub status: AnalysisStatus,
     pub bpm: Option<f32>,
     pub bpm_confidence: Option<f32>,
+    /// 首个检测拍的偏移（秒）；可视化据此对齐节拍相位（None = 未分析）。
+    pub first_beat_offset_seconds: Option<f32>,
     pub musical_key: Option<String>,
     pub key_confidence: Option<f32>,
     pub camelot_key: Option<String>,
@@ -54,6 +56,7 @@ impl From<&TrackAnalysis> for TrackAnalysisSummary {
             status: a.status,
             bpm: a.tempo.as_ref().map(|t| t.bpm),
             bpm_confidence: a.tempo.as_ref().map(|t| t.confidence),
+            first_beat_offset_seconds: a.tempo.as_ref().map(|t| t.first_beat_offset_seconds),
             musical_key: key_str,
             key_confidence: a.key.as_ref().map(|k| k.confidence),
             camelot_key: a.key.as_ref().and_then(|k| k.camelot.clone()),
@@ -90,6 +93,27 @@ mod tests {
         FeatureAvailability, KeyAnalysis, KeyMode, LoudnessAnalysis, MusicalKey, SpectralFeatures,
         TempoAnalysis,
     };
+
+    /// 可视化对齐节拍需要 first-beat 偏移随 summary 透出。
+    #[test]
+    fn summary_carries_first_beat_offset() {
+        use crate::domain::{AnalysisStatus, FeatureAvailability, TempoAnalysis};
+        let mut a = TrackAnalysis::skeleton(7, "c-beat");
+        a.status = AnalysisStatus::Completed;
+        a.tempo = Some(TempoAnalysis {
+            bpm: 128.0,
+            confidence: 0.9,
+            first_beat_offset_seconds: 0.42,
+            algorithm_version: 1,
+        });
+        a.tempo_availability = FeatureAvailability::Available;
+        let s = TrackAnalysisSummary::from(&a);
+        assert_eq!(s.bpm, Some(128.0));
+        assert_eq!(s.first_beat_offset_seconds, Some(0.42));
+        // 未分析曲目不得伪造偏移。
+        let empty = TrackAnalysisSummary::from(&TrackAnalysis::skeleton(8, "c-none"));
+        assert_eq!(empty.first_beat_offset_seconds, None);
+    }
 
     #[test]
     fn summary_maps_fields_and_units() {

@@ -486,3 +486,94 @@ fn play_without_track_is_rejected_no_phantom_clock() {
     assert_eq!(engine.state(), PlaybackState::Playing);
     assert_eq!(engine.position_frames(), (CHUNK * 4) as u64);
 }
+
+/// 电平探针（可视化面）：播放中有能量、频谱倾斜正确，停止后必须归零
+/// ——不能冻结在最后一次读数（否则暂停后画面仍在"呼吸"）。
+#[test]
+fn level_probe_tracks_playback_and_falls_back_to_zero() {
+    let (mut engine, mut poster) = engine_with(
+        Waveform::Sine {
+            freq_hz: 220.0,
+            amplitude: 0.5,
+        },
+        48_000,
+    );
+    poster.post(AudioCommand::Play).unwrap();
+    let mut buf = vec![0.0f32; CHUNK * 2];
+    for _ in 0..16 {
+        engine.fill_and_process();
+        let _ = engine.render_block_only(&mut buf);
+    }
+    let p = engine.level_probe();
+    assert!(
+        p.rms > 0.05 && p.rms < 0.6,
+        "220Hz/0.5 正弦应有稳定电平: {p:?}"
+    );
+    assert!(p.low > p.high, "220Hz 应偏低频: {p:?}");
+    assert!(
+        p.rms.is_finite() && p.low.is_finite() && p.mid.is_finite() && p.high.is_finite(),
+        "{p:?}"
+    );
+
+    poster.post(AudioCommand::Stop).unwrap();
+    for _ in 0..4 {
+        engine.fill_and_process();
+        let _ = engine.render_block_only(&mut buf);
+    }
+    let gone = engine.level_probe();
+    assert_eq!(gone.rms, 0.0, "停止后电平必须归零: {gone:?}");
+    assert_eq!(gone.high, 0.0, "停止后电平必须归零: {gone:?}");
+}
+
+/// 电平语义 = **零门控**：音量 0 时画面必须静止；任何非零音量下电平
+/// 不随音量幅度衰减（音量是用户为房间设的，不该指挥画面强弱）。
+/// 注意：本测试不断言"半音量 < 满音量"——那既不是期望语义，也会因取样
+/// 相位不同而偶然通过（假通过的测试比没测试更糟）。
+#[test]
+fn level_probe_follows_user_volume() {
+    let (mut engine, mut poster) = engine_with(
+        Waveform::Sine {
+            freq_hz: 220.0,
+            amplitude: 0.5,
+        },
+        48_000,
+    );
+    poster.post(AudioCommand::Play).unwrap();
+    let mut buf = vec![0.0f32; CHUNK * 2];
+    let mut pump = |engine: &mut aura_core::Engine| {
+        for _ in 0..8 {
+            engine.fill_and_process();
+            let _ = engine.render_block_only(&mut buf);
+        }
+    };
+    pump(&mut engine);
+    let loud = engine.level_probe().rms;
+    assert!(loud > 0.05, "默认音量下应有电平: {loud}");
+
+    poster
+        .post(AudioCommand::SetVolume { volume: 0.0 })
+        .unwrap();
+    pump(&mut engine);
+    let muted = engine.level_probe();
+    assert!(
+        muted.rms < 1e-6 && muted.high < 1e-6,
+        "音量 0 时电平必须归零: {muted:?}"
+    );
+
+    poster
+        .post(AudioCommand::SetVolume { volume: 0.5 })
+        .unwrap();
+    pump(&mut engine);
+    let half = engine.level_probe().rms;
+    assert!(
+        half > 0.05 && (half - loud).abs() < 0.05,
+        "非零音量下电平不应被音量衰减: half={half} loud={loud}"
+    );
+
+    // 回到 0 仍须静止（零门控可逆）。
+    poster
+        .post(AudioCommand::SetVolume { volume: 0.0 })
+        .unwrap();
+    pump(&mut engine);
+    assert_eq!(engine.level_probe().rms, 0.0, "再次静音必须归零");
+}

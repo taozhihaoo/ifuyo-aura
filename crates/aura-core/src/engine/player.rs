@@ -120,6 +120,7 @@ pub struct Engine {
     track_frame_ranges: Vec<TrackFrameRange>,
 
     output: NullOutput,
+    /// 电平探针（驱动线程侧；生产推送处取样，经 shared 原子量发布）。
     /// 渲染工作区（预分配一次；字段级不相交借用，见 render_for_frames）。
     chunk_buf: Vec<f32>,
     /// 与 `output.shared()` 同一 Arc 的克隆（避免跨字段借用）。
@@ -300,6 +301,18 @@ impl Engine {
         self.track_loudness = loudness;
         self.loudness_enabled = enabled;
         self.refresh_track_gain();
+    }
+
+    /// 只切开关、保留当前曲目的响度元数据（换曲时元数据随
+    /// [`Self::load_track`] 的调用方一起更新）。
+    pub fn set_loudness_enabled(&mut self, enabled: bool) {
+        self.loudness_enabled = enabled;
+        self.refresh_track_gain();
+    }
+
+    #[must_use]
+    pub const fn loudness_enabled(&self) -> bool {
+        self.loudness_enabled
     }
 
     /// 设置 preamp（dB，−12 ~ +12，§39）。
@@ -841,11 +854,21 @@ impl Engine {
                 self.track_finished = true;
             }
         }
+        // 电平发布在输出级（`OutputStage::render`）：那才是"每个回调块都在
+        // 真出声"的地方。生产侧取样会在环形缓冲预满时饿死（实测 24 次读数
+        // 22 次为 0，画面几乎不动），故此处不再取样。
     }
 
     /// 曲目自然播完标记（驱动线程轮询；取走即复位）。
     pub fn take_track_finished(&mut self) -> bool {
         std::mem::take(&mut self.track_finished)
+    }
+
+    /// 最近一次发布的电平探针（由输出级 `OutputStage::render` 逐回调块刷新；
+    /// 测试与诊断入口，生产侧读取走 `SharedOutputState::level()`）。
+    #[must_use]
+    pub fn level_probe(&self) -> crate::audio::level::LevelProbe {
+        self.shared.level()
     }
 
     /// 捕获访问。
