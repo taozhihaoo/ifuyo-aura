@@ -2,6 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { isAppError, type AnalysisProgress, type AnalysisStatus, type AppSettings, type PlayerLevel, type PlayerSnapshot, type ScanProgress, type SortKey, type TrackFeatures, type TrackSummary } from './types';
 import { isDreamscapeState, isLightField, type DreamscapeStateDto, type LightField } from './dreamscape';
+import { isIfuyoList, type IfuyoList } from './ifuyo';
 import {
   isMapNeighborDto,
   isMapNodeDto,
@@ -95,6 +96,15 @@ export const ipc = {
     if (!isLightField(m)) throw { code: 'DREAMSCAPE_CORRUPT', message: 'invalid light field', recoverable: false };
     return m;
   },
+  // ---- ifuyo 远程曲库（自托管音乐 v1 清单）----
+  // 清单是服务器给的静态 JSON：校验形状后再进 UI（§11 不信任 IPC 返回值）。
+  ifuyoList: async (): Promise<IfuyoList> => {
+    const v = await call<unknown>('ifuyo_list');
+    if (!isIfuyoList(v)) throw { code: 'IFUYO_MANIFEST', message: 'invalid ifuyo manifest', recoverable: true };
+    return v;
+  },
+  // 远程曲目播放走严格策略客户端（deny_private）；缓存优先是下一批。
+  ifuyoPlay: (url: string) => call<string>('ifuyo_play', { url }),
   dreamscapeRegenerate: (input: string) => call<DreamscapeStateDto>('dreamscape_regenerate', { input }),
   dreamscapeExportSeed: () => call<string>('dreamscape_export_seed'),
   dreamscapeImportSeed: (input: string) => call<DreamscapeStateDto>('dreamscape_import_seed', { input }),

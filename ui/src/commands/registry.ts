@@ -40,6 +40,7 @@ export function buildCommands(ctx: CommandContext, t: (key: string) => string): 
     { id: 'nav.now-playing', titleKey: 'nav.nowPlaying', keywords: 'now playing home', shortcut: '1', execute: () => ctx.setView('now-playing') },
     { id: 'nav.library', titleKey: 'nav.library', keywords: 'library music list', shortcut: '2', execute: () => ctx.setView('library') },
     { id: 'nav.map', titleKey: 'nav.map', keywords: 'map graph', shortcut: '3', execute: () => ctx.setView('map') },
+    { id: 'nav.ifuyo', titleKey: 'nav.ifuyo', keywords: 'ifuyo remote library 远程曲库', execute: () => ctx.setView('ifuyo') },
     { id: 'play.toggle', titleKey: 'controls.play', keywords: 'play pause', shortcut: 'Space', execute: () => (ctx.isPlaying() ? ctx.pause() : ctx.play()) },
     { id: 'play.next', titleKey: 'controls.next', keywords: 'next track', execute: ctx.next },
     { id: 'play.previous', titleKey: 'controls.previous', keywords: 'previous track', execute: ctx.previous },

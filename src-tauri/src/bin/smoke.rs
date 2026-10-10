@@ -55,6 +55,8 @@ fn main() {
                 aura_sources::http::HttpClient::new(http_cfg, Arc::clone(&blocklist))
                     .map_err(|e| format!("http client init failed: {e}"))?,
             );
+            let http_strict = aura_shell_lib::ipc::build_strict_http(&blocklist)
+                .map_err(|e| format!("strict http init failed: {e}"))?;
             let dreamscape = aura_shell_lib::dreamscape::DreamscapeHost::open(&tmp_ds)
                 .map_err(|e| format!("dreamscape init failed: {e}"))?;
             let map = aura_shell_lib::map_ipc::MapHost::open(&tmp_ref)
@@ -73,6 +75,7 @@ fn main() {
                 library: Arc::new(library),
                 app: handle,
                 http,
+                http_strict,
                 blocklist,
                 dreamscape,
                 map,

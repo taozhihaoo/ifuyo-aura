@@ -11,6 +11,8 @@ const CODE_TO_KEY: Record<string, string> = {
   SOURCE_BLOCKED: 'error.sourceBlocked',
   UNSUPPORTED_SOURCE: 'error.unsupportedSource',
   CACHE_FULL_PINNED: 'error.cacheFullPinned',
+  IFUYO_UNAVAILABLE: 'error.ifuyoUnavailable',
+  IFUYO_MANIFEST: 'error.ifuyoManifest',
   SCAN_RUNNING: 'error.scanRunning',
   SETTINGS_WRITE: 'error.settingsWrite',
   CANCELLED: 'error.cancelled',

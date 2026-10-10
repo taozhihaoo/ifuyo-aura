@@ -1086,3 +1086,65 @@ html.desktop-lyrics-root #root {
 }
 .pb-lyrics { font-size: var(--font-size-xs); font-weight: 600; }
 .pb-lyrics.active { color: var(--color-rose); }
+
+/* ---- ifuyo 远程曲库（自托管音乐清单页） ---- */
+/* 只用 generated/tokens.css 里真实存在的变量：未定义的 var 会让**整条声明**
+   失效（本仓已因此静默丢过字号/圆角），所以这里不用 --space-*、--text-* 这类
+   并不存在的名字。 */
+.ifuyo-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ifuyo-status {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+.ifuyo-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.ifuyo-row {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 40%) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.ifuyo-row:hover:not(:disabled) {
+  background: var(--surface-high);
+}
+.ifuyo-row.playing .ifuyo-title {
+  color: var(--color-rose);
+}
+.ifuyo-row:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+.ifuyo-title,
+.ifuyo-artist {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ifuyo-artist {
+  color: var(--color-text-muted);
+}
+.ifuyo-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+.ifuyo-note {
+  margin-top: 12px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}

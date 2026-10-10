@@ -7,6 +7,7 @@ pub mod analysis_host;
 pub mod analysis_ipc;
 pub mod audio;
 pub mod dreamscape;
+pub mod ifuyo;
 pub mod integration;
 pub mod ipc;
 pub mod library;
@@ -91,6 +92,8 @@ pub fn run() {
                 aura_sources::http::HttpClient::new(http_cfg, std::sync::Arc::clone(&blocklist))
                     .map_err(|e| format!("http client init failed: {e}"))?,
             );
+            // 严格策略客户端：服务侧给出的 URL（远程曲库清单）专用。
+            let http_strict = ipc::build_strict_http(&blocklist).map_err(|e| e.to_string())?;
             let dreamscape = dreamscape::DreamscapeHost::open(&data_dir)
                 .map_err(|e| format!("dreamscape init failed: {e}"))?;
             let map =
@@ -101,6 +104,7 @@ pub fn run() {
                 library: std::sync::Arc::new(library),
                 app: handle.clone(),
                 http,
+                http_strict,
                 blocklist,
                 dreamscape,
                 map,
@@ -189,6 +193,8 @@ pub fn run() {
             analysis_ipc::track_analysis_summary,
             analysis_ipc::analysis_visual_summary,
             analysis_ipc::track_analysis_state,
+            ifuyo::ifuyo_list,
+            ifuyo::ifuyo_play,
             analysis_host::analysis_status,
             analysis_host::request_analysis,
             analysis_host::cancel_analysis,

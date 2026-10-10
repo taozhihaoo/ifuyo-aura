@@ -11,6 +11,7 @@ import { TitleBar } from './shell/TitleBar';
 import { Sidebar } from './shell/Sidebar';
 import { NowPlayingPage } from './features/nowplaying/NowPlayingPage';
 import { LibraryPage } from './features/library/LibraryPage';
+import { IfuyoPage } from './features/ifuyo/IfuyoPage';
 import { MapPage } from './features/map/MapPage';
 import { DreamscapeView } from './features/dreamscape/DreamscapeView';
 import { CommandPalette } from './features/palette/CommandPalette';
@@ -174,7 +175,7 @@ export default function App() {
       .listenIntegrationNavigate((view) => {
         if (view === 'mini') {
           useUiStore.getState().setMiniPlayerOpen(true);
-        } else if (view === 'dreamscape' ? DREAMSCAPE_ENABLED : ['now-playing', 'library', 'map'].includes(view)) {
+        } else if (view === 'dreamscape' ? DREAMSCAPE_ENABLED : ['now-playing', 'library', 'ifuyo', 'map'].includes(view)) {
           useUiStore.getState().setView(view as Parameters<typeof setView>[0]);
         }
       })
@@ -209,6 +210,11 @@ export default function App() {
             {view === 'library' && (
               <FeatureBoundary name="library" message={t('error.boundaryLibrary')} retryLabel={t('common.retry')}>
                 <LibraryPage />
+              </FeatureBoundary>
+            )}
+            {view === 'ifuyo' && (
+              <FeatureBoundary name="ifuyo" message={t('error.boundaryIfuyo')} retryLabel={t('common.retry')}>
+                <IfuyoPage />
               </FeatureBoundary>
             )}
             {view === 'map' && (

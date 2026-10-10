@@ -1,8 +1,17 @@
 // 自绘标题栏（§16/§17）：drag region + window controls + 主导航。
 // Windows 权限经 capabilities 最小授权（§22）。
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { DREAMSCAPE_ENABLED, useUiStore, useSettingsStore } from '../state/stores';
+import { DREAMSCAPE_ENABLED, useUiStore, useSettingsStore, type ViewId } from '../state/stores';
 import { useTranslation } from '../i18n/react';
+
+/** 主导航顺序与文案键（Alt+1/2/3/4 仍只覆盖前四个主视图，见 D-078）。 */
+const NAV: Array<{ id: ViewId; labelKey: string; needsDreamscape?: boolean }> = [
+  { id: 'now-playing', labelKey: 'nav.nowPlaying' },
+  { id: 'library', labelKey: 'nav.library' },
+  { id: 'ifuyo', labelKey: 'nav.ifuyo' },
+  { id: 'map', labelKey: 'nav.map' },
+  { id: 'dreamscape', labelKey: 'dreamscape.title', needsDreamscape: true },
+];
 
 const win = getCurrentWindow();
 
@@ -28,24 +37,14 @@ export function TitleBar() {
       {/* M13.1：空白容器也标记 drag region——Tauri 只认 mousedown 目标
           元素自身的属性，flex:1 的 nav 空白此前吞掉了绝大部分拖动区域。 */}
       <nav className="titlebar-nav" aria-label="Primary" data-tauri-drag-region>
-        {(['now-playing', 'library', 'map', 'dreamscape'] as const)
-          .filter((v) => v !== 'dreamscape' || DREAMSCAPE_ENABLED)
-          .map((v) => (
+        {NAV.filter((n) => !n.needsDreamscape || DREAMSCAPE_ENABLED).map((n) => (
           <button
-            key={v}
-            className={`nav-btn${view === v ? ' active' : ''}`}
-            onClick={() => setView(v)}
-            aria-current={view === v ? 'page' : undefined}
+            key={n.id}
+            className={`nav-btn${view === n.id ? ' active' : ''}`}
+            onClick={() => setView(n.id)}
+            aria-current={view === n.id ? 'page' : undefined}
           >
-            {t(
-              v === 'now-playing'
-                ? 'nav.nowPlaying'
-                : v === 'library'
-                  ? 'nav.library'
-                  : v === 'map'
-                    ? 'nav.map'
-                    : 'dreamscape.title',
-            )}
+            {t(n.labelKey)}
           </button>
         ))}
       </nav>

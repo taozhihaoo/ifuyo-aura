@@ -148,5 +148,17 @@ async function attach(page) {
     }
     return r.result.value;
   };
-  return { ws, inv, evalJs: (expr) => send('Runtime.evaluate', { expression: expr, returnByValue: true }) };
+  return {
+    ws,
+    inv,
+    evalJs: (expr) => send('Runtime.evaluate', { expression: expr, returnByValue: true }),
+    /** 需要 await 页面 Promise 时用这个：evalJs 不带 awaitPromise，拿到的是
+     *  pending Promise（序列化成 {}），曾两次导致把"取不到结果"误判成行为异常。 */
+    awaitJs: (expr) =>
+      send('Runtime.evaluate', {
+        expression: `(${expr})`,
+        awaitPromise: true,
+        returnByValue: true,
+      }),
+  };
 }

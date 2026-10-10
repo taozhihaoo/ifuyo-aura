@@ -18,6 +18,12 @@ impl SecurityLimits {
     /// §8：启动延迟自动检查（ms）。
     pub const UPDATE_STARTUP_DELAY_MS: u64 = 15 * 1000;
 
+    /// 远程曲库清单字节上限：生成器每条约 200B ⇒ 1 万首≈2MB，8MB 既兜住
+    /// 正常规模也能拒绝异常/被篡改的巨大响应（超出即连接报错）。
+    pub const IFUYO_MANIFEST_MAX_BYTES: usize = 8 * 1024 * 1024;
+    /// 远程曲库单次返回曲目上限（超出如实置 truncated，不静默丢弃）。
+    pub const IFUYO_TRACKS_MAX: usize = 5_000;
+
     /// §134（M10）：SMTC 元数据字符串上限（chars）。
     pub const MAX_METADATA_CHARS: usize = 256;
     /// M13.3 歌词文件/标签字节上限（.lrc 或标签歌词超限视为无歌词）。

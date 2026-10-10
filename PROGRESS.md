@@ -841,3 +841,45 @@ fmt / clippy --workspace --all-targets -D warnings 0 / workspace 45 suites ok（
 - 平滑抑制抖动只在带动态的信号上可证；当前 fixture 是稳态正弦（原始抖动 1.86e-3，平滑 1.41e-4，收敛性可证）。需要一个有强动态的 fixture 才能把这条做严。
 - 未做：`docs/screenshots/10・12` 仍是 v1 3D 世界；`dreamscape_set_quality` 仍是校验后丢弃的桩；真实音乐调性仍出 null；CUE 整轨仍不进分析。
 
+## M15b 分片一（2026-10-10）——ifuyo 远程曲库：清单拉取 + 列表页 + 严格策略播放
+
+### 做了什么
+- **服务器给出的 URL 不享受 D-070 的"输入即确认私网"**：新增 `AppState::http_strict`
+  （deny_private）与 `build_strict_http()`（lib/smoke 共用，不留第三份策略字面量）；
+  `play_input_impl` 改为接收要用的 http 客户端，`play_track`/`play_input` 仍走
+  `state.http`（既有语义不变），只有 `ifuyo_*` 走严格客户端。清单地址是编译期常量，
+  不接受 UI/参数注入；CSP 是 `connect-src ipc:`，所以清单由 Rust 取，JS 不 fetch。
+- `src-tauri/src/ifuyo.rs`：`ifuyo_list` / `ifuyo_play`，纯函数 `build_list` 做
+  版本门（非 v1 fail-closed）→ 逐条 URL 校验 → 去重 → 上限截断；被丢弃的条数与
+  truncated 一律如实上报（静默少歌会让人以为服务器少给了）。标题缺失按 URL 末段
+  percent-decode 回退，与 M3"无标签以路径回退"同口径，不伪造 artist/时长。
+- `ui/src/ipc/ifuyo.ts` 校验面 + `IfuyoPage` + 导航项 + palette 命令 + zh/en 文案。
+  无标签曲目 `durationSeconds: null` 显示 `--:--`（不是 0:00）——这是线上真实形态。
+- `scripts/verify-remote.mjs`（R 系列）打**真实服务器**跑完整链路。实测 **8/8 PASS**：
+  R01 清单 2 首；R02 列表页 2/2 行、无伪造 0:00；**R03 点真实远端曲目 → 流式播放
+  pos 0.40→1.92s**；R04/R05/R05b/R05c 私网回环/局域网/云元数据端点/带凭据 URL 全部
+  `SOURCE_BLOCKED`；R06 对照组 `play_input` 同一私网地址得 `SOURCE_UNAVAILABLE`
+  （策略放行、只是没人监听）——证明两个入口的策略确实不同，而不是我嘴上说不同。
+
+### 本批抓到并纠正的自己的错
+1. 新 CSS 用了 5 个不存在的 token（`--space-3`/`--text-muted`/`--surface-hover`/
+   `--brand-accent`/`--text-primary`）——正是上一批修掉的那类"未定义 var 让整条声明
+   静默失效"。token 门禁直接打红，改用真实存在的变量后过。
+2. 组件测试只 mock 了 2 个 store hook，漏掉 `useTranslation` 依赖的第三个
+   （`useSettingsStore`）⇒ 整棵组件树抛错、5 条全红；改为不 mock store、在真实
+   zustand 上断言。
+3. `ifuyo.test.ts` 里 URL 判定我写成 `startsWith('https://') === true === false`，
+   会把所有 https 判成不合格——自查时发现的逻辑错，改成显式 `isHttpUrl`。
+4. R04–R06 首轮 4 条 FAIL 是**探针自身的语法错**：`String(e && e.message ?? e)`
+   混用 `&&` 与 `??` 不加括号在 V8 里是 SyntaxError，导致全部拿不到值；而 R06 当时
+   写作 `!== 'SOURCE_BLOCKED'`，于是**因这个错误而假通过**。修语法 + 让 R06 必须
+   真的取到判定值才算 PASS。qa-app 因此补了 `awaitJs`（`evalJs` 不带 awaitPromise，
+   取回的是 pending Promise 序列化成 {}，这个坑本会话已踩第二次）。
+5. R03 首轮 FAIL 也不是产品问题：清单第一行是占位的 `test.mp3`（1MB 无标签假数据，
+   本来就解不开）。改为挑真正有时长的那条。
+
+### 已知限制（未做，不是遗漏）
+- 远程播放**不落盘**：直接 HTTP 源仍是 `SessionOnly`，"播过就有本地缓存、离线可重播"
+  需要缓存保留策略的用户可见开关 + DECISIONS（分片二）。
+- 列表没有分页/搜索（当前清单规模无需）；封面未从远端取（清单 v1 无 artwork 字段）。
+- 清单地址硬编码；换主机需要重跑生成器（url 前缀已烘进清单）。

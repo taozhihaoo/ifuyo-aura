@@ -28,6 +28,22 @@ impl AppError {
     }
 }
 
+/// 严格策略 HTTP 客户端构造（远程清单专用：deny_private）。
+///
+/// lib.rs 与 smoke.rs 共用此构造器——两处的 `allow_private` 客户端配置
+/// 是既有形态，不再复制第三份策略字面量。
+pub fn build_strict_http(
+    blocklist: &std::sync::Arc<aura_sources::platform_block::PlatformBlocklist>,
+) -> Result<std::sync::Arc<aura_sources::http::HttpClient>, String> {
+    let cfg = aura_sources::http::HttpConfig {
+        policy: aura_sources::url_policy::NetworkPolicy::deny_private(),
+        ..aura_sources::http::HttpConfig::default()
+    };
+    aura_sources::http::HttpClient::new(cfg, std::sync::Arc::clone(blocklist))
+        .map(std::sync::Arc::new)
+        .map_err(|e| format!("strict http client init failed: {e}"))
+}
+
 pub(crate) type CmdResult<T> = Result<T, AppError>;
 
 pub(crate) fn from_err(code: &str, e: impl std::fmt::Display, recoverable: bool) -> AppError {
@@ -42,6 +58,9 @@ pub struct AppState {
     /// M4 HTTP 客户端（Open URL 用；allow_private = 用户显式输入即确认，
     /// D-070；scheme 白名单/凭据拒绝/封锁表始终生效）。
     pub http: Arc<aura_sources::http::HttpClient>,
+    /// 严格策略客户端：**服务侧给来的** URL（远程曲库清单）专用——私网/链路
+    /// 本地一律拒绝，用户并未逐条确认过这些地址。
+    pub http_strict: Arc<aura_sources::http::HttpClient>,
     pub blocklist: Arc<aura_sources::platform_block::PlatformBlocklist>,
     /// Dreamscape 会话宿主（M7 上篇；逻辑态持久化在 app_data）。
     pub dreamscape: crate::dreamscape::DreamscapeHost,
@@ -194,7 +213,7 @@ pub fn play_track(state: State<'_, AppState>, track_id: i64) -> CmdResult<()> {
                 artwork_id: t.artwork_id.map(|a| a.0),
             })
     });
-    play_input_impl(state, path, meta, cue, loudness).map(|_| ())
+    play_input_impl(&state, path, meta, cue, loudness, &state.http).map(|_| ())
 }
 
 /// M15a：曲目 CUE 子轨区间（cue_start/cue_duration 双非空才有效）。
@@ -256,22 +275,28 @@ fn local_stem_title(path: &str) -> Option<String> {
 #[tauri::command]
 pub fn play_input(state: State<'_, AppState>, input: String) -> CmdResult<String> {
     play_input_impl(
-        state,
+        &state,
         input,
         None,
         None,
         aura_core::TrackLoudness::missing(),
+        &state.http,
     )
 }
 
-fn play_input_impl(
-    state: State<'_, AppState>,
+/// `http` 决定这条输入走哪套网络策略：本地曲目与 "Open URL" 用
+/// [`AppState::http`]（D-070：用户显式输入即私网确认），而**远端清单**给出的
+/// URL 由服务器决定、用户没逐条确认过，必须用 [`AppState::http_strict`]
+/// （deny_private）——否则一份被改过的清单就能把客户端指向用户内网。
+pub(crate) fn play_input_impl(
+    state: &State<'_, AppState>,
     input: String,
     known_meta: Option<crate::integration::CurrentTrackMeta>,
     cue: Option<(f64, f64)>,
     loudness: aura_core::TrackLoudness,
+    http: &std::sync::Arc<aura_sources::http::HttpClient>,
 ) -> CmdResult<String> {
-    let resolved = aura_sources::resolver::resolve_input(&input, &state.http, &state.blocklist)
+    let resolved = aura_sources::resolver::resolve_input(&input, http, &state.blocklist)
         .map_err(from_source_err)?;
     // §53：radio 的 ICY 事件通道（播放成功后挂入 integration worker）。
     let mut icy_rx: Option<std::sync::mpsc::Receiver<aura_sources::model::StreamMetadataEvent>> =
@@ -313,7 +338,7 @@ fn play_input_impl(
             path
         }
         SourceKind::InternetRadio => {
-            let (net_stream, events) = aura_sources::radio::open_resolved(&state.http, &resolved)
+            let (net_stream, events) = aura_sources::radio::open_resolved(http, &resolved)
                 .map_err(from_source_err)?
                 .into_parts();
             icy_rx = Some(events);
@@ -346,20 +371,20 @@ fn play_input_impl(
                 .ok_or_else(|| AppError::new("SOURCE_UNAVAILABLE", "no stream", true))?;
             let url: url::Url =
                 url::Url::parse(&stream.url).map_err(|e| from_err("SOURCE_BLOCKED", e, false))?;
-            let resp = state.http.get_stream(&url).map_err(from_source_err)?;
+            let resp = http.get_stream(&url).map_err(from_source_err)?;
             let seekable = stream.seekable == aura_sources::model::SeekCapability::Seekable;
             let capacity = aura_sources::network_stream::buffer_capacity(
                 stream.stream_type,
                 stream.bitrate_bps,
             );
             let nas = aura_sources::network_stream::NetworkAudioStream::start(
-                &state.http,
+                http,
                 url,
                 resp,
                 capacity,
                 seekable,
                 stream.byte_size,
-                state.http.config().stream_idle_timeout,
+                http.config().stream_idle_timeout,
             );
             // codec hint：URL 扩展名（最终以 decoder probing 为准，§77）。
             let hint = stream

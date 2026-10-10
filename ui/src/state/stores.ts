@@ -9,7 +9,7 @@ import type { Locale } from '../i18n';
  */
 export const DREAMSCAPE_ENABLED = true;
 
-export type ViewId = 'now-playing' | 'library' | 'map' | 'dreamscape';
+export type ViewId = 'now-playing' | 'library' | 'ifuyo' | 'map' | 'dreamscape';
 
 /** 全局反馈种类：success/info 自动消失，error 需手动关闭。 */
 export type NoticeKind = 'info' | 'success' | 'error';
