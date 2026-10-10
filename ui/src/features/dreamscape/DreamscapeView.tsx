@@ -7,6 +7,7 @@ import { QUALITY_SETTINGS, AutoQuality, clamp01, targetFps } from '../../visual/
 import type { LightField } from '../../ipc/dreamscape';
 import { useUiStore, usePlayerStore, useSettingsStore } from '../../state/stores';
 import { ipc } from '../../ipc/client';
+import { lyricsForPath } from '../../ipc/remoteLyrics';
 import type { TrackFeatures } from '../../ipc/types';
 import type { LyricsDto } from '../../ipc/client';
 import { errorToI18nKey } from '../../ipc/errors';
@@ -47,21 +48,23 @@ export function DreamscapeView() {
   reducedRef.current = reducedMotion;
   const { t } = useTranslation();
   const trackId = useCurrentTrackId();
+  const trackPath = usePlayerStore((s) => s.snapshot?.trackPath ?? null);
   const nowRef = useRef<HTMLParagraphElement>(null);
   const nextRef = useRef<HTMLParagraphElement>(null);
   const lyricsRef = useRef<LyricsDto | null>(null);
   const lineIdxRef = useRef(-1);
 
   // 换曲 → 重取歌词（同步到 DOM；无歌词 → 舞台隐藏并给出如实提示）。
+  // 走 lyricsForPath 而不是 lyricsForTrack(trackId)：远程曲目的 trackPath 是
+  // URL、没有本地 TrackId，按 id 取词会让在线歌永远显示"没有歌词"。
   useEffect(() => {
     lineIdxRef.current = -1;
-    if (trackId === null) {
+    if (trackPath === null) {
       lyricsRef.current = null;
       return;
     }
     let alive = true;
-    void ipc
-      .lyricsForTrack(trackId)
+    void lyricsForPath(trackPath)
       .then((l) => {
         if (!alive) return;
         lyricsRef.current = l;
@@ -71,7 +74,7 @@ export function DreamscapeView() {
     return () => {
       alive = false;
     };
-  }, [trackId, t]);
+  }, [trackPath, t]);
 
   // 换曲 → 重取特征（慢通路；电平/位置在渲染循环里取）。
   useEffect(() => {

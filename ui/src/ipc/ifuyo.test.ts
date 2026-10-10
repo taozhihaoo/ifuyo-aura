@@ -13,6 +13,7 @@ const track = {
   sizeBytes: 10738628,
   format: 'mp3',
   etag: 'a3dbc4-6ac9db16',
+  lyricsUrl: 'https://ifuyo.com/audio/%E7%8E%B0.lrc',
 };
 /** 无标签占位曲目：duration/artist 为 null 是线上真实形态。 */
 const bare = { ...track, id: 'test.mp3', title: 'test', artist: null, durationSeconds: null };
@@ -41,6 +42,13 @@ describe('isIfuyoList', () => {
     for (const bad of ['file:///C:/x.mp3', 'blob:https://x/y', 'ftp://x/y', '', 42, null]) {
       expect(isIfuyoList({ ...okList, tracks: [{ ...track, url: bad }] })).toBe(false);
     }
+  });
+
+  it('歌词地址必须是 http(s)（私网/file: 一律拒绝）', () => {
+    for (const bad of ['file:///c:/a.lrc', 'blob:https://x/y', 7]) {
+      expect(isIfuyoList({ ...okList, tracks: [{ ...track, lyricsUrl: bad }] })).toBe(false);
+    }
+    expect(isIfuyoList({ ...okList, tracks: [{ ...track, lyricsUrl: null }] })).toBe(true);
   });
 
   it('拒绝 NaN 时长（会让 UI 显示 NaN:NaN）', () => {

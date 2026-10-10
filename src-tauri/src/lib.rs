@@ -193,6 +193,7 @@ pub fn run() {
             analysis_ipc::analysis_visual_summary,
             analysis_ipc::track_analysis_state,
             ifuyo::ifuyo_list,
+            ifuyo::ifuyo_lyrics,
             ifuyo::ifuyo_play,
             analysis_host::analysis_status,
             analysis_host::request_analysis,

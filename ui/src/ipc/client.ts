@@ -105,6 +105,8 @@ export const ipc = {
   // 标题/艺术家一并传过去：否则播放条只能显示 percent-encoded 的 URL 末段。
   ifuyoPlay: (url: string, title?: string | null, artist?: string | null) =>
     call<string>('ifuyo_play', { url, title: title ?? null, artist: artist ?? null }),
+  // 远程歌词：地址来自清单的 lyricsUrl，返回形状与本地歌词一致。
+  ifuyoLyrics: (url: string) => call<LyricsDto | null>('ifuyo_lyrics', { url }),
   dreamscapeRegenerate: (input: string) => call<DreamscapeStateDto>('dreamscape_regenerate', { input }),
   dreamscapeExportSeed: () => call<string>('dreamscape_export_seed'),
   dreamscapeImportSeed: (input: string) => call<DreamscapeStateDto>('dreamscape_import_seed', { input }),

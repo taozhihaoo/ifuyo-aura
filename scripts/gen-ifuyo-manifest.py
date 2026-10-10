@@ -161,6 +161,13 @@ def scan(root: str, base_url: str, cache: Dict[str, dict]) -> Tuple[List[dict], 
         st = os.stat(full)
         etag = f"{st.st_size:x}-{int(st.st_mtime):x}"
         ext = os.path.splitext(full)[1].lower()
+        # 同名 .lrc 才算歌词：远程清单没有"目录里顺手找一下"这回事。
+        lrc_rel = os.path.splitext(rel)[0] + ".lrc"
+        lrc_url = (
+            base_url.rstrip("/") + "/" + urllib.parse.quote(lrc_rel, safe="/-_.~")
+            if os.path.isfile(os.path.splitext(full)[0] + ".lrc")
+            else None
+        )
         meta, mode = probe(full, cache, rel, etag)
         modes[mode] = modes.get(mode, 0) + 1
         stem = os.path.splitext(os.path.basename(full))[0]
@@ -177,6 +184,8 @@ def scan(root: str, base_url: str, cache: Dict[str, dict]) -> Tuple[List[dict], 
             "format": ext.lstrip("."),
             "mimeType": mimetypes.guess_type(full)[0] or "application/octet-stream",
             "etag": etag,
+            # 无同名 .lrc 时为 null；客户端据此决定要不要再去取歌词。
+            "lyricsUrl": lrc_url,
         })
     return tracks, modes
 

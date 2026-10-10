@@ -912,3 +912,34 @@ fmt / clippy --workspace --all-targets -D warnings 0 / workspace 45 suites ok（
 
 矩阵（与源码同代 release 产物）：**Y 10/10、W 13/15（2 诚实 SKIP）、R 9/9**；
 `cargo fmt`/`clippy -D warnings`/workspace 66 套件 0 失败、UI 116/116。
+
+## M15b.3（2026-10-10）——远程歌词同步（清单 lyricsUrl → ifuyo_lyrics → 两个歌词面）
+
+用户报"ifuyo 库的歌没带歌词"。根因不是漏实现，而是**清单里没有歌词这个字段**，
+且远程曲目的 `trackPath` 是 URL：本地那条 `trackIdByPath → lyrics_for_track` 链
+对 URL 永远返回 null，于是两个歌词面（梦境舞台 / 桌面悬浮）对在线歌一律显示
+"这首歌没有歌词"。
+
+- **服务器侧**：`gen-ifuyo-manifest.py` 对每个音频文件探测同名 `.lrc`，命中则输出
+  `lyricsUrl`，否则 null。实测：14 条 fixture 只有 `fixture-lrc.mp3` 拿到地址；
+  **增量复用路径也带该字段**（第二次跑 `{cache:14}` 后 lyricsUrl 仍在）。
+- **Rust 侧**：`ifuyo_lyrics(url)` 走严格客户端（deny_private + 封锁表 +
+  `MAX_LYRICS_BYTES` 体积上限），解析后返回与本地歌词同一形状
+  （`Lyrics{synced, lines[]}`），UI 无需分支。清单里 `lyricsUrl` 与曲目 URL 用
+  **同一判定**过滤——只查 scheme 会把私网/`file:` 歌词地址放进列表。
+- **UI 侧**：新增 `ipc/remoteLyrics.ts` 作为唯一解析器（登记表 audioUrl→lyricsUrl，
+  由列表页在拉到清单时写入）；梦境与桌面歌词都改走 `lyricsForPath(trackPath)`。
+  没登记就返回 null 且**不发请求**，不瞎猜地址。
+
+### 自己抓到的一处不安全实现
+`lyrics_url` 最初只按 `is_http_url` 过滤，测试 `lyrics_url_*` 立刻把它打红
+（`http://127.0.0.1/a.lrc` 被接受）→ 改为与曲目地址共用 `is_playable`。
+测试自身的两个错也修了：断言用的谓词写成 `starts_with("http://")` 把 https 也
+过滤掉（导致"曲目被筛空 → index out of bounds"这种误导性失败），以及
+mock 的 `trackIdByPath` 返回类型不含 null 被 `tsc` 拦下。
+
+### 验证
+`R07` 已加进 `verify-remote.mjs`，当前如实 **SKIP**：线上清单是加字段之前生成的，
+需要运维把新版生成器传上去重跑一次 cron，且服务器上要有同名 `.lrc`。
+矩阵（同代 release）：**L 24/24、Y 10/10、W 13/15（2 诚实 SKIP）、R 9 PASS/1 SKIP**；
+UI 125/125（新增 remoteLyrics 7 条 + DTO 1 条），`cargo fmt/clippy/test` 全绿。

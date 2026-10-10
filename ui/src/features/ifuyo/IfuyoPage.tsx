@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ipc } from '../../ipc/client';
 import { errorToI18nKey } from '../../ipc/errors';
 import { fmtDuration, type IfuyoList, type IfuyoTrack } from '../../ipc/ifuyo';
+import { registerRemoteLyrics } from '../../ipc/remoteLyrics';
 import { useTranslation } from '../../i18n/react';
 import { usePlayerStore, useUiStore } from '../../state/stores';
 
@@ -23,7 +24,10 @@ export function IfuyoPage() {
   const load = useCallback(async () => {
     setState({ kind: 'loading' });
     try {
-      setState({ kind: 'ready', data: await ipc.ifuyoList() });
+      const data = await ipc.ifuyoList();
+      // 登记 audioUrl→lyricsUrl：播放器快照里只有音频 URL，歌词面靠这张表找词。
+      registerRemoteLyrics(data.tracks);
+      setState({ kind: 'ready', data });
     } catch (e) {
       setState({ kind: 'error', key: errorToI18nKey(e) });
     }

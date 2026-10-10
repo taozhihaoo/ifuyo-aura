@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ipc } from '../ipc/client';
+import { lyricsForPath } from '../ipc/remoteLyrics';
 import type { LyricsDto } from '../ipc/client';
 import { useSettingsStore, useUiStore } from '../state/stores';
 import { useTranslation } from '../i18n/react';
@@ -156,10 +157,9 @@ export function DesktopLyrics() {
             pathRef.current = p;
             idxRef.current = -1;
             lyricsRef.current = null;
-            if (p !== null) {
-              const id = await ipc.trackIdByPath(p);
-              lyricsRef.current = id === null ? null : await ipc.lyricsForTrack(id);
-            }
+            // 与梦境舞台同一解析器：远程曲目的路径是 URL、没有本地 TrackId，
+            // 走 trackIdByPath 会让在线歌永远没词。
+            lyricsRef.current = await lyricsForPath(p);
           }
           if (s.state !== 'playing') position = s.positionSeconds;
         } else {

@@ -35,6 +35,8 @@ struct RawTrack {
     size_bytes: Option<u64>,
     format: Option<String>,
     etag: Option<String>,
+    /// 同名 .lrc 的远程地址（由服务器生成器填写）；无则 None。
+    lyrics_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,6 +60,7 @@ pub struct IfuyoTrackDto {
     pub size_bytes: Option<u64>,
     pub format: Option<String>,
     pub etag: Option<String>,
+    pub lyrics_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -69,6 +72,11 @@ pub struct IfuyoListDto {
     pub skipped: usize,
     /// 超过上限被截断（大清单在 UI 上必须看得出来是不完整的）。
     pub truncated: bool,
+}
+
+/// http(s) 且非空——清单里任何要交给客户端访问的地址都先过这一关。
+fn is_http_url(u: &str) -> bool {
+    u.starts_with("http://") || u.starts_with("https://")
 }
 
 /// 标题缺失时的回退：URL 末段（percent-decode）去扩展名。与 M3"无标签曲目以
@@ -148,6 +156,13 @@ fn build_list(
             truncated = true;
             break;
         }
+        let lyrics = t
+            .lyrics_url
+            .as_ref()
+            // 与曲目地址同一判定：只查 scheme 会把私网/封锁的歌词地址放进列表，
+            // UI 一旦去取就是内网探测（测试 lyrics_url_* 正是抓在这）。
+            .filter(|u| is_http_url(u) && is_playable(u))
+            .cloned();
         tracks.push(IfuyoTrackDto {
             id: t.id.clone(),
             title: t
@@ -162,6 +177,7 @@ fn build_list(
             size_bytes: t.size_bytes,
             format: t.format.clone(),
             etag: t.etag.clone(),
+            lyrics_url: lyrics,
         });
     }
     Ok(IfuyoListDto {
@@ -184,6 +200,27 @@ fn clip_meta(v: Option<String>) -> Option<String> {
         .nth(SecurityLimits::MAX_METADATA_CHARS)
         .map_or(t.len(), |(i, _)| i);
     Some(t[..end].to_string())
+}
+
+/// 取远程歌词：清单 `lyricsUrl` 指向的 .lrc 文本。
+///
+/// 与曲目地址同一策略（严格客户端：deny_private + 封锁表 + 体积上限），因为
+/// 这个 URL 同样是服务器给的。返回形状复用本地歌词的 `Lyrics`，两个歌词面
+/// （梦境舞台 / 桌面悬浮）无需分支。
+#[tauri::command]
+pub fn ifuyo_lyrics(
+    state: State<'_, AppState>,
+    url: String,
+) -> CmdResult<Option<crate::lyrics::Lyrics>> {
+    let parsed = state
+        .http_strict
+        .validate(&url)
+        .map_err(|e| AppError::new("SOURCE_BLOCKED", e.to_string(), false))?;
+    let text = state
+        .http_strict
+        .get_text(&parsed, SecurityLimits::MAX_LYRICS_BYTES as u64)
+        .map_err(|e| from_err("IFUYO_UNAVAILABLE", e, true))?;
+    Ok(crate::lyrics::parse_lrc(&text))
 }
 
 /// 拉取并校验远程清单。错误面：网络/解析/版本分开报，`recoverable=true` 让 UI
@@ -282,6 +319,7 @@ mod tests {
                     size_bytes: Some(1024),
                     format: Some("mp3".into()),
                     etag: None,
+                    lyrics_url: None,
                 })
                 .collect(),
         }
@@ -363,6 +401,35 @@ mod tests {
         let out = build_list(&raw(items), |_| true, 4).expect("list");
         assert_eq!(out.tracks.len(), 4);
         assert!(out.truncated, "必须如实报告被截断");
+    }
+
+    /// 歌词地址：与曲目同一判定（scheme + 私网/封锁），只查 scheme 会漏。
+    #[test]
+    fn lyrics_url_uses_the_same_policy_as_track_url() {
+        // 与 ifuyo_list 实际注入的判定同形：http(s) 且公网。
+        let playable = |u: &str| {
+            (u.starts_with("http://") || u.starts_with("https://"))
+                && !u.contains("127.0.0.1")
+                && !u.contains("192.168.")
+        };
+        let mut m = raw(vec![("a", "A", "https://x/a.mp3")]);
+        m.tracks[0].lyrics_url = Some("https://x/a.lrc".into());
+        let out = build_list(&m, playable, 100).expect("list");
+        assert_eq!(out.tracks.len(), 1, "曲目本身被过滤掉了，测不到歌词字段");
+        assert_eq!(out.tracks[0].lyrics_url.as_deref(), Some("https://x/a.lrc"));
+
+        for bad in [
+            "http://127.0.0.1/a.lrc",
+            "http://192.168.1.1/a.lrc",
+            "file:///c:/a.lrc",
+            "",
+        ] {
+            let mut m2 = raw(vec![("a", "A", "https://x/a.mp3")]);
+            m2.tracks[0].lyrics_url = Some(bad.into());
+            let o2 = build_list(&m2, playable, 100).expect("list2");
+            assert_eq!(o2.tracks.len(), 1, "曲目本身被过滤掉了");
+            assert_eq!(o2.tracks[0].lyrics_url, None, "{bad} 不该被接受");
+        }
     }
 
     /// 扩展名判定不能把带点的艺人名截成"艺人名"（例如 "周杰伦.新".mp3）。

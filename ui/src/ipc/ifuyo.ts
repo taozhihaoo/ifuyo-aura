@@ -14,6 +14,8 @@ export interface IfuyoTrack {
   sizeBytes: number | null;
   format: string | null;
   etag: string | null;
+  /** 远程歌词地址（清单里的同名 .lrc）；无则 null。 */
+  lyricsUrl: string | null;
 }
 
 export interface IfuyoList {
@@ -49,7 +51,8 @@ function isTrack(v: unknown): v is IfuyoTrack {
     isNumOrNull(t.durationSeconds) &&
     isNumOrNull(t.sizeBytes) &&
     isStrOrNull(t.format) &&
-    isStrOrNull(t.etag)
+    isStrOrNull(t.etag) &&
+    (t.lyricsUrl === null || t.lyricsUrl === undefined || isHttpUrl(t.lyricsUrl))
   );
 }
 

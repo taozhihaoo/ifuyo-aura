@@ -100,6 +100,17 @@ const run = async () => {
       `远程标题：snapshot.title="${st?.title}"（清单="${want?.title}"）`);
     await inv('stop', {});
 
+    // ---- R07 远程歌词（清单需带 lyricsUrl；老清单没有该字段则如实 SKIP）----
+    const withLrc = list.tracks.find((t) => typeof t.lyricsUrl === 'string' && t.lyricsUrl !== '');
+    if (withLrc === undefined) {
+      line('R07', 'skip',
+        '清单里没有 lyricsUrl —— 需把新版 gen-ifuyo-manifest.py 传到服务器并重跑一次 cron（同名 .lrc 才会被登记）');
+    } else {
+      const lyr = await inv('ifuyo_lyrics', { url: withLrc.lyricsUrl });
+      line('R07', typeof lyr === 'object' && lyr !== null && (lyr.lines?.length ?? 0) > 0,
+        `远程歌词：${withLrc.lyricsUrl.slice(-24)} → ${lyr?.lines?.length ?? 0} 行 synced=${lyr?.synced}`);
+    }
+
     // ---- R04/R05 策略面：远程清单入口必须拒绝私网地址 ----
     const loopback = await probeCode(sess, 'ifuyo_play', { url: 'http://127.0.0.1:9/x.mp3' });
     line('R04', loopback === 'SOURCE_BLOCKED', `ifuyo_play 私网回环 → ${loopback}（期望 SOURCE_BLOCKED）`);
