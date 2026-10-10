@@ -77,8 +77,17 @@ export function DesktopLyrics() {
   useEffect(() => {
     const root = document.documentElement;
     root.classList.add('desktop-lyrics-root');
+    // emoji 字形预热：🔒 首次渲染触发 Segoe UI Emoji 加载 → 全局重排在
+    // 透明分层窗上表现为整窗闪一帧（用户报告的锁定切换闪烁）。挂载即
+    // 隐藏渲染两个字形，把字体加载成本移出交互路径。
+    const warm = document.createElement('span');
+    warm.textContent = '🔒︎🔓︎';
+    warm.setAttribute('aria-hidden', 'true');
+    warm.style.cssText = 'position:absolute;top:-9999px;opacity:0;';
+    document.body.appendChild(warm);
     return () => {
       root.classList.remove('desktop-lyrics-root');
+      warm.remove();
     };
   }, []);
 
@@ -182,16 +191,13 @@ export function DesktopLyrics() {
   const drag = locked ? {} : { 'data-tauri-drag-region': true };
 
   return (
-    <div
-      className="desktop-lyrics"
-      data-locked={locked ? 'true' : 'false'}
-      {...drag}
-    >
+    <div className="desktop-lyrics" {...drag}>
       <p className="dl-now" ref={nowRef} aria-live="polite" {...drag} />
       <p className="dl-next" ref={nextRef} aria-hidden {...drag} />
       <button
         type="button"
         className="dl-pill"
+        data-locked={locked ? 'true' : 'false'}
         aria-label={locked ? t('desktopLyrics.unlock') : t('desktopLyrics.lock')}
         title={locked ? t('desktopLyrics.unlock') : t('desktopLyrics.lock')}
         aria-pressed={locked}

@@ -1020,6 +1020,9 @@ html.desktop-lyrics-root #root {
 }
 .desktop-lyrics {
   position: relative;
+  /* 提升合成层：透明分层窗上 DOM 更新走增量合成，避免整面表面重建
+     的一帧不透明闪烁（锁定/解锁切换闪一下的用户报告）。 */
+  transform: translateZ(0);
   width: 100%;
   height: 100vh;
   display: flex;
@@ -1062,7 +1065,7 @@ html.desktop-lyrics-root #root {
   right: 8px;
   width: 26px;
   height: 26px;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
@@ -1072,12 +1075,18 @@ html.desktop-lyrics-root #root {
   color: #fff;
   font-size: var(--font-size-xs);
   cursor: pointer;
+  /* opacity+pointer-events 过渡替代 display 重排（透明窗闪烁缓解） */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) var(--ease-out);
 }
 /* 未锁定：悬停才出把手（平时是纯歌词，不挂一个灰块）；
-   锁定：常驻可见——否则没有解锁入口。 */
+   锁定：常驻可见——否则没有解锁入口。
+   data-locked 挂在 pill 自身：视觉变更只失效 pill 局部，不重排整窗。 */
 .desktop-lyrics:hover .dl-pill,
-.desktop-lyrics[data-locked="true"] .dl-pill {
-  display: flex;
+.dl-pill[data-locked="true"] {
+  opacity: 1;
+  pointer-events: auto;
 }
 .dl-enter {
   animation: dl-in var(--motion-normal) var(--ease-out);
