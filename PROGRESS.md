@@ -837,7 +837,7 @@ fmt / clippy --workspace --all-targets -D warnings 0 / workspace 45 suites ok（
 另：我曾假设"歌词窗不在 capabilities 的 `windows: ["main","mini"]` 里，IPC 会被拒"——**该假设被实测否证**（自定义命令不受该列表门控；`invoke=OK` 且能出词）。
 
 ### 4. 待查（本批未归因，如实登记）
-- **`aura-sources/tests/http_matrix.rs::dns_rebind_to_private_ip_denied`**：全量 `cargo test --workspace` 下 **3/3 失败**，单跑该 suite **15/15 通过**（含清代理环境变量后亦通过）。失败信息是 `InvalidResponse { reason: "HTTP 502 Bad Gateway" }`——即请求真的出了机器，SSRF 私网拦截没生效，而不是简单的时间抖动。本批改动不涉及网络代码（diff 全在 aura-core/aura-synth/ui/scripts），未继续归因；这条**必须单独查**（含"生产代码在该环境下是否也会经代理绕过私网复检"这一安全含义）。
+- ~~`http_matrix::dns_rebind_to_private_ip_denied` 全量并行 3/3 失败~~ → **已查明并修复**（`fix(security) HTTP 客户端显式禁用环境代理`）：不是抖动，是环境里存在 `ALL_PROXY/HTTP_PROXY` 时私网复检整层被绕过（复检挂在自定义解析器上，走代理则目标主机名由代理解析，解析器一次都不被调用；那个 502 来自公网，本机无人监听 127.0.0.1:80）。修法为拒绝式默认 `no_proxy()`；需要经代理出网时要另做显式开关并重写威胁模型。
 - 平滑抑制抖动只在带动态的信号上可证；当前 fixture 是稳态正弦（原始抖动 1.86e-3，平滑 1.41e-4，收敛性可证）。需要一个有强动态的 fixture 才能把这条做严。
 - 未做：`docs/screenshots/10・12` 仍是 v1 3D 世界；`dreamscape_set_quality` 仍是校验后丢弃的桩；真实音乐调性仍出 null；CUE 整轨仍不进分析。
 
