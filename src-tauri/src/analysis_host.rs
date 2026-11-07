@@ -50,6 +50,8 @@ pub struct AnalysisHost {
     cancel: Arc<Mutex<CancelToken>>,
     progress: Arc<Mutex<AnalysisProgressDto>>,
     busy: Arc<AtomicBool>,
+    /// worker 是否可用（spawn 失败 / DB 打开失败时置 false）。
+    available: Arc<AtomicBool>,
 }
 
 impl AnalysisHost {
@@ -65,18 +67,32 @@ impl AnalysisHost {
             running: false,
         }));
         let busy = Arc::new(AtomicBool::new(false));
+        // worker 离线后必须如实上报，不能继续返回「进度全 0、看起来正常」。
+        let available = Arc::new(AtomicBool::new(true));
         let thread = {
             let app = app.clone();
             let db_path = db_path.clone();
             let cancel = Arc::clone(&cancel);
             let progress = Arc::clone(&progress);
             let busy = Arc::clone(&busy);
+            let available_worker = Arc::clone(&available);
             std::thread::Builder::new()
                 .name("aura-analysis".into())
-                .spawn(move || worker_loop(rx, &app, &db_path, &cancel, &progress, &busy))
+                .spawn(move || {
+                    worker_loop(
+                        rx,
+                        &app,
+                        &db_path,
+                        &cancel,
+                        &progress,
+                        &busy,
+                        &available_worker,
+                    )
+                })
         };
         if thread.is_err() {
             eprintln!("analysis worker unavailable: thread spawn failed");
+            available.store(false, Ordering::SeqCst);
         }
         Self {
             db_path,
@@ -84,6 +100,7 @@ impl AnalysisHost {
             cancel,
             progress,
             busy,
+            available,
         }
     }
 
@@ -146,16 +163,15 @@ impl AnalysisHost {
     /// # Errors
     /// 只读连接打开/查询失败。
     pub fn status(&self) -> Result<AnalysisStatusDto, String> {
+        if !self.available.load(Ordering::SeqCst) {
+            return Err("analysis worker unavailable".into());
+        }
+        // 锁中毒不能伪装成「进度归零的正常状态」。
         let progress = self
             .progress
             .lock()
             .map(|p| p.clone())
-            .unwrap_or(AnalysisProgressDto {
-                processed: 0,
-                total: 0,
-                failed: 0,
-                running: false,
-            });
+            .map_err(|_| "analysis progress lock poisoned".to_string())?;
         let conn = open_readonly(&self.db_path)?;
         Ok(AnalysisStatusDto {
             progress,
@@ -231,11 +247,13 @@ fn worker_loop(
     cancel: &Mutex<CancelToken>,
     progress: &Mutex<AnalysisProgressDto>,
     busy: &AtomicBool,
+    available: &AtomicBool,
 ) {
     let db = match aura_library::db::Database::open(db_path) {
         Ok(db) => db,
         Err(e) => {
             eprintln!("analysis worker offline: {e}");
+            available.store(false, Ordering::SeqCst);
             return;
         }
     };

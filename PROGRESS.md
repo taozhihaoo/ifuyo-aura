@@ -2,6 +2,11 @@
 
 ## Milestone Status
 
+> ⚠️ **下面的代码块是 Phase 0 立项时（2026-10-02）的占位快照，已过期。**
+> 当前真实状态以 [README.md](README.md) 的 Feature 表与本文末尾的
+> M15a / M15b 章节为准（M3–M10、Analysis、Music Map、Windows 集成等均已实装）。
+> 保留原表仅用于追溯立项边界，**不代表当前完成度**，请勿据此判断功能是否可用。
+
 ```text
 Phase 0 = COMPLETE (2026-10-02)
 M0  = COMPLETE (2026-10-03)
@@ -21,7 +26,8 @@ M13 = NOT STARTED   (Distribution)
 M14 = NOT STARTED   (Final Release Audit)
 ```
 
-无任何伪造完成状态：除 Phase 0 与 M0 外全部 NOT STARTED。
+上表是历史快照：当时的原则是「无任何伪造完成状态：除 Phase 0 与 M0 外全部
+NOT STARTED」，该表述只适用于 2026-10-02 的立项时点，不适用于当前版本。
 
 
 

@@ -85,7 +85,8 @@ describe('TitleBar a11y（§261）', () => {
   it('窗口控制与导航按钮全部有可访问名', async () => {
     const { TitleBar } = await import('../shell/TitleBar');
     render(createElement(TitleBar));
-    for (const name of ['最小化', '最大化/还原', '关闭', '正在播放', '音乐库', 'Map', 'Ctrl+K']) {
+    // 命令面板按钮改用语义化可访问名（快捷键只保留在 title）。
+    for (const name of ['最小化', '最大化/还原', '关闭', '正在播放', '音乐库', 'Map', '打开命令面板']) {
       expect(screen.getByRole('button', { name }), `button ${name}`).toBeTruthy();
     }
   });

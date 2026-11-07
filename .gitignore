@@ -55,3 +55,5 @@ credentials*.json
 # ---- 工具本地配置 ----
 .zcodeignore
 zz9_stream.bin
+# WorkBuddy 本地工作数据（会话记忆日志），非 source/docs/tests
+.workbuddy/

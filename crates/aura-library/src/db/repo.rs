@@ -522,12 +522,17 @@ pub fn mark_missing(
         .query_map(params![root_id.0], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<Result<_, _>>()?;
     drop(stmt);
+    // 预建 HashSet：旧实现对每个活跃路径遍历整个 seen_paths，且内层
+    // 每次 `format!("{sp}#")` 分配一个 String，万级库是 O(N×M) 次比较
+    // 加数千万次分配。改为 O(N+M) 查表。
+    let seen: std::collections::HashSet<&str> = seen_paths.iter().map(String::as_str).collect();
     for (id, path) in rows {
         // M15a：CUE 子轨的合成路径（`整轨路径#NN`）由整轨路径覆盖——
         // 未变化跳过时子轨不在本轮导入产物里，但不应被当作消失停用。
-        let covered = seen_paths
-            .iter()
-            .any(|sp| path.as_str() == sp.as_str() || path.starts_with(&format!("{sp}#")));
+        let covered = seen.contains(path.as_str())
+            || path
+                .split_once('#')
+                .is_some_and(|(parent, _)| seen.contains(parent));
         if !covered {
             tx.execute(
                 "UPDATE track_paths SET is_active = 0 WHERE id = ?1",

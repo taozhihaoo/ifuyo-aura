@@ -48,7 +48,9 @@ pub fn open(http: &HttpClient, url: &url::Url, station: Option<String>) -> Resul
 
     let (tx, rx) = mpsc::channel::<StreamMetadataEvent>();
     let station_cb = station.clone();
-    let reader: ByteSource = match metaint {
+    // `icy-metaint: 0` 表示「无元数据间隔」，等价于头部缺失：走纯音频直通，
+    // 不能构造 IcyReader（见 IcyReader::read 的 metaint==0 说明）。
+    let reader: ByteSource = match metaint.filter(|&v| v > 0) {
         Some(interval) => {
             let mut icy = IcyReader::new(resp, interval);
             icy.on_meta = Some(Box::new(move |meta| {

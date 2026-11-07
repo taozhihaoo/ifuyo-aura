@@ -32,6 +32,8 @@ export interface ScanProgress {
   failed: number;
   currentPath: string;
   done: boolean;
+  /** Rust 侧扫描失败原因；null/缺失表示成功。done 只代表「本轮结束」。 */
+  error?: string | null;
 }
 
 export interface AppError {
@@ -103,5 +105,38 @@ export function isTrackSummary(v: unknown): v is TrackSummary {
 export function isAppError(v: unknown): v is AppError {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
-  return typeof o.code === 'string' && typeof o.message === 'string';
+  return (
+    typeof o.code === 'string' &&
+    typeof o.message === 'string' &&
+    typeof o.recoverable === 'boolean'
+  );
+}
+
+/**
+ * IPC 设置契约守卫（§11 不信任 IPC 返回值）。
+ *
+ * 后端 AppSettings 曾缺 `serde(rename_all = "camelCase")`，返回 snake_case
+ * 时前端会把一整包 undefined 写进 store（uiScale → NaNpx、自动更新静默
+ * 失效），而单测/E2E 都绕过了真实消费端没抓到。此处按 camelCase 逐字段
+ * 校验，契约再漂移时明确抛错，而不是静默污染状态。
+ */
+export function isAppSettings(v: unknown): v is AppSettings {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  const num = (k: string) => typeof o[k] === 'number' && Number.isFinite(o[k] as number);
+  const bool = (k: string) => typeof o[k] === 'boolean';
+  return (
+    num('version') &&
+    typeof o.language === 'string' &&
+    bool('updatesAutoCheck') &&
+    bool('mojibakeFix') &&
+    bool('analysisAuto') &&
+    num('uiScale') &&
+    bool('reducedMotion') &&
+    bool('loudnessEnabled') &&
+    num('crossfadeSeconds') &&
+    bool('eqEnabled') &&
+    num('eqPreset') &&
+    bool('micaEnabled')
+  );
 }

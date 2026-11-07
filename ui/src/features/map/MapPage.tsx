@@ -13,6 +13,7 @@ import { useMapStore } from './mapStore';
 import { MapDetailPanel } from './MapDetailPanel';
 import { MapToolbar } from './MapToolbar';
 import { MusicMapView, type MapViewCommand } from './MusicMapView';
+import { reportIpcError } from '../../ipc/errors';
 
 /** 模块级单例：非响应式 renderer state（§146，不进 React 树）。 */
 const mapModel = new MapDataModel();
@@ -26,6 +27,8 @@ export function MapPage() {
   const [command, setCommand] = useState<MapViewCommand | null>(null);
   const [currentTrackId, setCurrentTrackId] = useState<number | null>(null);
   const commandNonce = useRef(0);
+  /** 代数守卫：并发 refresh（首进入/轮询/构建回调）只认最后一次，避免旧回包倒退。 */
+  const refreshGen = useRef(0);
 
   const issueCommand = useCallback((kind: MapViewCommand['kind']) => {
     commandNonce.current += 1;
@@ -41,13 +44,17 @@ export function MapPage() {
   );
 
   const refresh = useCallback(async (): Promise<void> => {
+    const gen = ++refreshGen.current;
     const s = await ipc.mapStatus();
+    if (gen !== refreshGen.current) return;
     setStatus(s);
     useMapStore.getState().setMapBuildStatus(s.status);
     if (s.status !== 'ready' || s.datasetHash === null) return;
     const ov = await ipc.mapOverview();
+    if (gen !== refreshGen.current) return;
     mapModel.resetForDataset(ov.datasetHash, ov);
     if (mapModel.count === 0) await mapModel.loadAll();
+    if (gen !== refreshGen.current) return;
     setOverview(ov);
     const st = useMapStore.getState();
     if (st.zoom === 1 && st.pan.x === 0 && st.pan.y === 0) {
@@ -117,7 +124,7 @@ export function MapPage() {
         st.selectTrack(null);
         st.selectCluster(null);
       } else if (e.key === 'Enter' && st.selectedTrackId !== null) {
-        void ipc.playTrack(st.selectedTrackId).catch(() => undefined); // §314 单曲语义
+        void ipc.playTrack(st.selectedTrackId).catch(reportIpcError); // §314 单曲语义
       }
     };
     window.addEventListener('keydown', onKey);
@@ -138,7 +145,7 @@ export function MapPage() {
       .then((id) => {
         if (alive) setCurrentTrackId(id);
       })
-      .catch(() => undefined);
+      .catch(reportIpcError);
     return () => {
       alive = false;
     };
@@ -169,7 +176,7 @@ export function MapPage() {
           pending: analysis.pending,
         });
       })
-      .catch(() => undefined);
+      .catch(reportIpcError);
   }, []);
   useEffect(() => {
     if (status?.status !== 'pending') return;
@@ -230,7 +237,7 @@ export function MapPage() {
           <>
             <p className="map-status">{status?.message ?? t('map.building')}</p>
             <div className="map-blob b1" aria-hidden />
-            <button className="ghost-btn" onClick={() => void ipc.cancelMapBuild()}>
+            <button className="ghost-btn" onClick={() => void ipc.cancelMapBuild().catch(reportIpcError)}>
               {t('map.cancelBuild')}
             </button>
           </>

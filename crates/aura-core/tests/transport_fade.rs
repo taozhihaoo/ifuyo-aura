@@ -206,3 +206,61 @@ fn pause_after_fade_out_keeps_buffered_residual_silent() {
         out2[950]
     );
 }
+
+/// P0 回归：10ms 恢复淡入曾因 `last_state` 在计算前就被覆盖成 Playing 而
+/// 恒为 false（死代码，暂停恢复可能爆音）。修复后必须只在 Paused→Playing
+/// 生效；Stopped→Playing（首次播放/停止后重播）不得叠加渐增，否则确定性
+/// 输出被污染（engine.rs 的 provenance / PCM 净化断言）。
+#[test]
+fn resume_fade_in_is_active_only_after_pause() {
+    let (mut p, mut c, mut stage, shared) = setup();
+    // 一次性供给（push() 在 ring 满时会自旋，这里只喂渲染所需的两块）。
+    let wire = vec![AMP; 2_000 * 2];
+    let _ = p.push_frames(&wire);
+    let mut out = vec![0.0f32; 960]; // 480 帧立体声 = 10ms@48k
+
+    stage.render(
+        &mut out,
+        &mut c,
+        &shared,
+        aura_core::PlaybackState::Playing,
+        None,
+    );
+    assert!(
+        (out[0] - AMP).abs() < 1e-4,
+        "Stopped→Playing 首样本应全幅，得 {}",
+        out[0]
+    );
+
+    // 暂停切换块：last_state 变为 Paused。
+    out.fill(0.0);
+    stage.render(
+        &mut out,
+        &mut c,
+        &shared,
+        aura_core::PlaybackState::Paused,
+        None,
+    );
+
+    // 恢复：补足缓冲后 10ms 线性淡入必须真实生效。
+    let _ = p.push_frames(&wire);
+    out.fill(0.0);
+    stage.render(
+        &mut out,
+        &mut c,
+        &shared,
+        aura_core::PlaybackState::Playing,
+        None,
+    );
+    assert!(
+        out[0].abs() < 1e-3,
+        "Paused→Playing 首样本应由 0 起（淡入生效），得 {}",
+        out[0]
+    );
+    assert!(out[4] > out[0], "淡入必须逐帧递增");
+    assert!(
+        (out[958] - AMP).abs() < 5e-3,
+        "10ms 窗末应回到全幅，得 {}",
+        out[958]
+    );
+}

@@ -149,7 +149,16 @@ pub fn stop(state: State<'_, AppState>) -> CmdResult<()> {
 /// seek（秒 → 帧；seekable 由快照驱动，§40）。
 #[tauri::command]
 pub fn seek(state: State<'_, AppState>, position_seconds: f64) -> CmdResult<()> {
-    let frame = (position_seconds.max(0.0) * 48_000.0) as u64;
+    // IPC 边界不信任前端数值：Inf 会饱和成 u64::MAX 把 Seek 发到曲末，
+    // NaN 会让帧号变成 0 并污染位置；与 integration::validate_seek 同标准。
+    if !position_seconds.is_finite() || position_seconds < 0.0 {
+        return Err(from_err(
+            "INVALID_PARAMETER",
+            "invalid seek position",
+            false,
+        ));
+    }
+    let frame = (position_seconds * 48_000.0) as u64;
     state
         .audio
         .post(aura_core::AudioCommand::Seek { frame })
@@ -159,6 +168,10 @@ pub fn seek(state: State<'_, AppState>, position_seconds: f64) -> CmdResult<()> 
 /// §43：真实 SetVolume（M2 smoothing）。
 #[tauri::command]
 pub fn set_volume(state: State<'_, AppState>, volume: f32) -> CmdResult<()> {
+    if !volume.is_finite() {
+        return Err(from_err("INVALID_PARAMETER", "invalid volume", false));
+    }
+    let volume = volume.clamp(0.0, 1.0);
     state
         .audio
         .post(aura_core::AudioCommand::SetVolume { volume })
@@ -296,6 +309,11 @@ pub(crate) fn play_input_impl(
     loudness: aura_core::TrackLoudness,
     http: &std::sync::Arc<aura_sources::http::HttpClient>,
 ) -> CmdResult<String> {
+    // IPC 边界的长度上限：覆盖 play_input / ifuyo_play / 队列重载等所有
+    // 复用本实现的入口，避免超长 URL/路径进入 resolver 与日志。
+    if input.chars().count() > crate::security_limits::SecurityLimits::MAX_PLAY_INPUT_CHARS {
+        return Err(from_err("INVALID_PARAMETER", "play input too long", false));
+    }
     let resolved = aura_sources::resolver::resolve_input(&input, http, &state.blocklist)
         .map_err(from_source_err)?;
     // §53：radio 的 ICY 事件通道（播放成功后挂入 integration worker）。
@@ -451,6 +469,10 @@ pub(crate) fn play_input_impl(
 /// §45：crossfade 0–12s。
 #[tauri::command]
 pub fn set_crossfade(state: State<'_, AppState>, seconds: f64, persist: bool) -> CmdResult<()> {
+    // f64::clamp 对 NaN 返回 NaN，必须先在 IPC 边界挡掉非有限值。
+    if !seconds.is_finite() {
+        return Err(from_err("INVALID_PARAMETER", "invalid crossfade", false));
+    }
     let s = seconds.clamp(0.0, 12.0);
     state
         .audio
@@ -486,6 +508,10 @@ pub fn set_loudness(state: State<'_, AppState>, enabled: bool, persist: bool) ->
 /// §46：EQ preset（10 band DSP 在 M2）。
 #[tauri::command]
 pub fn set_eq_preset(state: State<'_, AppState>, preset: usize, persist: bool) -> CmdResult<()> {
+    // 引擎侧会静默钳到最后一个 preset，但旧实现把**未钳制的原值**写进
+    // settings.json，重启后 UI 选中的索引与实际音色不一致。统一在 IPC
+    // 边界钳制，让生效值与存盘值一致。
+    let preset = preset.min(aura_core::dsp::EQ_PRESETS.len() - 1);
     state
         .audio
         .send(Control::SetEqPreset(preset))
@@ -572,6 +598,14 @@ pub fn library_search(
     limit: i64,
     offset: i64,
 ) -> CmdResult<Vec<TrackSummary>> {
+    // FTS5 查询串在 IPC 边界限长（超长串会进入分词器与 SQL 参数）。
+    if query.chars().count() > crate::security_limits::SecurityLimits::MAX_IPC_STRING_CHARS {
+        return Err(from_err(
+            "INVALID_PARAMETER",
+            "search query too long",
+            false,
+        ));
+    }
     let service = state
         .library
         .service
@@ -651,13 +685,16 @@ pub fn library_stats(state: State<'_, AppState>) -> CmdResult<LibraryStats> {
         .lock()
         .map_err(|_| from_err("LIBRARY_DB_UNAVAILABLE", "lock", true))?;
     let conn = service.database().connection();
-    let one = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap_or(0) };
+    // 不能 unwrap_or(0)：列名写错、DB 锁/损坏都会被伪装成「0 首曲目」。
+    let one = |sql: &str| -> CmdResult<i64> {
+        conn.query_row(sql, [], |r| r.get(0))
+            .map_err(|e| from_err("LIBRARY_DB_UNAVAILABLE", e, true))
+    };
     Ok(LibraryStats {
-        tracks: one("SELECT COUNT(*) FROM tracks"),
-        // 规范化 schema：tracks 持 artist_id/album_id 外键（无 artist/album
-        // 列——写错列名会被 unwrap_or(0) 吞成恒 0，M12.5 L2 矩阵实测抓出）。
-        artists: one("SELECT COUNT(DISTINCT artist_id) FROM tracks"),
-        albums: one("SELECT COUNT(DISTINCT album_id) FROM tracks"),
+        tracks: one("SELECT COUNT(*) FROM tracks")?,
+        // 规范化 schema：tracks 持 artist_id/album_id 外键（无 artist/album 列）。
+        artists: one("SELECT COUNT(DISTINCT artist_id) FROM tracks")?,
+        albums: one("SELECT COUNT(DISTINCT album_id) FROM tracks")?,
     })
 }
 
@@ -763,24 +800,33 @@ pub fn scan_folder(app: AppHandle<Wry>, state: State<'_, AppState>, path: String
         .map(|s| s.analysis_auto)
         .unwrap_or(false);
     std::thread::spawn(move || {
-        let _ = lib.scan_root_blocking(std::path::Path::new(&path), |p: ScanProgressDto| {
+        let result = lib.scan_root_blocking(std::path::Path::new(&path), |p: ScanProgressDto| {
             let _ = app2.emit("scan-progress", &p);
         });
+        // 旧实现 `let _ =` 吞掉扫描错误，却仍广播 done:true /
+        // library-changed，用户会看到「扫描完成」但一首歌都没进库。
+        let (failed, error) = match result {
+            Ok(_) => (0, None),
+            Err(e) => (1, Some(e)),
+        };
         let _ = app2.emit(
             "scan-progress",
             ScanProgressDto {
                 discovered: 0,
                 processed: 0,
                 imported: 0,
-                failed: 0,
+                failed,
                 current_path: String::new(),
                 done: true,
+                error,
             },
         );
-        let _ = app2.emit("library-changed", ());
-        if analyze_after_scan {
-            // 新曲目立即排队分析（后台单 worker；已在跑则忽略本次请求）。
-            let _ = analysis.request_pending();
+        // 只有真正成功才广播库变更并排队分析。
+        if failed == 0 {
+            let _ = app2.emit("library-changed", ());
+            if analyze_after_scan {
+                let _ = analysis.request_pending();
+            }
         }
     });
     Ok(())

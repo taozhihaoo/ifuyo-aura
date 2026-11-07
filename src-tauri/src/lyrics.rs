@@ -143,7 +143,7 @@ pub fn parse_lrc(content: &str) -> Option<Lyrics> {
         });
     }
 
-    lines.retain(|l| !l.text.is_empty() || true); // 空行保留（间奏占位）
+    // 空行保留作间奏占位，无需过滤（此前 retain 的条件恒真，是 no-op）。
     lines.sort_by(|a, b| {
         a.time_seconds
             .partial_cmp(&b.time_seconds)

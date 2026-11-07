@@ -1,5 +1,6 @@
 // M13.2 曲库封面缩略图缓存：虚拟列表只渲染可视行，但快速滚动仍会
-// 重复请求同一曲目——(1) Map 缓存（含"无封面"负缓存，避免反复打空枪）；
+// 重复请求同一曲目——(1) Map 缓存（后端明确返回 null 时记负缓存；
+// IPC 失败不记，避免把瞬时故障永久固化成"无封面"）；
 // (2) 并发去重（同 id 在途请求合并）；(3) 容量上限（FIFO 淘汰）。
 // library-changed 事件时调用 clear() 失效全量（扫描可能新增封面）。
 import { ipc } from '../ipc/client';
@@ -28,7 +29,9 @@ export function loadArtwork(trackId: number): Promise<string | null> {
       return url;
     })
     .catch(() => {
-      store(trackId, null);
+      // 瞬时 IPC 失败 ≠ 「确认无封面」。旧实现把失败写成负缓存，导致
+      // 这首在 clearArtworkCache() 或 FIFO 淘汰前永远显示 ♪、永不重试。
+      // 这里只让 inFlight 失效（见 finally），下次渲染可重新取。
       return null;
     })
     .finally(() => {

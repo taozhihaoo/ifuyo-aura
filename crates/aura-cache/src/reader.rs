@@ -15,7 +15,7 @@
 //!   in-flight 任务（同线程等待者复用结果；跨线程注册表 M5-g）。
 
 use std::io::{Read, Seek, SeekFrom};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -109,6 +109,9 @@ pub struct CachedRangeReader {
     /// 已填充高水位（sequential 模式的 seek 边界，§37）。
     filled_high_water: u64,
     freshness: Freshness,
+    /// 本 reader 的预取代（§51）。旧的全局静态 epoch 会让任意 reader 的
+    /// seek 终止所有 reader 的预取，且 load+1/store 非原子会丢递增。
+    prefetch_epoch: Arc<AtomicU64>,
 }
 
 /// sequential fill 状态：一个全量 GET 响应按 chunk 组装。
@@ -148,6 +151,7 @@ impl CachedRangeReader {
             seq: None,
             filled_high_water: 0,
             freshness: Freshness::Fresh,
+            prefetch_epoch: Arc::new(AtomicU64::new(0)),
         };
         if reader.policy == CachePolicy::Allowed {
             if reader.opts.revalidate_on_open {
@@ -194,16 +198,17 @@ impl CachedRangeReader {
             self.freshness = Freshness::Unknown;
             return;
         };
-        let req = self.http.metadata_get_with_headers(
-            &url,
-            &[
-                ("If-None-Match", existing.etag.clone().unwrap_or_default()),
-                (
-                    "If-Modified-Since",
-                    existing.last_modified.clone().unwrap_or_default(),
-                ),
-            ],
-        );
+        // 只发送实际存在的 validator：RFC 7232 下 `If-None-Match` 一旦
+        // 出现（哪怕是空串）就会让服务器忽略 `If-Modified-Since`，
+        // 导致误判 304/200、把整份缓存作废重下。
+        let mut headers: Vec<(&str, String)> = Vec::with_capacity(2);
+        if let Some(etag) = &existing.etag {
+            headers.push(("If-None-Match", etag.clone()));
+        }
+        if let Some(lm) = &existing.last_modified {
+            headers.push(("If-Modified-Since", lm.clone()));
+        }
+        let req = self.http.metadata_get_with_headers(&url, &headers);
         let send = match req {
             Ok(rb) => rb.send(),
             Err(_) => {
@@ -408,21 +413,28 @@ impl CachedRangeReader {
         // §49–§51：bounded prefetch —— 单线程拉取前方最多 2 个 chunk，
         // epoch 不匹配（新 seek）即提前终止；任务上限 = ahead（§50）。
         if self.range_capable == Some(true) {
+            // 预取是优化而非正确性依赖：并发线程数必须有界，否则顺序播放
+            // 网络音频时每 256KiB 就 spawn 一个永不 join 的 OS 线程。
+            let Some(permit) = try_acquire_prefetch() else {
+                return Ok(bytes);
+            };
             let manager = Arc::clone(&self.manager);
             let ck = self.ck.clone();
             let http = self.http.clone();
             let url = self.info.url.clone();
             let total = self.info.content_length;
             let next_idx = idx + 1;
-            let epoch_at_start = PREFETCH_EPOCH.load(Ordering::Relaxed);
+            let epoch = Arc::clone(&self.prefetch_epoch);
+            let epoch_at_start = epoch.load(Ordering::Relaxed);
             let _ = std::thread::Builder::new()
                 .name("aura-cache-prefetch".into())
                 .spawn(move || {
+                    let _permit = permit; // Drop 归还名额（panic 路径同样生效）
                     let mut fetched_ahead = 0u32;
                     let mut i = next_idx;
                     while fetched_ahead < 2 {
-                        if PREFETCH_EPOCH.load(Ordering::Relaxed) != epoch_at_start {
-                            return; // §51：新 seek → 终止
+                        if epoch.load(Ordering::Relaxed) != epoch_at_start {
+                            return; // §51：本 reader 新 seek → 终止
                         }
                         let Some(total_len) = total else { return };
                         if i * CHUNK_SIZE as u64 >= total_len {
@@ -444,9 +456,14 @@ impl CachedRangeReader {
                             return;
                         };
                         if resp.status().as_u16() == 206 {
-                            let mut buf = Vec::with_capacity(CHUNK_SIZE);
-                            let _ = std::io::Read::read_to_end(&mut resp, &mut buf);
-                            if buf.len() as u64 == e - s + 1 {
+                            let expected = (e - s + 1) as usize;
+                            // 服务器忽略 Range 返回 200 全文件时
+                            // read_to_end 会无界吃内存；按声明长度多读
+                            // 1 字节即判定超限并丢弃本次预取。
+                            let Ok(buf) = read_bounded_response(&mut resp, expected) else {
+                                return;
+                            };
+                            if buf.len() == expected {
                                 let _ =
                                     manager.put_chunk(CachePolicy::Allowed, &ck, i, &buf, false);
                                 fetched_ahead += 1;
@@ -469,12 +486,17 @@ impl CachedRangeReader {
         let url = self.info.url.clone();
         let total = self.info.content_length;
         let start_idx = self.pos / CHUNK_SIZE as u64;
+        let epoch = Arc::clone(&self.prefetch_epoch);
+        let epoch_at_start = epoch.load(Ordering::Relaxed);
         let handle = std::thread::Builder::new()
             .name("aura-cache-prefetch-explicit".into())
             .spawn(move || {
                 let mut fetched_ahead = 0u32;
                 let mut i = start_idx;
                 while fetched_ahead < ahead {
+                    if epoch.load(Ordering::Relaxed) != epoch_at_start {
+                        return; // §51：本 reader 新 seek → 终止
+                    }
                     let Some(total_len) = total else { return };
                     if i * CHUNK_SIZE as u64 >= total_len {
                         return;
@@ -494,9 +516,11 @@ impl CachedRangeReader {
                         return;
                     };
                     if resp.status().as_u16() == 206 {
-                        let mut buf = Vec::with_capacity(CHUNK_SIZE);
-                        let _ = std::io::Read::read_to_end(&mut resp, &mut buf);
-                        if buf.len() as u64 == e - s + 1 {
+                        let expected = (e - s + 1) as usize;
+                        let Ok(buf) = read_bounded_response(&mut resp, expected) else {
+                            return;
+                        };
+                        if buf.len() == expected {
                             let _ = manager.put_chunk(CachePolicy::Allowed, &ck, i, &buf, false);
                             fetched_ahead += 1;
                         }
@@ -641,11 +665,9 @@ impl Seek for CachedRangeReader {
                 "seek beyond buffered data on non-range source",
             ));
         }
-        // §51：seek 使旧 prefetch 终止。
-        PREFETCH_EPOCH.store(
-            PREFETCH_EPOCH.load(Ordering::Relaxed) + 1,
-            Ordering::Relaxed,
-        );
+        // §51：seek 使**本 reader** 的旧预取终止；fetch_add 保证并发 seek
+        // 不会丢失递增（旧的 load+1/store 非 RMW 会互相覆盖）。
+        self.prefetch_epoch.fetch_add(1, Ordering::Relaxed);
         self.pos = target;
         Ok(self.pos)
     }
@@ -673,8 +695,64 @@ fn read_bounded(
     Ok(buf)
 }
 
-/// prefetch epoch（§51：seek 递增使旧预取终止）。
-static PREFETCH_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// 后台预取并发上限（§50）：预取是优化而非正确性依赖，达到上限就跳过
+/// 本次，避免顺序播放时每 256KiB 堆积一个 detach 线程。
+const MAX_PREFETCH_THREADS: usize = 4;
+static PREFETCH_INFLIGHT: AtomicUsize = AtomicUsize::new(0);
+
+/// RAII 名额：线程结束（含 panic）自动归还并发计数。
+struct PrefetchPermit;
+
+impl Drop for PrefetchPermit {
+    fn drop(&mut self) {
+        PREFETCH_INFLIGHT.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+fn try_acquire_prefetch() -> Option<PrefetchPermit> {
+    let mut cur = PREFETCH_INFLIGHT.load(Ordering::Relaxed);
+    loop {
+        if cur >= MAX_PREFETCH_THREADS {
+            return None;
+        }
+        match PREFETCH_INFLIGHT.compare_exchange_weak(
+            cur,
+            cur + 1,
+            Ordering::AcqRel,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => return Some(PrefetchPermit),
+            Err(next) => cur = next,
+        }
+    }
+}
+
+/// 有界读取 Range 响应体：最多读 `max + 1` 字节，超出即判超限。
+///
+/// 服务器忽略 Range 返回 200 全文件时，`read_to_end` 会把整个文件吃进
+/// 内存（OOM）；这里只按需读取，且结果与声明长度逐字节校验。
+fn read_bounded_response<R: Read>(mut resp: R, max: usize) -> std::io::Result<Vec<u8>> {
+    let mut buf = Vec::with_capacity(max.min(CHUNK_SIZE));
+    let mut chunk = [0u8; 16 * 1024];
+    loop {
+        let want = chunk.len().min(max + 1 - buf.len());
+        if want == 0 {
+            break;
+        }
+        let n = resp.read(&mut chunk[..want])?;
+        if n == 0 {
+            break;
+        }
+        buf.extend_from_slice(&chunk[..n]);
+    }
+    if buf.len() > max {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "range body oversized",
+        ));
+    }
+    Ok(buf)
+}
 
 /// `Content-Range: bytes start-end/total` 解析（§34）。
 #[must_use]

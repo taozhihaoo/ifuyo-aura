@@ -10,6 +10,7 @@ import { useLibraryStore, useUiStore } from '../../state/stores';
 import { useTranslation } from '../../i18n/react';
 import type { MapDataModel } from './mapData';
 import { useMapStore } from './mapStore';
+import { reportIpcError } from '../../ipc/errors';
 
 interface MapDetailPanelProps {
   model: MapDataModel;
@@ -49,14 +50,14 @@ export function MapDetailPanel({ model, trackId, onFocus }: MapDetailPanelProps)
         .then((n) => {
           if (alive) setDetail(n);
         })
-        .catch(() => undefined);
+        .catch(reportIpcError);
     }
     void model
       .neighborsFor(trackId, 8)
       .then((rows) => {
         if (alive) setNeighbors(rows);
       })
-      .catch(() => undefined);
+      .catch(reportIpcError);
     return () => {
       alive = false;
     };
@@ -97,7 +98,7 @@ export function MapDetailPanel({ model, trackId, onFocus }: MapDetailPanelProps)
         <Row label={t('map.genre')} value={detail.genre} />
       </div>
       <div className="map-detail-actions">
-        <button className="primary-btn" onClick={() => void ipc.playTrack(detail.trackId)}>
+        <button className="primary-btn" onClick={() => void ipc.playTrack(detail.trackId).catch(reportIpcError)}>
           ▶ {t('map.play')}
         </button>
         <button className="ghost-btn" onClick={() => onFocus(detail.trackId)}>
@@ -123,11 +124,23 @@ export function MapDetailPanel({ model, trackId, onFocus }: MapDetailPanelProps)
       <ul className="map-neighbors">
         {neighbors.map((n) => (
           <li key={n.trackId}>
-            <button
+            {/* 行容器用 div[role=button] 承担「选中+聚焦」并支持键盘；
+                播放用真正的 <button>，避免 HTML button 元素嵌套。 */}
+            <div
               className="map-neighbor-row"
+              role="button"
+              tabIndex={0}
+              aria-label={n.title ?? `#${n.trackId}`}
               onClick={() => {
                 useMapStore.getState().selectTrack(n.trackId);
                 onFocus(n.trackId);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  useMapStore.getState().selectTrack(n.trackId);
+                  onFocus(n.trackId);
+                }
               }}
             >
               <span className="map-neighbor-name">
@@ -137,25 +150,18 @@ export function MapDetailPanel({ model, trackId, onFocus }: MapDetailPanelProps)
               <span className="map-neighbor-sim" title={t('map.similarityMetric')}>
                 {n.similarity.toFixed(2)}
               </span>
-              <span
+              <button
+                type="button"
                 className="icon-btn"
-                role="button"
-                tabIndex={0}
                 aria-label={t('map.play')}
                 onClick={(e) => {
                   e.stopPropagation();
-                  void ipc.playTrack(n.trackId); // §222：单曲播放
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.stopPropagation();
-                    void ipc.playTrack(n.trackId);
-                  }
+                  void ipc.playTrack(n.trackId).catch(reportIpcError); // §222：单曲播放
                 }}
               >
                 ▶
-              </span>
-            </button>
+              </button>
+            </div>
           </li>
         ))}
         {neighbors.length === 0 && <li className="map-neighbors-empty">{t('map.noNeighbors')}</li>}

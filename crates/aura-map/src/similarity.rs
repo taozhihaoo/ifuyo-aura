@@ -26,6 +26,8 @@ pub enum SimilarityError {
     InvalidVector,
     /// 维数不匹配。
     DimensionMismatch,
+    /// §129：嵌入模型/算法版本不兼容，不得混合计算。
+    IncompatibleVersion,
     /// §44：超出 exact scan 能力（需 ANN，当前未启用）。
     DatasetTooLarge { nodes: usize },
     /// TrackId 不在数据集中。
@@ -38,6 +40,7 @@ impl std::fmt::Display for SimilarityError {
             Self::ZeroVector => write!(f, "zero vector has no similarity"),
             Self::InvalidVector => write!(f, "invalid vector (non-finite)"),
             Self::DimensionMismatch => write!(f, "dimension mismatch"),
+            Self::IncompatibleVersion => write!(f, "incompatible embedding version"),
             Self::DatasetTooLarge { nodes } => {
                 write!(f, "dataset too large for exact scan: {nodes} nodes")
             }
@@ -48,42 +51,32 @@ impl std::fmt::Display for SimilarityError {
 
 /// §40 纯函数相似度：cosine（M8 合同）。不依赖数据库。
 ///
+/// 单一权威实现：直接调用 `aura_analysis::similarity::cosine_similarity`，
+/// 它内含 §129 的 `comparable()` 版本校验。此前 M9 自己用 f64 重写了一份，
+/// 既没检查 model/analysis_version（模型升级后会把不兼容 embedding 混算），
+/// 又与 M8 的 f32 累加精度不一致，破坏「确定性地图」。
+///
 /// # Errors
-/// [`SimilarityError`]：零向量/非法向量/维度不匹配。
+/// [`SimilarityError`]：零向量/非法向量/维度不匹配/版本不兼容。
 pub fn similarity(a: &Embedding, b: &Embedding) -> Result<f32, SimilarityError> {
-    if a.dimension != b.dimension || a.vector.len() != b.vector.len() {
-        return Err(SimilarityError::DimensionMismatch);
-    }
-    if a.vector.iter().any(|v| !v.is_finite()) || b.vector.iter().any(|v| !v.is_finite()) {
-        return Err(SimilarityError::InvalidVector);
-    }
-    let dot: f64 = a
-        .vector
-        .iter()
-        .zip(&b.vector)
-        .map(|(x, y)| f64::from(*x) * f64::from(*y))
-        .sum();
-    let na: f64 = a
-        .vector
-        .iter()
-        .map(|v| f64::from(*v) * f64::from(*v))
-        .sum::<f64>()
-        .sqrt();
-    let nb: f64 = b
-        .vector
-        .iter()
-        .map(|v| f64::from(*v) * f64::from(*v))
-        .sum::<f64>()
-        .sqrt();
-    if na <= f64::EPSILON || nb <= f64::EPSILON {
-        return Err(SimilarityError::ZeroVector); // §33：不得悄悄返回 0.0
-    }
-    let cos = (dot / (na * nb)) as f32;
-    debug_assert!((-1.0..=1.0).contains(&cos) || cos.is_nan());
-    if cos.is_nan() {
+    use aura_analysis::similarity::SimilarityError as M8;
+    let cos = aura_analysis::similarity::cosine_similarity(a, b).map_err(|e| match e {
+        M8::DimensionMismatch { .. } => SimilarityError::DimensionMismatch,
+        M8::InvalidVector => SimilarityError::InvalidVector,
+        M8::ZeroVector => SimilarityError::ZeroVector,
+        M8::IncompatibleVersion => SimilarityError::IncompatibleVersion,
+    })?;
+    if !cos.is_finite() {
         return Err(SimilarityError::InvalidVector);
     }
     Ok(cos.clamp(-1.0, 1.0))
+}
+
+/// §42 排序谓词：similarity DESC，TrackId ASC（id 唯一 ⇒ 全序）。
+fn rank_cmp(a: &(i64, f32), b: &(i64, f32)) -> std::cmp::Ordering {
+    b.1.partial_cmp(&a.1)
+        .unwrap_or(std::cmp::Ordering::Equal)
+        .then_with(|| a.0.cmp(&b.0))
 }
 
 /// §41 top-K 邻居：`{track_id, similarity, rank}`，相似度 DESC、
@@ -112,12 +105,13 @@ pub fn top_k_neighbors(
         // 合同一致的向量才可比（dataset 构建已保证）。
         scored.push((e.track_id, similarity(&self_entry.embedding, &e.embedding)?));
     }
-    // §42：similarity DESC，TrackId ASC。
-    scored.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.0.cmp(&b.0))
-    });
+    // 只取前 k：select_nth 平均 O(N)，避免每个节点都做 O(N log N) 全量
+    // 排序（原实现整图构建 O(N² log N)，几千节点即可感知卡顿）。
+    if k < scored.len() {
+        scored.select_nth_unstable_by(k, rank_cmp);
+        scored.truncate(k);
+    }
+    scored.sort_unstable_by(rank_cmp);
     Ok(scored
         .into_iter()
         .take(k)

@@ -703,10 +703,15 @@ impl Engine {
                 // flush resampler 残留输入（EOF 尾块）到 pending，由下次推送
                 if let Some(mut r) = self.resampler.take() {
                     if !self.resample_in.is_empty() {
-                        r.process_chunk_partial_into(&self.resample_in, &mut self.resample_out)
-                            .unwrap_or_default();
+                        // 失败时 resample_out 可能仍是上一块的 PCM，直接
+                        // extend 会把陈旧样本拼进音频流（重复片段/错音）。
+                        match r
+                            .process_chunk_partial_into(&self.resample_in, &mut self.resample_out)
+                        {
+                            Ok(()) => self.pending_block.extend_from_slice(&self.resample_out),
+                            Err(_) => self.resample_out.clear(),
+                        }
                         self.resample_in.clear();
-                        self.pending_block.extend_from_slice(&self.resample_out);
                     }
                     self.resampler = Some(r);
                 }

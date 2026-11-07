@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { MapNeighborDto } from '../../ipc/map';
 import { ipc } from '../../ipc/client';
 import { useSettingsStore } from '../../state/stores';
+import { useTranslation } from '../../i18n/react';
 import {
   CLUSTER_LOD_ZOOM,
   CLUSTER_PALETTE,
@@ -21,6 +22,7 @@ import {
 } from './mapData';
 import type { MapDataModel } from './mapData';
 import { useMapStore } from './mapStore';
+import { reportIpcError } from '../../ipc/errors';
 
 export interface MapViewCommand {
   kind: 'reset' | 'fit' | 'focusSelected' | 'focusCluster' | 'zoomIn' | 'zoomOut';
@@ -66,6 +68,7 @@ export function MusicMapView({
   command,
   onHoverTrack,
 }: MusicMapViewProps) {
+  const { t } = useTranslation();
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // 相机存 ref（60fps 平移不进 React 树 §147）；store 只在手势结束
@@ -80,6 +83,8 @@ export function MusicMapView({
   const neighborsRef = useRef<MapNeighborDto[]>([]);
   const animRef = useRef<{ from: Camera; to: Camera; start: number; dur: number } | null>(null);
   const rafRef = useRef(0);
+  /** §199 动画帧 handle：卸载时 cancel，避免卸载后继续 step。 */
+  const animRafRef = useRef(0);
   const syncTimer = useRef(0);
   const drawRef = useRef<() => void>(() => undefined);
 
@@ -350,7 +355,12 @@ export function MusicMapView({
   const animateTo = useCallback(
     (to: Camera) => {
       const target = clampCamera(to);
+      if (animRafRef.current) {
+        cancelAnimationFrame(animRafRef.current);
+        animRafRef.current = 0;
+      }
       if (stateRef.current.reducedMotion) {
+        animRef.current = null;
         camRef.current = target;
         requestRender();
         syncStoreSoon();
@@ -359,7 +369,10 @@ export function MusicMapView({
       animRef.current = { from: { ...camRef.current }, to: target, start: performance.now(), dur: 240 };
       const step = (): void => {
         const a = animRef.current;
-        if (!a) return;
+        if (!a) {
+          animRafRef.current = 0;
+          return;
+        }
         const t = Math.min(1, (performance.now() - a.start) / a.dur);
         const e = 1 - (1 - t) * (1 - t) * (1 - t);
         camRef.current = clampCamera({
@@ -368,13 +381,15 @@ export function MusicMapView({
           panY: a.from.panY + (a.to.panY - a.from.panY) * e,
         });
         requestRender();
-        if (t < 1) requestAnimationFrame(step);
-        else {
+        if (t < 1) {
+          animRafRef.current = requestAnimationFrame(step);
+        } else {
           animRef.current = null;
+          animRafRef.current = 0;
           syncStoreSoon();
         }
       };
-      requestAnimationFrame(step);
+      animRafRef.current = requestAnimationFrame(step);
     },
     [requestRender, syncStoreSoon],
   );
@@ -392,7 +407,7 @@ export function MusicMapView({
             requestRender();
           }
         })
-        .catch(() => undefined);
+        .catch(reportIpcError);
     }
     requestRender();
     return () => {
@@ -448,6 +463,9 @@ export function MusicMapView({
       window.clearTimeout(syncTimer.current);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = 0;
+      if (animRafRef.current) cancelAnimationFrame(animRafRef.current);
+      animRafRef.current = 0;
+      animRef.current = null;
     };
   }, [requestRender]);
 
@@ -544,11 +562,12 @@ export function MusicMapView({
     );
     const hitR = 10 / (camRef.current.zoom * (Math.min(rect.width, rect.height) / 2));
     const id = model.hitTest(wx, wy, hitR);
-    if (id !== null) void ipc.playTrack(id).catch(() => undefined);
+    if (id !== null) void ipc.playTrack(id).catch(reportIpcError);
   };
 
   const onWheel = (e: React.WheelEvent): void => {
-    e.preventDefault();
+    // React 18 的 onWheel 走 passive 监听，preventDefault 无效且告警；
+    // 缩放逻辑本地处理即可，不拦截默认滚动。
     const wrap = wrapRef.current;
     if (!wrap) return;
     const rect = wrap.getBoundingClientRect();
@@ -569,7 +588,7 @@ export function MusicMapView({
   };
 
   return (
-    <div ref={wrapRef} className="map-canvas-wrap" role="img" aria-label="Music Map canvas">
+    <div ref={wrapRef} className="map-canvas-wrap" role="img" aria-label={t('map.title')}>
       <canvas
         ref={canvasRef}
         className="map-canvas"

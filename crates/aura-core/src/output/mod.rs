@@ -355,12 +355,18 @@ impl OutputStage {
             shared.add_position(got as u64);
             return got as u64;
         }
+        // 恢复淡入（Paused → Playing 的切换块）：消除暂停恢复瞬间的波形
+        // 硬切。必须在写入 last_state **之前**读取上一块状态；此前先赋值
+        // 会让该判断恒为 false，10ms 淡入成为死代码。
+        //
+        // 只对 Paused 生效：Stopped → Playing（首次播放/停止后重播）由
+        // M12.5 的 1s 传输淡变与 bump_generation 丢弃残余共同保护，再叠
+        // 一层渐增会污染「从零开始的确定性输出」（见 engine.rs 的
+        // seek_provenance / non_finite_pcm 断言）。
+        let fade_in = self.last_state == PlaybackState::Paused;
         self.last_state = state;
 
         let frames = out.len() / usize::from(self.channels.get());
-        // 恢复淡入（暂停/停止 → 播放的切换块）：消除恢复瞬间的爆音。
-        let fade_in = self.last_state != PlaybackState::Playing;
-        self.last_state = state;
         let got = consumer.pop_frames_until_generation(out, &mut self.seen_generation);
         if (got as usize) < frames {
             // underrun：尾部保持/置为静音，计数一次

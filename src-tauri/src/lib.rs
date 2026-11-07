@@ -29,8 +29,15 @@ pub fn run() {
         .on_window_event(|window, event| {
             // §97/§98/§174 默认策略：主窗 X = 正式退出（后台模式为 B 级，
             // 未实现——不得悄悄后台驻留）。
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
+                    api.prevent_close();
+                    // 先优雅停止音频驱动线程（释放 CPAL 流、避免分析/快照
+                    // 写盘被截断），再退出进程；旧版直接 exit(0) 强杀四个
+                    // 后台线程，清理逻辑根本没机会执行。
+                    if let Some(state) = window.app_handle().try_state::<crate::ipc::AppState>() {
+                        state.audio.shutdown();
+                    }
                     window.app_handle().exit(0);
                 }
             }

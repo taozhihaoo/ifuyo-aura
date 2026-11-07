@@ -159,15 +159,17 @@ impl LibraryService {
     /// # Errors
     /// 查询失败时返回 [`crate::error::LibraryError::Database`]。
     pub fn get_artwork(&self, id: ArtworkId) -> Result<Option<(String, Vec<u8>)>> {
-        Ok(self
-            .database()
-            .connection()
-            .query_row(
-                "SELECT mime, data FROM artworks WHERE id = ?1",
-                params![id.0],
-                |r| Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?)),
-            )
-            .ok())
+        let row = self.database().connection().query_row(
+            "SELECT mime, data FROM artworks WHERE id = ?1",
+            params![id.0],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?)),
+        );
+        // `.ok()` 会把 DB 错误伪装成「无封面」，与 get_track 同标准区分。
+        match row {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
     }
 
     /// 艺术家列表（活跃 track 计数；名称序，§40）。
@@ -226,7 +228,13 @@ impl LibraryService {
                 })
             },
         );
-        Ok(row.unwrap_or_default())
+        // 只有「无统计行」才回落默认值；列名写错 / DB 锁 / 损坏必须如实
+        // 上抛，否则播放次数永远显示 0 且故障被长期掩盖。
+        match row {
+            Ok(s) => Ok(s),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(PlaybackStats::default()),
+            Err(e) => Err(e.into()),
+        }
     }
 
     /// 记录一次播放（§55：存储模型；play/skip 判定语义由应用层集成）。

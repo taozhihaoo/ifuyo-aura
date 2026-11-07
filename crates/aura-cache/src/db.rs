@@ -191,7 +191,11 @@ impl CacheDb {
 
     /// 记录 chunk 元数据（文件已成功写入之后，§20 顺序）。
     pub fn insert_chunk(&self, c: &CacheChunkRow) -> Result<()> {
-        self.conn.execute(
+        // chunk 行与 total_bytes 聚合必须在同一事务：旧版两条自动提交，
+        // 第二条失败（磁盘满/锁/中断）会让容量统计漂移，LRU 按错误总量
+        // 淘汰或让缓存超容。
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
             "INSERT INTO cache_chunks(content_key, chunk_index, size, sha256, created_at_ms, last_accessed_ms)
              VALUES (?1,?2,?3,?4,?5,?6)
              ON CONFLICT(content_key, chunk_index) DO UPDATE SET
@@ -205,14 +209,13 @@ impl CacheDb {
                 c.last_accessed_ms,
             ],
         )?;
-        // entry 聚合字段落库内更新（与 chunk 同连接，非跨进程事务场景足够；
-        // 多步事务由 `transaction()` 包裹）。
-        self.conn.execute(
+        tx.execute(
             "UPDATE cache_entries SET total_bytes = (
                 SELECT coalesce(sum(size), 0) FROM cache_chunks WHERE content_key = ?1
              ) WHERE content_key = ?1",
             params![c.content_key],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -245,16 +248,19 @@ impl CacheDb {
 
     /// 删除 chunk 元数据（淘汰/修复路径）。
     pub fn delete_chunk(&self, content_key: &str, chunk_index: u64) -> Result<()> {
-        self.conn.execute(
+        // 同 insert_chunk：删除与聚合更新必须原子（§容量统计一致性）。
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
             "DELETE FROM cache_chunks WHERE content_key = ?1 AND chunk_index = ?2",
             params![content_key, chunk_index as i64],
         )?;
-        self.conn.execute(
+        tx.execute(
             "UPDATE cache_entries SET total_bytes = (
                 SELECT coalesce(sum(size), 0) FROM cache_chunks WHERE content_key = ?1
              ) WHERE content_key = ?1",
             params![content_key],
         )?;
+        tx.commit()?;
         Ok(())
     }
 

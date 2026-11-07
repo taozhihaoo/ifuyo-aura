@@ -4,8 +4,8 @@ import { create } from 'zustand';
 import type { Locale } from '../i18n';
 
 /**
- * 功能开关：Dreamscape（M7）。当前版本对外停用——入口（导航/palette/
- * 托盘）全部隐藏，后端模块保留（改回 true 即整功能恢复）。
+ * 功能开关：Dreamscape（M7）。当前版本**启用**（导航/palette/托盘入口全开）；
+ * 改回 false 可整体停用入口，后端模块保留。
  */
 export const DREAMSCAPE_ENABLED = true;
 

@@ -1,6 +1,8 @@
 //! content key / chunk key / URL 规范化（§11–§14/§116）。
 //!
-//! content key = `"v1:" ++ hex(SipHash-2-4-128(normalized_url))`。
+//! content key = `hex(SipHash-2-4-128(KEY_VERSION ++ ":" ++ normalized_url))`。
+//! 版本参与**哈希输入**而非字面前缀：key 必须保持定长小写 hex
+//! （chunk 路径把整个 key 当目录名，Windows 不允许 `:` 等字符）。
 //! 输入**只有规范化 URL**（M4 复用同一 hash 原语，D-037 同源）：
 //! - scheme/host 小写；默认端口剔除；fragment 剔除；
 //! - path 与 query **原样保留**（§12：合法直链依赖 query 参数）。
@@ -18,7 +20,10 @@ use siphasher::sip128::SipHasher24;
 
 use crate::error::{CacheError, Result};
 
-/// 缓存键版本前缀；规范化或指纹定义变化时必须升级。
+/// 缓存键版本；规范化或指纹定义变化时必须升级。
+///
+/// 参与哈希输入，因此升级会让所有旧 key 自然失效（不会把新旧内容
+/// 混进同一批 `chunks/...` 目录），无需额外的磁盘迁移代码。
 pub const KEY_VERSION: &str = "v1";
 
 /// 固定密钥（产品命名派生；与 M4 内容身份的密钥**不同**，防跨域碰撞解释）。
@@ -52,7 +57,7 @@ pub fn normalize_url(raw: &str) -> Option<String> {
     Some(format!("{rebuilt}{query}"))
 }
 
-/// content key（§11）：`"v1:<hex sip128>"`；确定性、稳定、抗碰撞。
+/// content key（§11）：定长 32 位小写 hex；确定性、稳定、抗碰撞。
 ///
 /// # Errors
 /// URL 无法解析/scheme 非法 → [`CacheError::InvalidKey`]。
@@ -60,8 +65,13 @@ pub fn content_key(raw_url: &str) -> Result<String> {
     let normalized = normalize_url(raw_url).ok_or_else(|| CacheError::InvalidKey {
         reason: "URL is not a valid http(s) URL".into(),
     })?;
-    let fp = fingerprint_hex(normalized.as_bytes());
-    Ok(fp)
+    // 版本进哈希输入：KEY_VERSION 此前是零引用死常量，改规范化/哈希
+    // 算法时无法区分新旧 key，会把不同内容映射到同一批 chunk 文件。
+    let mut data = Vec::with_capacity(KEY_VERSION.len() + 1 + normalized.len());
+    data.extend_from_slice(KEY_VERSION.as_bytes());
+    data.push(b':');
+    data.extend_from_slice(normalized.as_bytes());
+    Ok(fingerprint_hex(&data))
 }
 
 fn fingerprint_hex(data: &[u8]) -> String {

@@ -121,6 +121,14 @@ export class UpdateService {
   /** §8/§36：检查更新。失败只影响更新功能；错误为 typed 分类 §65。 */
   async checkForUpdate(): Promise<UpdateState> {
     if (this.checking) return this.state;
+    // §7 状态机只允许 idle/upToDate/failed/cancelled → checking。
+    // 旧实现在 available/downloading/installing 等状态强行 transition
+    // 会抛错，catch 里再转 failed 又抛错，最终变成未处理 rejection
+    // （用户点「检查更新」毫无反应）。非可检查状态幂等返回。
+    const kind = this.state.kind;
+    if (kind !== 'idle' && kind !== 'upToDate' && kind !== 'failed' && kind !== 'cancelled') {
+      return this.state;
+    }
     this.checking = true;
     this.transition({ kind: 'checking' });
     try {

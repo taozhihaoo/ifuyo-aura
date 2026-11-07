@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useUiStore, usePlayerStore, useSettingsStore } from '../../state/stores';
 import { ipc } from '../../ipc/client';
-import { errorToI18nKey } from '../../ipc/errors';
+import { errorToI18nKey, reportIpcError } from '../../ipc/errors';
 import { buildCommands, matchCommand, type Command } from '../../commands/registry';
 import { requestMapCommand } from '../map/mapBus';
 import { useTranslation } from '../../i18n/react';
@@ -42,11 +42,11 @@ export function CommandPalette() {
   const ctx = useMemo(
     () => ({
       setView,
-      play: () => void ipc.play().catch(() => undefined),
-      pause: () => void ipc.pause().catch(() => undefined),
+      play: () => void ipc.play().catch(reportIpcError),
+      pause: () => void ipc.pause().catch(reportIpcError),
       next: () => void playNext().catch((e) => setNotice(errorToI18nKey(e))),
       previous: () => void playPrevious().catch((e) => setNotice(errorToI18nKey(e))),
-      stop: () => void ipc.stop().catch(() => undefined),
+      stop: () => void ipc.stop().catch(reportIpcError),
       openFolder: () => {
         void import('@tauri-apps/plugin-dialog').then(({ open }) =>
           open({ directory: true, multiple: false, title: t('library.addFolder') })
@@ -56,7 +56,7 @@ export function CommandPalette() {
                 void ipc.scanFolder(path).catch((e) => setNotice(errorToI18nKey(e)));
               }
             })
-            .catch(() => undefined),
+            .catch(reportIpcError),
         );
       },
       openUrl: () => {
@@ -69,7 +69,7 @@ export function CommandPalette() {
             .then((path) => {
               if (typeof path === 'string') void runOpenInput(path, setNotice);
             })
-            .catch(() => undefined),
+            .catch(reportIpcError),
         );
       },
       toggleQueue: () => setQueueOpen(!useUiStore.getState().queueOpen),
@@ -78,7 +78,7 @@ export function CommandPalette() {
         const s = useSettingsStore.getState();
         const next = !s.loudnessEnabled;
         s.setAll({ ...s, loudnessEnabled: next });
-        void ipc.setLoudness(next, true).catch(() => undefined);
+        void ipc.setLoudness(next, true).catch(reportIpcError);
       },
       toggleMiniPlayer: () => setMiniPlayerOpen(!useUiStore.getState().miniPlayerOpen),
       focusLibrarySearch: () => {
@@ -123,12 +123,12 @@ export function CommandPalette() {
         requestMapCommand('reset');
       },
     }),
-    [setView, setQueueOpen, setSettingsOpen, setMiniPlayerOpen, snapshot?.state],
+    [setView, setQueueOpen, setSettingsOpen, setMiniPlayerOpen, snapshot?.state, t],
   );
 
   const commands: Command[] = useMemo(
     () => buildCommands(ctx, (k) => t(k)),
-    [ctx],
+    [ctx, t],
   );
   // §276：输入形如 scheme:… 时给出动态「打开 URL/文件」命令（含非法
   // scheme——一律交 M4 拒绝并经错误映射提示，§277）。

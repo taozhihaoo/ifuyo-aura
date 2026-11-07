@@ -263,6 +263,10 @@ export class MapDataModel {
   metas = new Map<number, MapNodeDto>();
   private hash = new SpatialHash();
   private loadedAll = false;
+  /** §218：过滤掩码缓存（按 count + filterKey），避免每帧全量分配。 */
+  private maskCache: { key: string; count: number; mask: Uint8Array } | null = null;
+  /** loadAll 的 in-flight Promise：并发 refresh 共享同一次加载。 */
+  private loadAllInFlight: Promise<void> | null = null;
   private neighborsCache = new Map<number, Awaited<ReturnType<typeof ipc.mapNeighbors>>>();
   private fetchNodes: FetchNodes;
 
@@ -283,6 +287,8 @@ export class MapDataModel {
     this.metas.clear();
     this.hash = new SpatialHash();
     this.loadedAll = false;
+    this.maskCache = null;
+    this.loadAllInFlight = null;
     this.neighborsCache.clear();
   }
 
@@ -338,8 +344,22 @@ export class MapDataModel {
     if (minX <= -1 && minY <= -1 && maxX >= 1 && maxY >= 1) this.loadedAll = true;
   }
 
-  /** 打开地图时全量加载（≤2 万节点；更大库走 ensureRegion 视口补数）。 */
+  /** 打开地图时全量加载（≤2 万节点；更大库走 ensureRegion 视口补数）。
+   *  并发 refresh 共享同一个 in-flight Promise，避免重复全量 fetch。 */
   async loadAll(): Promise<void> {
+    if (this.datasetHash === null || this.loadedAll) return;
+    const inFlight = this.loadAllInFlight;
+    if (inFlight !== null) return inFlight;
+    const p = this.doLoadAll();
+    this.loadAllInFlight = p;
+    const clear = (): void => {
+      if (this.loadAllInFlight === p) this.loadAllInFlight = null;
+    };
+    p.then(clear, clear);
+    return p;
+  }
+
+  private async doLoadAll(): Promise<void> {
     if (this.datasetHash === null || this.loadedAll) return;
     const total = this.overview?.trackCount ?? 0;
     if (total === 0 || total > 20_000) {
@@ -371,21 +391,29 @@ export class MapDataModel {
     return out;
   }
 
-  /** §216/§218：过滤掩码（1 = 可见）。 */
+  /** §216/§218：过滤掩码（1 = 可见）；按 count + filterKey 缓存，
+   *  无过滤时复用同一份全 1 mask，避免每次重绘都分配 2 万长度数组。 */
   filterMask(f: MapFilters): Uint8Array {
-    const mask = new Uint8Array(this.count).fill(1);
-    if (f.bpmMin === null && f.bpmMax === null && f.energyMin === null) return mask;
-    for (let i = 0; i < this.count; i++) {
-      const id = this.ids[i] as number;
-      const m = this.metas.get(id);
-      const ok =
-        m !== undefined &&
-        matchesFilters(
-          { bpm: m.bpm, energy: m.energy },
-          f,
-        );
-      mask[i] = ok ? 1 : 0;
+    const key = `${String(f.bpmMin)},${String(f.bpmMax)},${String(f.energyMin)}`;
+    const cached = this.maskCache;
+    if (cached !== null && cached.key === key && cached.count === this.count) {
+      return cached.mask;
     }
+    const mask = new Uint8Array(this.count).fill(1);
+    if (f.bpmMin !== null || f.bpmMax !== null || f.energyMin !== null) {
+      for (let i = 0; i < this.count; i++) {
+        const id = this.ids[i] as number;
+        const m = this.metas.get(id);
+        const ok =
+          m !== undefined &&
+          matchesFilters(
+            { bpm: m.bpm, energy: m.energy },
+            f,
+          );
+        mask[i] = ok ? 1 : 0;
+      }
+    }
+    this.maskCache = { key, count: this.count, mask };
     return mask;
   }
 

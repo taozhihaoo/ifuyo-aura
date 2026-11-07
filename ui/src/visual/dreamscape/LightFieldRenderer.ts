@@ -480,6 +480,8 @@ export class LightFieldRenderer {
     if (this.vao !== null) this.gl.deleteVertexArray(this.vao);
     this.program = null;
     this.vao = null;
-    this.gl.getExtension('WEBGL_lose_context')?.loseContext();
+    // 不主动调用 WEBGL_lose_context.loseContext()：StrictMode 双挂载复用同一
+    // canvas，第二次 getContext 会拿到已丢失的 context → 永久 fallback。
+    // GL 资源随 renderer 一起交给 GC 回收。
   }
 }

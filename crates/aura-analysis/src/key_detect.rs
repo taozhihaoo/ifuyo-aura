@@ -148,8 +148,6 @@ pub fn analyze_key(samples: &[f32], sample_rate: u32) -> KeyResult {
         return KeyResult::Unavailable;
     }
 
-    let dbg = std::env::var("AURA_KEY_DEBUG").is_ok();
-    let mut all_r: Vec<(f32, MusicalKey, KeyMode)> = Vec::new();
     let mut best_r = f32::NEG_INFINITY;
     let mut second_r = f32::NEG_INFINITY;
     let mut best_key = MusicalKey::C;
@@ -161,7 +159,6 @@ pub fn analyze_key(samples: &[f32], sample_rate: u32) -> KeyResult {
         let r_minor = pearson(&chroma, &rot_minor);
         let key = MusicalKey::ALL[rotate];
         for (r, mode) in [(r_major, KeyMode::Major), (r_minor, KeyMode::Minor)] {
-            all_r.push((r, key, mode));
             if r > best_r {
                 second_r = best_r;
                 best_r = r;
@@ -173,12 +170,6 @@ pub fn analyze_key(samples: &[f32], sample_rate: u32) -> KeyResult {
         }
     }
 
-    if dbg {
-        all_r.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-        for (r, k, m) in all_r.iter().take(4) {
-            eprintln!("KEYDBG {k:?} {m:?} r={r}");
-        }
-    }
     // §63 confidence：最优相关强度 × 与次优分离度 → [0,1]（D-101）。
     let strength = best_r.max(0.0);
     let separation = (best_r - second_r).max(0.0) * 4.0;

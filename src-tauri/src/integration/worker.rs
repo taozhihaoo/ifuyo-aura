@@ -241,6 +241,10 @@ fn run(
         diag: shared.diag.clone(),
     };
     let mut sinks = Sinks::new(&app, &shared);
+    // §144 位置节流依赖单调递增的进程内时钟。此前每轮都写
+    // `Instant::now().elapsed()`，值恒为 ~0，coordinator 的 0.5s 节流
+    // 永远成立 → SMTC 进度条停在开头不再前进。
+    let started = Instant::now();
 
     loop {
         // §144：500ms tick（position + 惰性轮询；§145 无忙循环）。
@@ -321,7 +325,7 @@ fn run(
             }
         }
 
-        let now = Instant::now().elapsed().as_secs_f64();
+        let now = started.elapsed().as_secs_f64();
         let snap = worker.offer(&mut sinks);
         worker.coordinator.position_tick(&snap, now, &mut sinks);
     }

@@ -180,6 +180,13 @@ impl<R: Read> Read for IcyReader<R> {
         if self.eof || out.is_empty() {
             return Ok(0);
         }
+        // `icy-metaint: 0`（或头部缺失）= 纯音频直通，线上没有 metadata 块。
+        // 若不短路，audio_left 初值 0 会让 read_metadata_block() 把第一个
+        // 音频字节当成长度字节吃掉，随后 read(&mut []) 返回 0 被误判成真
+        // EOF —— 电台/直链第一次读就静音结束。
+        if self.metaint == 0 {
+            return self.inner.read(out);
+        }
         if self.audio_left == 0 {
             self.read_metadata_block()?;
             if self.eof {
@@ -356,5 +363,34 @@ mod tests {
         r.read_to_end(&mut out).unwrap();
         assert_eq!(out, vec![1, 2, 3, 4], "只有音频字节");
         assert_eq!(r.malformed_meta_count, 1);
+    }
+
+    /// `icy-metaint: 0`（头部显式声明无元数据）= 纯音频直通。
+    /// 旧实现会把第一个音频字节当长度字节吃掉，并把空切片读误判成 EOF。
+    #[test]
+    fn zero_metaint_is_passthrough() {
+        let wire = b"\x01\x02\x03\x04\x05";
+        let mut r = IcyReader::new(&wire[..], 0);
+        let mut out = Vec::new();
+        r.read_to_end(&mut out).expect("read to end");
+        assert_eq!(out, wire.to_vec(), "首字节必须完整透传");
+        assert!(r.last_meta.is_none(), "直通模式不得解析出 metadata");
+    }
+
+    /// 任意 read 边界（单字节缓冲）下同样成立。
+    #[test]
+    fn zero_metaint_survives_tiny_reads() {
+        let wire = b"\x10\x20\x30";
+        let mut r = IcyReader::new(&wire[..], 0);
+        let mut out = Vec::new();
+        let mut buf = [0u8; 1];
+        loop {
+            let n = r.read(&mut buf).expect("read");
+            if n == 0 {
+                break;
+            }
+            out.push(buf[0]);
+        }
+        assert_eq!(out, wire.to_vec());
     }
 }

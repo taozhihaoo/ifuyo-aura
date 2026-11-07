@@ -135,9 +135,6 @@ pub fn query_track_ids(
         clauses.join(" AND "),
         limit.clamp(1, 500)
     );
-    if std::env::var("AURA_QUERY_DEBUG").is_ok() {
-        eprintln!("QUERYDBG sql={sql} values={values:?}");
-    }
     let mut stmt = conn
         .prepare(&sql)
         .map_err(|e| StoreError::Database(e.to_string()))?;

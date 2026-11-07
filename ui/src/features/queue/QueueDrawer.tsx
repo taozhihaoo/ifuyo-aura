@@ -7,6 +7,7 @@ import { ipc } from '../../ipc/client';
 import { useTranslation } from '../../i18n/react';
 import type { TrackSummary } from '../../ipc/types';
 import type { IfuyoTrack } from '../../ipc/ifuyo';
+import { reportIpcError } from '../../ipc/errors';
 
 /** 队列项有两种来源：本地库 TrackId，或远程清单条目（按 URL 播）。
  *  §197「全应用唯一 queue 权威」不变，放宽的只是播放目标——此前远程曲目根本
@@ -100,7 +101,7 @@ export function playItemAt(index: number) {
   currentIndex = index;
   emit();
   const item = items[index];
-  if (item) void playItem(item).catch(() => undefined);
+  if (item) void playItem(item).catch(reportIpcError);
 }
 
 /** §307 queue remove：移除任意项；当前项之前的移除使游标前移。 */
@@ -173,7 +174,7 @@ export function advanceOnTrackEnded(): boolean {
       const i = currentIndex >= 0 ? currentIndex : 0;
       const item = items[i];
       if (!item) return false;
-      void playItem(item).catch(() => undefined);
+      void playItem(item).catch(reportIpcError);
       return true;
     }
     case 'repeatAll': {
@@ -216,37 +217,52 @@ export function QueueDrawer() {
   useEffect(() => {
     void ipc
       .reportQueueState(hasPrevious(), hasNext())
-      .catch(() => undefined);
+      .catch(reportIpcError);
   }, [items, currentIndex]);
 
   // M10 §23/§24：SMTC/托盘 next/previous → 复用应用层 queue 语义。
   useEffect(() => {
-    let unlisten: (() => void) | null = null;
+    // StrictMode 下首次 cleanup 可能早于 Promise resolve；`let un = null`
+    // 会让第一次注册的监听永远无法注销，托盘/SMTC 按一次「下一曲」
+    // 会执行两次 playNext（一次跳两首）。
+    let cancelled = false;
+    let off: (() => void) | null = null;
     void ipc
       .listenIntegrationCommand((cmd) => {
         if (cmd === 'next') void playNext();
         else void playPrevious();
       })
-      .then((off) => {
-        unlisten = off;
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+          return;
+        }
+        off = fn;
       });
     return () => {
-      unlisten?.();
+      cancelled = true;
+      off?.();
     };
   }, []);
 
   // M12.6：后端曲终事件 → 按播放模式自动前进（顺序/循环/随机）。
   useEffect(() => {
-    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    let off: (() => void) | null = null;
     void ipc
       .listenTrackEnded(() => {
         advanceOnTrackEnded();
       })
-      .then((off) => {
-        unlisten = off;
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+          return;
+        }
+        off = fn;
       });
     return () => {
-      unlisten?.();
+      cancelled = true;
+      off?.();
     };
   }, []);
 
@@ -266,7 +282,7 @@ export function QueueDrawer() {
         <h2>{t('queue.title')}</h2>
         <div>
           <button className="btn" onClick={() => clearQueue()}>{t('queue.clear')}</button>
-          <button className="icon-btn" onClick={() => setOpen(false)} aria-label="Esc">✕</button>
+          <button className="icon-btn" onClick={() => setOpen(false)} aria-label={t('common.close')}>✕</button>
         </div>
       </div>
       {items.length === 0 ? (

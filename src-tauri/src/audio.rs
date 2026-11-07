@@ -99,6 +99,15 @@ pub struct AudioHandle {
     /// 的局部变量上，返回即 drop，回调永不触发（表现为"播放中但位置
     /// 不走"）；Mutex 仅用于满足 Arc<AudioHandle> 的 Sync 要求。
     _output: Mutex<aura_core::output::device::CpalOutput>,
+    /// 驱动线程句柄（退出时发 `Control::Shutdown` 并 join，避免 exit(0)
+    /// 强杀正在写盘/持有 CPAL 流的线程）。
+    driver: Mutex<Option<std::thread::JoinHandle<()>>>,
+}
+
+impl Drop for AudioHandle {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
 }
 
 impl AudioHandle {
@@ -145,7 +154,7 @@ impl AudioHandle {
         let rate2 = Arc::clone(&rate);
         let rev2 = Arc::clone(&revision);
 
-        std::thread::Builder::new()
+        let driver = std::thread::Builder::new()
             .name("aura-audio-driver".into())
             .spawn(move || {
                 struct DriverState {
@@ -181,7 +190,21 @@ impl AudioHandle {
                                 // 已无意义。
                                 pending_transport = None;
                                 want_fade_in = false;
-                                let _ = engine.load_track(decoder);
+                                if let Err(e) = engine.load_track(decoder) {
+                                    // 旧版吞掉错误却照常写快照，UI 会显示
+                                    // 「已切换到该曲目」而实际无声。这里清空
+                                    // 曲目信息并保持停止态，如实反映失败。
+                                    eprintln!("[audio] decoder load failed: {e}");
+                                    let mut snap = snap2.lock().expect("snap");
+                                    snap.track_path = None;
+                                    snap.title = None;
+                                    snap.state = "stopped".into();
+                                    snap.position_seconds = 0.0;
+                                    snap.duration_seconds = None;
+                                    snap.revision += 1;
+                                    rev2.store(snap.revision, Ordering::Relaxed);
+                                    continue;
+                                }
                                 engine.set_track_loudness(loudness, engine.loudness_enabled());
                                 let _ = poster.post(AudioCommand::Stop);
                                 let mut snap = snap2.lock().expect("snap");
@@ -205,9 +228,6 @@ impl AudioHandle {
                                 AudioCommand::Pause | AudioCommand::Stop
                                     if engine.state() == PlaybackState::Playing =>
                                 {
-                                    eprintln!(
-                                        "[fade-probe] driver: fade-out requested for {cmd:?}"
-                                    );
                                     shared_out.request_fade(
                                         aura_core::output::FADE_CMD_OUT,
                                         aura_core::output::FADE_TOTAL_AT_48K,
@@ -222,12 +242,10 @@ impl AudioHandle {
                                         aura_core::output::FADE_TOTAL_AT_48K,
                                     );
                                     pending_transport = None;
-                                    eprintln!("[fade-probe] driver: reversal fade-in requested");
                                 }
                                 AudioCommand::Play => {
                                     let _ = poster.post(cmd);
                                     want_fade_in = true;
-                                    eprintln!("[fade-probe] driver: play posted, fade-in armed");
                                 }
                                 other => {
                                     let _ = poster.post(other);
@@ -245,7 +263,6 @@ impl AudioHandle {
                         if total > 0
                             && (progress >= total || engine.state() == PlaybackState::Stopped)
                         {
-                            eprintln!("[fade-probe] driver: pending {pending:?} applied");
                             match pending {
                                 AudioCommand::Pause => {
                                     let _ = poster.post(AudioCommand::Pause);
@@ -266,7 +283,6 @@ impl AudioHandle {
                     if engine.take_track_finished() {
                         let _ = poster.post(AudioCommand::Stop);
                         on_track_ended();
-                        eprintln!("[fade-probe] driver: track finished -> stop + ended event");
                     }
                     // 快照刷新 ~10Hz（§14）。
                     let pos_frames = shared_out.position.load(Ordering::Relaxed);
@@ -283,7 +299,6 @@ impl AudioHandle {
                             aura_core::output::FADE_TOTAL_AT_48K,
                             0.0,
                         );
-                        eprintln!("[fade-probe] driver: fade-in requested (1s)");
                     }
                     let new_state = match engine_state {
                         PlaybackState::Playing => "playing",
@@ -316,7 +331,23 @@ impl AudioHandle {
             revision,
             shared: shared_for_handle,
             _output: Mutex::new(output),
+            driver: Mutex::new(Some(driver)),
         })
+    }
+
+    /// 优雅停止驱动线程：发 `Control::Shutdown` 后 join。
+    ///
+    /// 旧路径在主窗 X 上直接 `exit(0)` 强杀线程，`SmtcBridge::drop`
+    /// 等清理不执行，分析/快照写盘也可能被截断。锁中毒也要继续，
+    /// 否则 join 会永久阻塞在仍在运行的驱动线程上。
+    pub fn shutdown(&self) {
+        let ctrl = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = ctrl.send(Control::Shutdown);
+        drop(ctrl);
+        let mut slot = self.driver.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(handle) = slot.take() {
+            let _ = handle.join();
+        }
     }
 
     /// 当前电平探针（无锁原子读；驱动线程每轮刷新）。
@@ -404,6 +435,15 @@ pub fn open_decoder_sub(
     start_seconds: f64,
     duration_seconds: f64,
 ) -> Result<(Box<dyn aura_core::decoder::Decoder>, Option<f64>), String> {
+    // CUE 偏移来自外部文件；NaN/Inf 会被 `as u64` 变成 0 / u64::MAX，
+    // 让 SubRangeDecoder 静默播错位置或立即 EOF。
+    if !start_seconds.is_finite()
+        || start_seconds < 0.0
+        || !duration_seconds.is_finite()
+        || duration_seconds <= 0.0
+    {
+        return Err("invalid CUE sub-track range".into());
+    }
     let (base, _) = open_decoder(path)?;
     let rate = f64::from(base.format().sample_rate.get());
     let start_frame = (start_seconds * rate) as u64;

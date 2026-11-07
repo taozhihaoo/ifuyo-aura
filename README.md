@@ -37,7 +37,7 @@ Music Map 根据本地音频分析结果，把音乐库组织成可探索的相�
 | Updater | Future（M11） |
 | Steam | Future（M13） |
 | Analysis（LUFS/Tempo/Key/Spectral/MFCC 本地确定性分析） | ✅ |
-| SMTC / 托盘 / 媒体键 | M10 |
+| Windows 集成里程碑（SMTC / 托盘 / 媒体键） | ✅（M10 落地） |
 
 ## 截图（来自当前真实构建）
 

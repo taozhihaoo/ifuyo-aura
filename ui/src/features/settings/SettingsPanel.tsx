@@ -1,8 +1,9 @@
 // 设置面板（§114/§119/§107）：语言/缩放/reducedMotion/loudness/crossfade/EQ。
 // 全部真实持久化（Rust JSON v1）并即时生效。
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast, useSettingsStore, useUiStore } from '../../state/stores';
 import { ipc } from '../../ipc/client';
+import { errorToI18nKey, reportIpcError } from '../../ipc/errors';
 import type { AnalysisStatus } from '../../ipc/types';
 import { useTranslation } from '../../i18n/react';
 import type { Locale } from '../../i18n';
@@ -47,6 +48,15 @@ export function SettingsPanel() {
   };
 
   const [crossfade, setCrossfade] = useState(s.crossfadeSeconds);
+  // 滑杆持久化防抖：键盘（方向键）不触发 onMouseUp/onTouchEnd，
+  // 旧实现只在那两个事件里下发，键盘改值关面板后必然丢失。
+  const crossfadeTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (crossfadeTimer.current !== null) window.clearTimeout(crossfadeTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     setCrossfade(s.crossfadeSeconds);
@@ -147,8 +157,14 @@ export function SettingsPanel() {
             </div>
             <button
               className="ghost-btn"
-              onClick={() => void updateService.checkForUpdate()}
-              disabled={updateState().kind === 'checking'}
+              onClick={() =>
+                void updateService
+                  .checkForUpdate()
+                  .catch((err) => toast(errorToI18nKey(err), 'error'))
+              }
+              // available / downloading / installing 等状态不允许回到
+              // checking；按钮在这些状态下必须禁用而不是抛异常。
+              disabled={!['idle', 'upToDate', 'failed', 'cancelled'].includes(updateState().kind)}
             >
               {t('update.check')}
             </button>
@@ -208,7 +224,7 @@ export function SettingsPanel() {
             checked={s.micaEnabled}
             onChange={(e) => {
               s.setAll({ ...s, micaEnabled: e.target.checked });
-              void ipc.setMica(e.target.checked, true).catch(() => undefined);
+              void ipc.setMica(e.target.checked, true).catch(reportIpcError);
             }}
           />
         </label>
@@ -232,7 +248,7 @@ export function SettingsPanel() {
             checked={s.loudnessEnabled}
             onChange={(e) => {
               s.setAll({ ...s, loudnessEnabled: e.target.checked });
-              void ipc.setLoudness(e.target.checked, true).catch(() => undefined);
+              void ipc.setLoudness(e.target.checked, true).catch(reportIpcError);
             }}
           />
         </label>
@@ -270,7 +286,7 @@ export function SettingsPanel() {
               <button
                 type="button"
                 className="ghost-btn"
-                onClick={() => void ipc.cancelAnalysis().catch(() => undefined)}
+                onClick={() => void ipc.cancelAnalysis().catch(reportIpcError)}
               >
                 {t('settings.analysisCancel')}
               </button>
@@ -307,14 +323,16 @@ export function SettingsPanel() {
             max={12}
             step={0.5}
             value={crossfade}
-            onChange={(e) => setCrossfade(Number(e.target.value))}
-            onMouseUp={() => {
-              s.setAll({ ...s, crossfadeSeconds: crossfade });
-              void ipc.setCrossfade(crossfade, true).catch(() => undefined);
-            }}
-            onTouchEnd={() => {
-              s.setAll({ ...s, crossfadeSeconds: crossfade });
-              void ipc.setCrossfade(crossfade, true).catch(() => undefined);
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              setCrossfade(next);
+              if (crossfadeTimer.current !== null) window.clearTimeout(crossfadeTimer.current);
+              crossfadeTimer.current = window.setTimeout(() => {
+                s.setAll({ ...s, crossfadeSeconds: next });
+                void ipc
+                  .setCrossfade(next, true)
+                  .catch((err) => toast(errorToI18nKey(err), 'error'));
+              }, 150);
             }}
           />
           <span>{crossfade}s</span>
@@ -327,7 +345,7 @@ export function SettingsPanel() {
             onChange={(e) => {
               const preset = Number(e.target.value);
               s.setAll({ ...s, eqPreset: preset });
-              void ipc.setEqPreset(preset, true).catch(() => undefined);
+              void ipc.setEqPreset(preset, true).catch(reportIpcError);
             }}
           >
             {[0, 1, 2, 3, 4, 5].map((i) => (

@@ -101,12 +101,27 @@ export function DesktopLyrics() {
 
   // 关闭请求 = 隐藏（与 Mini Player 同语义；主窗按钮状态经事件同步）。
   useEffect(() => {
-    void getCurrentWindow().onCloseRequested((e) => {
-      e.preventDefault();
-      void getCurrentWindow().hide();
-      useUiStore.getState().setDesktopLyricsOpen(false);
-    });
-    return () => undefined;
+    // StrictMode 双挂载会注册两个 onCloseRequested；必须保存并调用
+    // unlisten，`return () => undefined` 会让监听永久残留。
+    let cancelled = false;
+    let off: (() => void) | null = null;
+    void getCurrentWindow()
+      .onCloseRequested((e) => {
+        e.preventDefault();
+        void getCurrentWindow().hide();
+        useUiStore.getState().setDesktopLyricsOpen(false);
+      })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+          return;
+        }
+        off = fn;
+      });
+    return () => {
+      cancelled = true;
+      off?.();
+    };
   }, []);
 
   // M15b 修复：悬浮窗是独立 JS realm——远程歌词登记表（audioUrl→lyricsUrl）
@@ -169,10 +184,13 @@ export function DesktopLyrics() {
       now.classList.add('dl-enter');
     };
 
+    let inFlight = false;
+    let lyricsGen = 0;
     const timer = window.setInterval(async () => {
-      if (!alive) return;
-      ticks += 1;
+      if (!alive || inFlight) return; // 100ms 节拍内不重入（await 未防重叠）
+      inFlight = true;
       try {
+        ticks += 1;
         if (ticks % 5 === 0) {
           const s = await ipc.playerSnapshot();
           if (!alive) return;
@@ -186,7 +204,13 @@ export function DesktopLyrics() {
             lyricsRef.current = null;
             // 与梦境舞台同一解析器：远程曲目的路径是 URL、没有本地 TrackId，
             // 走 trackIdByPath 会让在线歌永远没词。
-            lyricsRef.current = await lyricsForPath(p);
+            const gen = ++lyricsGen;
+            const requested = p;
+            const lyrics = await lyricsForPath(p);
+            // 快速切歌时，A 的迟到回包不得覆盖 B 的歌词。
+            if (alive && gen === lyricsGen && requested === pathRef.current) {
+              lyricsRef.current = lyrics;
+            }
           }
           if (s.state !== 'playing') position = s.positionSeconds;
         } else {
@@ -194,6 +218,8 @@ export function DesktopLyrics() {
         }
       } catch {
         // IPC 抖动不打断悬浮窗：保留上一帧文本。
+      } finally {
+        inFlight = false;
       }
       paint();
     }, 100);

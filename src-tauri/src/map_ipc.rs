@@ -258,6 +258,26 @@ pub struct MapHost {
     data_dir: std::path::PathBuf,
 }
 
+/// 构建线程创建失败时复位状态。
+///
+/// 请求路径会先提交 `Building` + `active`（避免与已启动线程产生状态竞态）；
+/// 若 spawn 失败或线程异常早退而不回滚，`ensure_snapshot` 会因
+/// `active.is_some()` 永久拒绝新构建，UI 卡在「构建中」直到重启进程。
+/// 只清理与本次 build_id 匹配的租约，不动后继 build 的状态。
+fn rollback_failed_build(inner: &mut Inner, build_id: u64, message: &str) {
+    if inner
+        .active
+        .as_ref()
+        .is_some_and(|a| a.build_id == build_id)
+    {
+        inner.active = None;
+    }
+    if inner.last_build_id == build_id {
+        inner.status = MapBuildStatus::Failed;
+        inner.message = Some(message.to_string());
+    }
+}
+
 fn lock_err() -> AppError {
     from_err("MAP_STATE", "map state lock poisoned", true)
 }
@@ -447,16 +467,13 @@ fn collect_library(library: &crate::library::LibraryState) -> Result<Collection,
 }
 
 /// §186 temp + 原子替换。
-fn write_atomic(path: &std::path::Path, persisted: &PersistedMap) {
-    let Some(dir) = path.parent() else { return };
-    let _ = std::fs::create_dir_all(dir);
-    let Ok(json) = serde_json::to_vec_pretty(persisted) else {
-        return;
-    };
+fn write_atomic(path: &std::path::Path, persisted: &PersistedMap) -> Result<(), String> {
+    let dir = path.parent().ok_or("map dir unavailable")?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let json = serde_json::to_vec_pretty(persisted).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("json.tmp");
-    if std::fs::write(&tmp, &json).is_ok() {
-        let _ = std::fs::rename(&tmp, path);
-    }
+    std::fs::write(&tmp, &json).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
 fn snapshot_or_err(
@@ -692,7 +709,7 @@ pub fn request_map_build(state: State<'_, AppState>) -> CmdResult<u64> {
     let coverage = collected.coverage;
     let entries_len = collected.entries_len;
     let json_path = host.map_json_path();
-    std::thread::Builder::new()
+    let spawn = std::thread::Builder::new()
         .name("map-build".into())
         .spawn(move || {
             // §238：后台低优先（独立线程；audio 线程不受影响）。
@@ -701,44 +718,54 @@ pub fn request_map_build(state: State<'_, AppState>) -> CmdResult<u64> {
             let out =
                 aura_map::build_map(&ds, &hash, params, build_id, &gen, &cancel, seeds.as_ref());
             let build_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-            let mut inner = match inner_arc.lock() {
-                Ok(i) => i,
-                Err(_) => return,
-            };
-            if !gen.is_current(build_id) {
-                return; // §167 迟到者不得覆盖新 build
-            }
-            match out {
-                Ok(o) => {
-                    if o.status == MapBuildStatus::Ready {
-                        let snap = Arc::new(MapSnapshot::assemble(
-                            o.dataset,
-                            o.graph,
-                            o.clusters,
-                            o.positions,
-                            metas,
-                            coverage,
-                            entries_len,
-                        ));
-                        write_atomic(&json_path, &o.persisted);
-                        inner.snapshot = Some(snap);
-                        inner.message = None;
-                        inner.last_build_ms = Some(build_ms);
-                    } else {
-                        // §245/§246：Stale 数据不标记 Ready。
-                        inner.message = Some("dataset changed during build".into());
+            // 锁中毒也要继续清理：直接 return 会让 status/active 永久残留
+            // （Music Map 卡死「构建中」，只能重启进程）。
+            let mut inner = inner_arc.lock().unwrap_or_else(|e| e.into_inner());
+            // §167 迟到者不得覆盖新 build 的状态，但仍要释放自己的租约。
+            if gen.is_current(build_id) {
+                match out {
+                    Ok(o) => {
+                        if o.status == MapBuildStatus::Ready {
+                            let snap = Arc::new(MapSnapshot::assemble(
+                                o.dataset,
+                                o.graph,
+                                o.clusters,
+                                o.positions,
+                                metas,
+                                coverage,
+                                entries_len,
+                            ));
+                            match write_atomic(&json_path, &o.persisted) {
+                                Ok(()) => {
+                                    inner.snapshot = Some(snap);
+                                    inner.message = None;
+                                    inner.last_build_ms = Some(build_ms);
+                                    inner.status = MapBuildStatus::Ready;
+                                }
+                                Err(e) => {
+                                    // 内存快照可用但重启会丢：如实标记失败，
+                                    // 不假装持久化成功。
+                                    inner.status = MapBuildStatus::Failed;
+                                    inner.message = Some(format!("map persist failed: {e}"));
+                                }
+                            }
+                        } else {
+                            // §245/§246：Stale 数据不标记 Ready。
+                            inner.message = Some("dataset changed during build".into());
+                            inner.status = o.status;
+                        }
                     }
-                    inner.status = o.status;
-                }
-                Err(MapBuildError::Cancelled) => {
-                    inner.status = MapBuildStatus::Cancelled;
-                    inner.message = Some("build cancelled".into());
-                }
-                Err(e) => {
-                    inner.status = MapBuildStatus::Failed;
-                    inner.message = Some(e.to_string());
+                    Err(MapBuildError::Cancelled) => {
+                        inner.status = MapBuildStatus::Cancelled;
+                        inner.message = Some("build cancelled".into());
+                    }
+                    Err(e) => {
+                        inner.status = MapBuildStatus::Failed;
+                        inner.message = Some(e.to_string());
+                    }
                 }
             }
+            // 无论成功 / 失败 / 迟到 / 锁中毒，都释放本次构建的 active 租约。
             if inner
                 .active
                 .as_ref()
@@ -746,9 +773,17 @@ pub fn request_map_build(state: State<'_, AppState>) -> CmdResult<u64> {
             {
                 inner.active = None;
             }
-        })
-        .map_err(|e| from_err("MAP_BUILD_SPAWN", e, true))?;
-    Ok(build_id)
+        });
+
+    match spawn {
+        Ok(_) => Ok(build_id),
+        Err(e) => {
+            // 状态已在 spawn 之前提交（避免与线程竞态），失败必须回滚。
+            let mut inner = host.inner.lock().unwrap_or_else(|p| p.into_inner());
+            rollback_failed_build(&mut inner, build_id, "map build thread unavailable");
+            Err(from_err("MAP_BUILD_SPAWN", e, true))
+        }
+    }
 }
 
 /// §164：取消当前构建（构建完成后到达的取消不影响 Ready——如实）。
@@ -760,6 +795,8 @@ pub fn cancel_map_build(state: State<'_, AppState>) -> CmdResult<()> {
         inner.status = MapBuildStatus::Cancelled;
         inner.message = Some("build cancelled".into());
     }
+    // 释放租约：否则 ensure_snapshot 因 active.is_some() 永久拒绝新构建。
+    inner.active = None;
     Ok(())
 }
 #[cfg(test)]
@@ -787,5 +824,46 @@ mod tests {
         let inner2 = host2.inner.lock().unwrap();
         assert!(inner2.persisted.is_none());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn building_inner(build_id: u64) -> Inner {
+        Inner {
+            status: MapBuildStatus::Building,
+            message: Some("building similarity graph…".into()),
+            snapshot: None,
+            persisted: None,
+            active: Some(ActiveBuild {
+                build_id,
+                dataset_hash: "hash".into(),
+                cancel: Arc::new(aura_analysis::pipeline::CancelToken::new()),
+            }),
+            last_build_id: build_id,
+            last_build_ms: None,
+            assessed: true,
+        }
+    }
+
+    /// P0 回归：spawn 失败必须释放 active 租约，否则 ensure_snapshot 因
+    /// `active.is_some()` 永久拒绝新构建，UI 卡在「构建中」直到重启进程。
+    #[test]
+    fn failed_build_rolls_back_active_and_status() {
+        let mut inner = building_inner(7);
+        rollback_failed_build(&mut inner, 7, "map build thread unavailable");
+        assert!(inner.active.is_none(), "active 租约必须释放");
+        assert_eq!(inner.status, MapBuildStatus::Failed);
+        assert_eq!(
+            inner.message.as_deref(),
+            Some("map build thread unavailable")
+        );
+    }
+
+    /// 迟到者不得抹掉后继 build 的状态或租约。
+    #[test]
+    fn rollback_does_not_clobber_newer_build() {
+        let mut inner = building_inner(8);
+        rollback_failed_build(&mut inner, 7, "late failure");
+        assert!(inner.active.is_some(), "后继 build 的租约不得被清掉");
+        assert_eq!(inner.status, MapBuildStatus::Building);
+        assert_eq!(inner.message.as_deref(), Some("building similarity graph…"));
     }
 }

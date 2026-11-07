@@ -21,8 +21,6 @@ pub struct DreamscapeHost {
     path: PathBuf,
     /// §262 revision：状态变更单调递增；UI 只接受最新（§259/§260 陈旧代保护）。
     revision: std::sync::atomic::AtomicU64,
-    /// §257 幂等：open/close 重复调用不报错（渲染器在 UI 侧单例）。
-    opened: std::sync::atomic::AtomicBool,
 }
 
 impl DreamscapeHost {
@@ -45,7 +43,6 @@ impl DreamscapeHost {
             session: Mutex::new(session),
             path,
             revision: std::sync::atomic::AtomicU64::new(1),
-            opened: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -70,6 +67,14 @@ impl DreamscapeHost {
         std::fs::write(&tmp, &json).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, &self.path).map_err(|e| e.to_string())
     }
+}
+
+/// 磁盘 IO 不持 `session` 锁：调用方先在短临界区内完成内存变更并 clone
+/// 会话、释放 guard，再经此函数写盘。写失败一律映射为结构化错误
+/// （旧版 `let _ = host.persist(&s)` 会静默丢进度，重启后世界回档）。
+fn persist_cloned(host: &DreamscapeHost, copy: &DreamscapeSession) -> CmdResult<()> {
+    host.persist(copy)
+        .map_err(|e| from_err("DREAMSCAPE_PERSIST", e, true))
 }
 
 fn load_snapshot(path: &Path) -> Result<DreamscapeSession, String> {
@@ -143,22 +148,27 @@ pub fn dreamscape_state(
     state: tauri::State<'_, crate::ipc::AppState>,
 ) -> CmdResult<DreamscapeStateDto> {
     let host = &state.dreamscape;
-    let s = host.session.lock().expect("dreamscape lock");
+    let s = host
+        .session
+        .lock()
+        .map_err(|_| from_err("DREAMSCAPE_LOCK", "lock poisoned", true))?;
     Ok(to_dto_rev(
         &s,
         host.revision.load(std::sync::atomic::Ordering::SeqCst),
     ))
 }
 
-/// §256/§257 open：幂等——重复 open 不报错、不建第二渲染器
-/// （渲染器单例在 UI 侧；此处仅置位 + 返回状态）。
+/// §256/§257 open：幂等占位——渲染器是 UI 侧单例，Rust 侧无需开关状态。
+/// 保留命令仅为兼容既有调用链；返回当前状态（与 `dreamscape_state` 相同）。
 #[tauri::command]
 pub fn dreamscape_open(
     state: tauri::State<'_, crate::ipc::AppState>,
 ) -> CmdResult<DreamscapeStateDto> {
     let host = &state.dreamscape;
-    host.opened.store(true, std::sync::atomic::Ordering::SeqCst);
-    let s = host.session.lock().expect("dreamscape lock");
+    let s = host
+        .session
+        .lock()
+        .map_err(|_| from_err("DREAMSCAPE_LOCK", "lock poisoned", true))?;
     Ok(to_dto_rev(
         &s,
         host.revision.load(std::sync::atomic::Ordering::SeqCst),
@@ -172,9 +182,10 @@ pub fn dreamscape_close(
     state: tauri::State<'_, crate::ipc::AppState>,
 ) -> CmdResult<DreamscapeStateDto> {
     let host = &state.dreamscape;
-    host.opened
-        .store(false, std::sync::atomic::Ordering::SeqCst);
-    let s = host.session.lock().expect("dreamscape lock");
+    let s = host
+        .session
+        .lock()
+        .map_err(|_| from_err("DREAMSCAPE_LOCK", "lock poisoned", true))?;
     Ok(to_dto_rev(
         &s,
         host.revision.load(std::sync::atomic::Ordering::SeqCst),
@@ -190,9 +201,17 @@ pub fn dreamscape_set_environment(
 ) -> CmdResult<DreamscapeStateDto> {
     let host = &state.dreamscape;
     let rev = host.bump();
-    let mut s = host.session.lock().expect("dreamscape lock");
-    s.frozen = frozen;
-    Ok(to_dto_rev(&s, rev))
+    let (dto, copy) = {
+        let mut s = host
+            .session
+            .lock()
+            .map_err(|_| from_err("DREAMSCAPE_LOCK", "lock poisoned", true))?;
+        s.frozen = frozen;
+        (to_dto_rev(&s, rev), s.clone())
+    };
+    // 冻结/解冻是用户可见状态，必须与其他变更一样落盘（旧版重启即丢）。
+    persist_cloned(host, &copy)?;
+    Ok(dto)
 }
 
 /// 推进逻辑时间（1 tick = 1 逻辑分钟，§30；调用频率由下篇集成决定）。
@@ -203,10 +222,15 @@ pub fn dreamscape_advance(
 ) -> CmdResult<DreamscapeStateDto> {
     let host = &state.dreamscape;
     let rev = host.bump();
-    let mut s = host.session.lock().expect("dreamscape lock");
-    s.advance(ticks.min(24 * 60 * 365)); // 单次上限：一年逻辑时间
-    let dto = to_dto_rev(&s, rev);
-    let _ = host.persist(&s);
+    let (dto, copy) = {
+        let mut s = host
+            .session
+            .lock()
+            .map_err(|_| from_err("DREAMSCAPE_LOCK", "lock poisoned", true))?;
+        s.advance(ticks.min(24 * 60 * 365)); // 单次上限：一年逻辑时间
+        (to_dto_rev(&s, rev), s.clone())
+    };
+    persist_cloned(host, &copy)?;
     Ok(dto)
 }
 
@@ -216,7 +240,10 @@ pub fn dreamscape_manifest(
     state: tauri::State<'_, crate::ipc::AppState>,
 ) -> CmdResult<aura_synth::manifest::LightField> {
     let host = &state.dreamscape;
-    let s = host.session.lock().expect("dreamscape lock");
+    let s = host
+        .session
+        .lock()
+        .map_err(|_| from_err("DREAMSCAPE_LOCK", "lock poisoned", true))?;
     Ok(s.field())
 }
 
@@ -228,11 +255,16 @@ pub fn dreamscape_regenerate(
 ) -> CmdResult<DreamscapeStateDto> {
     let host = &state.dreamscape;
     let rev = host.bump();
-    let mut s = host.session.lock().expect("dreamscape lock");
-    let tick = s.environment.tick;
-    s.regenerate(&input, tick);
-    let dto = to_dto_rev(&s, rev);
-    let _ = host.persist(&s);
+    let (dto, copy) = {
+        let mut s = host
+            .session
+            .lock()
+            .map_err(|_| from_err("DREAMSCAPE_LOCK", "lock poisoned", true))?;
+        let tick = s.environment.tick;
+        s.regenerate(&input, tick);
+        (to_dto_rev(&s, rev), s.clone())
+    };
+    persist_cloned(host, &copy)?;
     Ok(dto)
 }
 
@@ -240,7 +272,10 @@ pub fn dreamscape_regenerate(
 #[tauri::command]
 pub fn dreamscape_export_seed(state: tauri::State<'_, crate::ipc::AppState>) -> CmdResult<String> {
     let host = &state.dreamscape;
-    let s = host.session.lock().expect("dreamscape lock");
+    let s = host
+        .session
+        .lock()
+        .map_err(|_| from_err("DREAMSCAPE_LOCK", "lock poisoned", true))?;
     Ok(s.export_seed())
 }
 
@@ -252,12 +287,17 @@ pub fn dreamscape_import_seed(
 ) -> CmdResult<DreamscapeStateDto> {
     let host = &state.dreamscape;
     let rev = host.bump();
-    let mut s = host.session.lock().expect("dreamscape lock");
-    let tick = s.environment.tick;
-    s.import_seed(&input, tick)
-        .map_err(|_| AppError::new("INVALID_SEED", "invalid dreamscape seed", false))?;
-    let dto = to_dto_rev(&s, rev);
-    let _ = host.persist(&s);
+    let (dto, copy) = {
+        let mut s = host
+            .session
+            .lock()
+            .map_err(|_| from_err("DREAMSCAPE_LOCK", "lock poisoned", true))?;
+        let tick = s.environment.tick;
+        s.import_seed(&input, tick)
+            .map_err(|_| AppError::new("INVALID_SEED", "invalid dreamscape seed", false))?;
+        (to_dto_rev(&s, rev), s.clone())
+    };
+    persist_cloned(host, &copy)?;
     Ok(dto)
 }
 
@@ -265,9 +305,15 @@ pub fn dreamscape_import_seed(
 #[tauri::command]
 pub fn dreamscape_save_snapshot(state: tauri::State<'_, crate::ipc::AppState>) -> CmdResult<()> {
     let host = &state.dreamscape;
-    let s = host.session.lock().expect("dreamscape lock");
-    host.persist(&s)
-        .map_err(|e| from_err("SETTINGS_WRITE", e, true))
+    let copy = {
+        let s = host
+            .session
+            .lock()
+            .map_err(|_| from_err("DREAMSCAPE_LOCK", "lock poisoned", true))?;
+        s.clone()
+    };
+    // 与自动持久化同一错误码；旧版误用 SETTINGS_WRITE 且持锁做磁盘 IO。
+    persist_cloned(host, &copy)
 }
 
 /// 恢复快照（§81；缺失/损坏/版本不支持 → 各自结构化错误码）。
@@ -283,7 +329,10 @@ pub fn dreamscape_restore_snapshot(
     snap.validate().map_err(restore_err)?;
     let restored = DreamscapeSession::restore(&snap).map_err(restore_err)?;
     let rev = host.bump();
-    let mut s = host.session.lock().expect("dreamscape lock");
+    let mut s = host
+        .session
+        .lock()
+        .map_err(|_| from_err("DREAMSCAPE_LOCK", "lock poisoned", true))?;
     *s = restored;
     Ok(to_dto_rev(&s, rev))
 }
@@ -297,7 +346,10 @@ pub fn dreamscape_set_camera(
     distance: f32,
 ) -> CmdResult<()> {
     let host = &state.dreamscape;
-    let mut s = host.session.lock().expect("dreamscape lock");
+    let mut s = host
+        .session
+        .lock()
+        .map_err(|_| from_err("DREAMSCAPE_LOCK", "lock poisoned", true))?;
     s.camera = CameraState {
         yaw: yaw.rem_euclid(std::f32::consts::TAU),
         pitch: pitch.clamp(-0.2, 1.2),

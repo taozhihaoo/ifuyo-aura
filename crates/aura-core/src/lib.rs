@@ -7,7 +7,8 @@
 //!
 //! M1 实装范围：解码（FLAC 真实路径 + synthetic source）、重采样、SPSC ring buffer、
 //! 基础播放时钟/位置/状态机、seek、generation 陈旧样本拒绝、音量与 10ms 平滑、
-//! underrun 处理、错误模型。M2+（gapless/crossfade/loudness/EQ）一律未实现。
+//! underrun 处理、错误模型。M2 起已实装 gapless / crossfade / loudness / EQ /
+//! 传输淡变与设备热插拔恢复；后续变更见 ARCHITECTURE.md 与 PROGRESS.md。
 
 pub mod audio;
 pub mod decoder;

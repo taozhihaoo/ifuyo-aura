@@ -131,7 +131,11 @@ export function MapToolbar({
         {resultCount !== null && (
           <span className="map-search-count">
             {resultCount > 1 && (
-              <button className="ghost-btn small" onClick={cycle}>
+              <button
+                className="ghost-btn small"
+                onClick={cycle}
+                aria-label={t('map.nextResult')}
+              >
                 ⤵
               </button>
             )}
@@ -190,7 +194,7 @@ export function MapToolbar({
         {building && (
           <>
             <span className="map-status-line building">{status?.message ?? t('map.building')}</span>
-            <button className="ghost-btn" onClick={() => void ipc.cancelMapBuild()}>
+            <button className="ghost-btn" onClick={() => void ipc.cancelMapBuild().catch(() => undefined)}>
               {t('map.cancelBuild')}
             </button>
           </>

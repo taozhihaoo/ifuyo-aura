@@ -147,13 +147,12 @@ impl NetworkAudioStream {
     fn shutdown_core(&self, error: SourceError) {
         self.core.cancel.store(true, Ordering::Relaxed);
         // 块间（feeder 未持有 response 时）可立即拿到；mid-read 时等当前块。
-        if let Ok(mut slot) = self.core.slot.lock() {
-            *slot = None;
-        }
-        if let Ok(mut st) = self.core.state.lock() {
-            st.feeder_done = true;
-            st.error = Some(error);
-        }
+        // 锁中毒也必须完成清理：否则 response 不被取走、socket 不关闭、
+        // feeder_done/error 不置位，消费者只能干等到 idle_timeout。
+        *self.core.slot.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        let mut st = self.core.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.feeder_done = true;
+        st.error = Some(error);
         self.core.cv.notify_all();
     }
 
@@ -166,11 +165,9 @@ impl NetworkAudioStream {
         }
         // 1) 关闭旧响应 + 置换代。
         self.core.cancel.store(true, Ordering::Relaxed);
-        if let Ok(mut slot) = self.core.slot.lock() {
-            *slot = None;
-        }
+        *self.core.slot.lock().unwrap_or_else(|e| e.into_inner()) = None;
         {
-            let mut st = self.core.state.lock().expect("state lock");
+            let mut st = self.core.state.lock().unwrap_or_else(|e| e.into_inner());
             st.buffer.clear();
             st.feeder_done = false;
             st.error = None;
@@ -199,7 +196,7 @@ impl NetworkAudioStream {
         self.core.cancel.store(false, Ordering::Relaxed);
         let new_gen = self.core.generation.load(Ordering::Relaxed) + 1;
         self.core.generation.store(new_gen, Ordering::Relaxed);
-        *self.core.slot.lock().expect("slot lock") = Some(Box::new(resp));
+        *self.core.slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(resp));
         spawn_feeder(Arc::clone(&self.core), new_gen);
         Ok(())
     }
@@ -258,10 +255,10 @@ impl Read for NetworkAudioStream {
             return Ok(0);
         }
         let n = loop {
-            let st = self.core.state.lock().expect("state lock");
+            let st = self.core.state.lock().unwrap_or_else(|e| e.into_inner());
             match Self::wait_once(&self.core, st) {
                 WaitOnce::Data => {
-                    let mut st = self.core.state.lock().expect("state lock");
+                    let mut st = self.core.state.lock().unwrap_or_else(|e| e.into_inner());
                     let n = out.len().min(st.buffer.len());
                     for b in out.iter_mut().take(n) {
                         *b = st.buffer.pop_front().unwrap_or(0);
@@ -295,7 +292,12 @@ impl Seek for NetworkAudioStream {
         let target = match pos {
             SeekFrom::Start(p) => p,
             SeekFrom::Current(d) => {
-                let cur = self.core.state.lock().expect("state lock").consumed;
+                let cur = self
+                    .core
+                    .state
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .consumed;
                 if d >= 0 {
                     cur + d as u64
                 } else {
@@ -330,9 +332,21 @@ fn map_to_io(e: SourceError) -> std::io::Error {
 }
 
 fn spawn_feeder(core: Arc<StreamCore>, generation: u64) {
-    let _ = std::thread::Builder::new()
+    let core_for_thread = Arc::clone(&core);
+    let spawned = std::thread::Builder::new()
         .name(format!("aura-net-feeder-{generation}"))
-        .spawn(move || feeder_loop(&core, generation));
+        .spawn(move || feeder_loop(&core_for_thread, generation));
+    if let Err(e) = spawned {
+        // feeder 没起来就必须置 feeder_done + error 并唤醒等待者，
+        // 否则 read() 只能空转到 idle_timeout 才返回（旧版静默吞掉）。
+        let mut st = core.state.lock().unwrap_or_else(|p| p.into_inner());
+        st.feeder_done = true;
+        st.error = Some(SourceError::NetworkError {
+            reason: format!("feeder thread spawn failed: {e}"),
+        });
+        drop(st);
+        core.cv.notify_all();
+    }
 }
 
 fn feeder_loop(core: &Arc<StreamCore>, generation: u64) {
@@ -362,7 +376,7 @@ fn feeder_loop(core: &Arc<StreamCore>, generation: u64) {
 
         // 背压（§62）：缓冲满时不读，放回所有权并让出。
         let space = {
-            let st = core.state.lock().expect("state lock");
+            let st = core.state.lock().unwrap_or_else(|e| e.into_inner());
             core.capacity.saturating_sub(st.buffer.len())
         };
         if space == 0 {
@@ -383,7 +397,7 @@ fn feeder_loop(core: &Arc<StreamCore>, generation: u64) {
         {
             return;
         }
-        let mut st = core.state.lock().expect("state lock");
+        let mut st = core.state.lock().unwrap_or_else(|e| e.into_inner());
         match read {
             Ok(0) => {
                 st.feeder_done = true;

@@ -50,15 +50,22 @@ export function MiniPlayer() {
   const playing = snapshot?.state === 'playing';
 
   useEffect(() => {
-    // 关闭 mini = 隐藏窗口，不停止播放（§113）。
-    const win = (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
-    void win;
-    void import('@tauri-apps/api/webviewWindow').then(({ getCurrentWebviewWindow }) => {
-      void getCurrentWebviewWindow().onCloseRequested((e) => {
+    // 关闭 mini = 隐藏窗口，不停止播放（§113）。保存 unlisten 并在
+    // cleanup 注销，避免 StrictMode 双挂载残留两个处理器。
+    let cancelled = false;
+    let off: (() => void) | null = null;
+    void import('@tauri-apps/api/webviewWindow').then(async ({ getCurrentWebviewWindow }) => {
+      const fn = await getCurrentWebviewWindow().onCloseRequested((e) => {
         e.preventDefault();
         void getCurrentWebviewWindow().hide();
       });
+      if (cancelled) fn();
+      else off = fn;
     });
+    return () => {
+      cancelled = true;
+      off?.();
+    };
   }, []);
 
   return (

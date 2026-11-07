@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePlayerStore } from '../../state/stores';
 import { ipc } from '../../ipc/client';
+import { lyricsForPath } from '../../ipc/remoteLyrics';
 import { useTranslation } from '../../i18n/react';
 import { useArtwork, useCurrentTrackId } from '../../components/Artwork';
 import { formatDuration, safeProgress, clampNumber, fileBaseName } from '../../ui/format';
@@ -15,6 +16,7 @@ import {
 } from '../queue/QueueDrawer';
 import { toast, useSettingsStore } from '../../state/stores';
 import type { LyricsDto, TrackMetaDto } from '../../ipc/client';
+import { reportIpcError } from '../../ipc/errors';
 
 const MODE_ICON: Record<PlayMode, string> = {
   order: '→',
@@ -66,7 +68,7 @@ export function NowPlayingPage() {
     const v = Number(e.target.value);
     base.current = { at: performance.now(), pos: v, playing };
     setDisplayPos(v);
-    ipc.seek(v).catch(() => undefined);
+    ipc.seek(v).catch(reportIpcError);
   };
 
   // §35–§37：当前 track 的真实 artwork（path → id → data URL；M13.1 提取共用）。
@@ -76,28 +78,30 @@ export function NowPlayingPage() {
   const [meta, setMeta] = useState<TrackMetaDto | null>(null);
   const lyricListRef = useRef<HTMLDivElement>(null);
 
-  // M13.3：歌词 + 元数据随曲目加载（无歌词 → meta 回退面板）。
+  // M13.3：歌词 + 元数据随曲目加载。远程曲目的 trackPath 是 URL、没有本地
+  // TrackId，走 lyricsForPath 才不会让整块歌词区消失（与梦境/悬浮窗同解析器）。
+  const trackPath = snapshot?.trackPath ?? null;
   useEffect(() => {
     setLyrics(null);
     setMeta(null);
-    if (trackId === null) return;
     let alive = true;
-    void ipc
-      .lyricsForTrack(trackId)
+    void lyricsForPath(trackPath)
       .then((l) => {
         if (alive) setLyrics(l);
       })
-      .catch(() => undefined);
-    void ipc
-      .trackMeta(trackId)
-      .then((m) => {
-        if (alive) setMeta(m);
-      })
-      .catch(() => undefined);
+      .catch(reportIpcError);
+    if (trackId !== null) {
+      void ipc
+        .trackMeta(trackId)
+        .then((m) => {
+          if (alive) setMeta(m);
+        })
+        .catch(reportIpcError);
+    }
     return () => {
       alive = false;
     };
-  }, [trackId]);
+  }, [trackPath, trackId]);
 
   // M13.3：当前歌词行（最后一个 time<=当前进度的行）+ 平滑居中滚动。
   let activeIdx = -1;
@@ -176,7 +180,7 @@ export function NowPlayingPage() {
           className="ctl-btn"
           aria-label={t('controls.previous')}
           title={t('controls.previous')}
-          onClick={() => void playPrevious().catch(() => undefined)}
+          onClick={() => void playPrevious().catch(reportIpcError)}
         >
           ⏮
         </button>
@@ -186,14 +190,14 @@ export function NowPlayingPage() {
           aria-label={playing ? t('controls.pause') : t('controls.play')}
           title={playing ? t('controls.pause') : t('controls.play')}
           onClick={() =>
-            (playing ? ipc.pause() : ipc.play()).catch(() => undefined)
+            (playing ? ipc.pause() : ipc.play()).catch(reportIpcError)
           }
         />
         <button
           className="ctl-btn"
           aria-label={t('controls.stop')}
           title={t('controls.stop')}
-          onClick={() => ipc.stop().catch(() => undefined)}
+          onClick={() => ipc.stop().catch(reportIpcError)}
         >
           ⏹
         </button>
@@ -201,7 +205,7 @@ export function NowPlayingPage() {
           className="ctl-btn"
           aria-label={t('controls.next')}
           title={t('controls.next')}
-          onClick={() => void playNext().catch(() => undefined)}
+          onClick={() => void playNext().catch(reportIpcError)}
         >
           ⏭
         </button>
@@ -212,44 +216,44 @@ export function NowPlayingPage() {
             min={0}
             max={1}
             step={0.01}
-            defaultValue={clampNumber(snapshot?.volume ?? 1, 0, 1)}
-            onChange={(e) => ipc.setVolume(clampNumber(Number(e.target.value), 0, 1)).catch(() => undefined)}
+            value={clampNumber(snapshot?.volume ?? 1, 0, 1)}
+            onChange={(e) => ipc.setVolume(clampNumber(Number(e.target.value), 0, 1)).catch(reportIpcError)}
             aria-label={t('controls.volume')}
           />
         </label>
       </div>
       </div>
-      {lyrics && (
-        <aside className="np-lyrics" aria-label={t('np.lyrics')}>
-          <div ref={lyricListRef}>
-            {lyrics.lines.map((l, i) => {
-              const synced = l.timeSeconds !== null;
-              return (
-                <p
-                  key={`${i}-${l.text}`}
-                  data-line={i}
-                  className={`np-lyric-line${synced ? ' synced' : ''}${i === activeIdx ? ' active' : ''}`}
-                  onClick={
-                    synced
-                      ? () => {
-                          base.current = {
-                            at: performance.now(),
-                            pos: l.timeSeconds ?? 0,
-                            playing,
-                          };
-                          setDisplayPos(l.timeSeconds ?? 0);
-                          ipc.seek(l.timeSeconds ?? 0).catch(() => undefined);
-                        }
-                      : undefined
-                  }
-                >
-                  {l.text || '♪'}
-                </p>
-              );
-            })}
-          </div>
-        </aside>
-      )}
+      <aside className="np-lyrics" aria-label={t('np.lyrics')}>
+        <div ref={lyricListRef}>
+          {lyrics && lyrics.lines.length > 0
+            ? lyrics.lines.map((l, i) => {
+                const synced = l.timeSeconds !== null;
+                return (
+                  <p
+                    key={`${i}-${l.text}`}
+                    data-line={i}
+                    className={`np-lyric-line${synced ? ' synced' : ''}${i === activeIdx ? ' active' : ''}`}
+                    onClick={
+                      synced
+                        ? () => {
+                            base.current = {
+                              at: performance.now(),
+                              pos: l.timeSeconds ?? 0,
+                              playing,
+                            };
+                            setDisplayPos(l.timeSeconds ?? 0);
+                            ipc.seek(l.timeSeconds ?? 0).catch(reportIpcError);
+                          }
+                        : undefined
+                    }
+                  >
+                    {l.text || '♪'}
+                  </p>
+                );
+              })
+            : <p className="np-lyric-line">{t('lyrics.none')}</p>}
+        </div>
+      </aside>
     </section>
   );
 }

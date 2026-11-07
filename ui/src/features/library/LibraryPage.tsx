@@ -2,9 +2,10 @@
 // + 分页（§85）+ 扫描进度（§88/§89）+ 空态/错误态（§91/§92）。
 import { useEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useLibraryStore, usePlayerStore, useSettingsStore, useUiStore } from '../../state/stores';
+import { useLibraryStore, usePlayerStore, useSettingsStore, useUiStore, toast } from '../../state/stores';
 import { requestMapFocus } from '../map/mapBus';
 import { ipc } from '../../ipc/client';
+import { errorToI18nKey, reportIpcError } from '../../ipc/errors';
 import type { ScanProgress, SortKey, TrackSummary } from '../../ipc/types';
 import { useTranslation } from '../../i18n/react';
 import { formatDuration, trackTitle } from '../../ui/format';
@@ -32,7 +33,7 @@ const normPath = (p: string) => p.replace(/^\\\\\?\\/, '').toLowerCase();
 
 function playTrackRow(track: TrackSummary, tracks: TrackSummary[]) {
   playWithQueueContext(track, tracks);
-  void ipc.playTrack(track.id).catch(() => undefined);
+  void ipc.playTrack(track.id).catch(reportIpcError);
 }
 
 export function LibraryPage() {
@@ -175,7 +176,9 @@ export function LibraryPage() {
     if (!dialog) return;
     const picked = await dialog.open({ directory: true }).catch(() => null);
     if (typeof picked === 'string') {
-      await ipc.scanFolder(picked).catch(() => undefined);
+      await ipc
+        .scanFolder(picked)
+        .catch((err) => toast(errorToI18nKey(err), 'error'));
     }
   };
 
@@ -220,9 +223,21 @@ export function LibraryPage() {
               failed: scan.failed,
             })}
           </span>
-          <button className="btn" onClick={() => void ipc.cancelScan()}>
+          <button
+            className="btn"
+            onClick={() =>
+              void ipc.cancelScan().catch((err) => toast(errorToI18nKey(err), 'error'))
+            }
+          >
             {t('library.cancelScan')}
           </button>
+        </div>
+      )}
+
+      {/* Rust 侧扫描失败会带 error；done=true 不再等于「扫描成功」。 */}
+      {scan?.error && (
+        <div className="state-error" role="alert">
+          {t('error.scanFailed')}
         </div>
       )}
 

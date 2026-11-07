@@ -49,7 +49,7 @@ export function TitleBar() {
         ))}
       </nav>
       <div className="titlebar-actions" data-tauri-drag-region>
-        <button className="icon-btn" onClick={() => setPaletteOpen(true)} aria-label="Ctrl+K" title="Ctrl+K">
+        <button className="icon-btn" onClick={() => setPaletteOpen(true)} aria-label={t('palette.open')} title="Ctrl+K">
           ⌘
         </button>
         <button className="icon-btn" onClick={() => setSettingsOpen(true)} aria-label={t('settings.title')} title={t('settings.title')}>

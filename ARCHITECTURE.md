@@ -1,7 +1,9 @@
 # ARCHITECTURE
 
-> 状态：Phase 0 基线。crate 均为空骨架，本文件描述的是**目标边界**，M0 起逐阶段填充实现。
-> Status: Phase 0 baseline. All crates are empty skeletons; this file describes target boundaries, filled in from M0 onward.
+> 状态：M15b（2026-11）。各 crate 均已实装，本文按里程碑增量记录**当前架构**；
+> 里程碑进度见 [PROGRESS.md](PROGRESS.md)，功能状态见 [README.md](README.md)。
+> 若本文与代码不一致，以代码为准并同步修订本文。
+> Status: M15b (2026-11). All crates are implemented; this file records the current architecture incrementally by milestone. See PROGRESS.md / README.md for status; in case of divergence, the code is authoritative.
 
 ## 总体分层
 

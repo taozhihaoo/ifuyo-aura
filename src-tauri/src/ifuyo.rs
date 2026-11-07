@@ -68,7 +68,7 @@ pub struct IfuyoTrackDto {
 pub struct IfuyoListDto {
     pub generated_at: Option<String>,
     pub tracks: Vec<IfuyoTrackDto>,
-    /// 被丢弃的条数（不可播 URL / 重复 URL），如实上报而不是静默消失。
+    /// 被丢弃的条数（不可播 URL / 重复 URL / 超上限截断），如实上报而不是静默消失。
     pub skipped: usize,
     /// 超过上限被截断（大清单在 UI 上必须看得出来是不完整的）。
     pub truncated: bool,
@@ -113,12 +113,19 @@ fn extension_like(ext: &str) -> bool {
 }
 
 fn percent_decode(s: &str) -> String {
+    // 全程按**字节**处理：`&s[i + 1..i + 3]` 这种对 &str 的字节切片在
+    // 多字节字符中间会 panic（byte index is not a char boundary）。清单
+    // URL 来自远端，畸形标题（如 `青%瓷.mp3`）足以触发；改为对字节切片
+    // 做 UTF-8 校验后再解析十六进制，任何非法序列都退化成原样透传。
     let bytes = s.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+            let decoded = std::str::from_utf8(&bytes[i + 1..i + 3])
+                .ok()
+                .and_then(|hex| u8::from_str_radix(hex, 16).ok());
+            if let Some(v) = decoded {
                 out.push(v);
                 i += 3;
                 continue;
@@ -146,7 +153,7 @@ fn build_list(
     let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
     let mut skipped = 0usize;
     let mut truncated = false;
-    for t in &raw.tracks {
+    for (idx, t) in raw.tracks.iter().enumerate() {
         if t.url.trim().is_empty() || !is_playable(&t.url) || !seen.insert(t.url.as_str()) {
             // 不可播（私网/凭据/非法 scheme/封锁表）与重复 URL 都不进列表。
             skipped += 1;
@@ -154,6 +161,9 @@ fn build_list(
         }
         if tracks.len() >= cap {
             truncated = true;
+            // 被截断丢弃的剩余条目也必须计入 skipped，否则大清单会显示
+            // 「skipped: 0, truncated: true」而实际丢了几千首。
+            skipped += raw.tracks.len() - idx;
             break;
         }
         let lyrics = t
@@ -464,5 +474,29 @@ mod tests {
             clip_meta(Some(ascii)).expect("clip2").len(),
             SecurityLimits::MAX_METADATA_CHARS
         );
+    }
+
+    /// percent_decode 曾按字节切片 &str，`%` 后紧跟多字节字符会触发
+    /// char-boundary panic（清单 URL 来自远端，畸形标题足以让整个列表
+    /// 打不开）。改为纯字节处理后必须安全退化。
+    #[test]
+    fn percent_decode_is_utf8_boundary_safe() {
+        assert_eq!(percent_decode("a%20b%2Fc"), "a b/c");
+        assert_eq!(percent_decode("%E9%9D%92%E7%93%B7"), "青瓷");
+
+        let malformed = "青%瓷.mp3";
+        let decoded = percent_decode(malformed);
+        assert!(
+            decoded.contains('青') && decoded.contains('瓷'),
+            "多字节字符不得丢失：{decoded}"
+        );
+
+        // 残缺 / 非法十六进制原样透传，不 panic。
+        assert_eq!(percent_decode("abc%"), "abc%");
+        assert_eq!(percent_decode("a%GGb"), "a%GGb");
+        // 合法的 %XX 段照常解码，只有残缺的尾部 % 保留；整体是有效字符串。
+        let partial = percent_decode("%E4%B8%");
+        assert!(partial.ends_with('%'), "残缺尾部 % 应保留：{partial}");
+        assert!(!partial.is_empty());
     }
 }

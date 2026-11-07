@@ -136,12 +136,24 @@ pub fn is_ip_private(ip: &IpAddr) -> bool {
             )
         }
         IpAddr::V6(v6) => {
+            // IPv4-mapped / IPv4-compatible 形式把 IPv4 地址塞进 IPv6 字面量
+            // （例如 `::ffff:127.0.0.1`）。它的 seg[0] 是 0，既不是 ::1 也
+            // 不落在 fc00::/7，直接放行会让 §17/§18 的私网门禁被绕过
+            // （SSRF）。提取内嵌 IPv4 后递归走同一套 V4 判定。
+            if let Some(v4) = v6.to_ipv4() {
+                return is_ip_private(&IpAddr::V4(v4));
+            }
             let seg = v6.segments();
             v6.is_loopback()
                 || v6.is_unspecified()
                 || (seg[0] & 0xfe00) == 0xfc00   // fc00::/7 unique local
                 || (seg[0] & 0xffc0) == 0xfe80   // fe80::/10 link local
                 || (seg[0] & 0xff00) == 0xff00 // multicast
+                // 可封装 IPv4 的过渡前缀：保守拒绝，避免把内网地址藏进
+                // 隧道地址绕过复检（正常公网 IPv6 不使用这些前缀）。
+                || seg[0] == 0x2002                              // 6to4 2002::/16
+                || (seg[0] == 0x2001 && seg[1] == 0x0000)       // Teredo 2001:0::/32
+                || (seg[0] == 0x0064 && seg[1] == 0xff9b && seg[2] == 0x0000) // NAT64
         }
     }
 }
@@ -289,5 +301,43 @@ mod tests {
         let r = redact_url("https://user:pw@example.com/path?a=secret&token=x#frag");
         assert_eq!(r, "https://example.com/path");
         assert!(!r.contains("secret"));
+    }
+
+    /// §18 SSRF 回归：IPv4-mapped / IPv4-compatible IPv6 字面量必须按内嵌
+    /// IPv4 判定，不能因为 seg[0]==0 就绕过私网门禁。
+    #[test]
+    fn ipv4_mapped_ipv6_privates_are_rejected() {
+        for ip in [
+            "::ffff:127.0.0.1",
+            "::ffff:10.0.0.1",
+            "::ffff:192.168.1.1",
+            "::ffff:169.254.169.254",
+            "::127.0.0.1",
+        ] {
+            let parsed: std::net::IpAddr = ip.parse().expect("parse ip");
+            assert!(is_ip_private(&parsed), "{ip} must be treated as private");
+        }
+        // URL host 字符串层（带方括号）同样拒绝。
+        assert!(is_private_host("[::ffff:127.0.0.1]"));
+    }
+
+    /// 公网 mapped 地址不能误伤。
+    #[test]
+    fn ipv4_mapped_ipv6_public_still_allowed() {
+        let parsed: std::net::IpAddr = "::ffff:8.8.8.8".parse().expect("parse ip");
+        assert!(!is_ip_private(&parsed));
+    }
+
+    /// 可封装 IPv4 的过渡前缀保守拒绝，防止内网地址藏进隧道。
+    #[test]
+    fn ipv4_tunnel_prefixes_are_rejected() {
+        for ip in [
+            "2002:0a00:0001::1",    // 6to4
+            "2001:0000:1234::1",    // Teredo
+            "64:ff9b::192.168.1.1", // NAT64
+        ] {
+            let parsed: std::net::IpAddr = ip.parse().expect("parse ip");
+            assert!(is_ip_private(&parsed), "{ip} must be rejected");
+        }
     }
 }

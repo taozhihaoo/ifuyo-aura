@@ -9,6 +9,7 @@ import { useTranslation } from '../../i18n/react';
 import { useArtwork, useCurrentTrackId } from '../../components/Artwork';
 import { clampNumber, fileBaseName } from '../../ui/format';
 import { cyclePlayMode, playNext, playPrevious, usePlayMode, type PlayMode } from '../queue/QueueDrawer';
+import { reportIpcError } from '../../ipc/errors';
 
 const MODE_ICON: Record<PlayMode, string> = {
   order: '→',
@@ -65,7 +66,7 @@ export function PlayerBar() {
   const seek = (v: number) => {
     base.current = { at: performance.now(), pos: v, playing };
     setDisplayPos(v);
-    ipc.seek(v).catch(() => undefined);
+    ipc.seek(v).catch(reportIpcError);
   };
 
   const cycleMode = () => {
@@ -104,7 +105,7 @@ export function PlayerBar() {
             className="icon-btn"
             aria-label={t('controls.previous')}
             title={t('controls.previous')}
-            onClick={() => void playPrevious().catch(() => undefined)}
+            onClick={() => void playPrevious().catch(reportIpcError)}
           >
             ⏮
           </button>
@@ -113,13 +114,13 @@ export function PlayerBar() {
             key={playing ? 'playing' : 'paused'}
             aria-label={playing ? t('controls.pause') : t('controls.play')}
             title={playing ? t('controls.pause') : t('controls.play')}
-            onClick={() => (playing ? ipc.pause() : ipc.play()).catch(() => undefined)}
+            onClick={() => (playing ? ipc.pause() : ipc.play()).catch(reportIpcError)}
           />
           <button
             className="icon-btn"
             aria-label={t('controls.next')}
             title={t('controls.next')}
-            onClick={() => void playNext().catch(() => undefined)}
+            onClick={() => void playNext().catch(reportIpcError)}
           >
             ⏭
           </button>
@@ -167,8 +168,8 @@ export function PlayerBar() {
             min={0}
             max={1}
             step={0.01}
-            defaultValue={clampNumber(snapshot?.volume ?? 1, 0, 1)}
-            onChange={(e) => ipc.setVolume(clampNumber(Number(e.target.value), 0, 1)).catch(() => undefined)}
+            value={clampNumber(snapshot?.volume ?? 1, 0, 1)}
+            onChange={(e) => ipc.setVolume(clampNumber(Number(e.target.value), 0, 1)).catch(reportIpcError)}
             aria-label={t('controls.volume')}
           />
         </label>

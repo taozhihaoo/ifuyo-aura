@@ -1,6 +1,6 @@
 // Typed IPC client（§11）：invoke 封装 + AppError 归一。
 import { invoke } from '@tauri-apps/api/core';
-import { isAppError, type AnalysisProgress, type AnalysisStatus, type AppSettings, type PlayerLevel, type PlayerSnapshot, type ScanProgress, type SortKey, type TrackFeatures, type TrackSummary } from './types';
+import { isAppError, isAppSettings, type AnalysisProgress, type AnalysisStatus, type AppSettings, type PlayerLevel, type PlayerSnapshot, type ScanProgress, type SortKey, type TrackFeatures, type TrackSummary } from './types';
 import { isDreamscapeState, isLightField, type DreamscapeStateDto, type LightField } from './dreamscape';
 import { isIfuyoList, type IfuyoList } from './ifuyo';
 import {
@@ -70,7 +70,13 @@ export const ipc = {
       brightness: num('brightness'),
     };
   },
-  getSettings: () => call<AppSettings>('get_settings'),
+  getSettings: async (): Promise<AppSettings> => {
+    const s = await call<unknown>('get_settings');
+    if (!isAppSettings(s)) {
+      throw { code: 'SETTINGS_CORRUPT', message: 'invalid settings payload', recoverable: false };
+    }
+    return s;
+  },
   saveSettings: (settings: AppSettings) => call<void>('save_settings', { settings }),
   listenScanProgress: (cb: (p: ScanProgress) => void) =>
     import('@tauri-apps/api/event').then(({ listen }) =>
