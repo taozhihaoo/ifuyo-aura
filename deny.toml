@@ -31,16 +31,20 @@ yanked = "warn"
 # 传递依赖「不再维护」类 advisory（非漏洞）：
 # - RUSTSEC-2024-0436 paste：经 lofty（M3 元数据）引入，上游未发修复版本
 # - RUSTSEC-2024-0370 proc-macro-error：经 derive 栈引入，上游不可达
-# - RUSTSEC-2026-0370 / -0372 zvariant(_derive)：经
-#   tauri-plugin-single-instance v2.5 → zbus v5 引入（zbus 也是其 Linux 后端，
-#   无法按平台裁掉）。上游已把 zvariant 合并进 zbus 6 的 wire 模块，Tauri
-#   插件尚未跟进 zbus 6，故无安全升级路径；unmaintained ≠ 漏洞。
+# - RUSTSEC-2026-0370 / -0372 zvariant(_derive)、RUSTSEC-2026-0371 zbus_names：
+#   经 tauri-plugin-single-instance v2.5 → zbus v5 引入（zbus 也是其 Linux
+#   后端，无法按平台裁掉）。上游已把三者并入/重构进 zbus 6，Tauri 插件尚未
+#   跟进 zbus 6，故无安全升级路径；unmaintained ≠ 漏洞。
+# - RUSTSEC-2024-0429 glib unsound：Linux/GTK 传递依赖（Windows 构建不编译
+#   该路径）；修复需 gtk-rs 0.19+，随 Tauri 生态整体升级，当前无独立升级路径。
 # 处置：跟随上游；升级路径在 DECISIONS.md 记录（2026-10-05 M6 门禁）。
 ignore = [
   "RUSTSEC-2024-0436",
   "RUSTSEC-2024-0370",
   "RUSTSEC-2026-0370",
+  "RUSTSEC-2026-0371",
   "RUSTSEC-2026-0372",
+  "RUSTSEC-2024-0429",
 ]
 
 [sources]

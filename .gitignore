@@ -44,6 +44,9 @@ credentials*.json
 !crates/aura-library/tests/fixtures/*.mp3
 !crates/aura-library/tests/fixtures/*.ogg
 !crates/aura-library/tests/fixtures/*.wav
+# CUE 整轨导入测试专用：10s/8kHz 合成正弦波（无版权），按 2s 切 6 条子轨。
+# 只放行这一个文件，不整目录放开（防用户音乐误入库）。
+!tests/fixtures/fixture-cue.flac
 *.m4a
 *.ogg
 *.opus
