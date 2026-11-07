@@ -16,8 +16,12 @@ use aura_sources::url_policy::NetworkPolicy;
 use common::FakeHttp;
 
 fn fixtures(name: &str) -> PathBuf {
+    // 复用 aura-library 已跟踪的合成夹具（同一次生成、md5 相同的
+    // 0.25s/8kHz 正弦波）。此前指向 aura-sources/tests/fixtures 的本地副本，
+    // 那份被 .gitignore 的 *.flac 挡在版本控制外 → 本地通过、CI checkout
+    // 后找不到文件。指向唯一权威副本，避免再提交重复二进制。
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures")
+        .join("../aura-library/tests/fixtures")
         .join(name)
 }
 
