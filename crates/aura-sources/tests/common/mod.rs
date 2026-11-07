@@ -172,7 +172,9 @@ fn handle_conn(
     requests: &Mutex<Vec<String>>,
     heads: &Mutex<Vec<String>>,
 ) {
-    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    // CI 并行负载下 accept 与客户端发出请求之间可能有秒级调度延迟；
+    // 5s 曾在 windows-latest 上把「请求头还没到」误判成空请求（见下方守卫）。
+    stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
     // 读请求头（简化：读到 CRLFCRLF）。
     let mut buf = Vec::with_capacity(1024);
     let mut chunk = [0u8; 512];
@@ -199,6 +201,14 @@ fn handle_conn(
         .and_then(|l| l.split_once(':'))
         .map(|(_, v)| v.trim().to_string());
     let request_line = text.lines().next().unwrap_or("");
+    // 没有完整请求行（连接已 accept 但请求头未到达/只到半截）不是「路由
+    // 不存在」，而是连接层抖动。此时直接关连接，让客户端得到 NetworkError
+    // 并按测试的抖动重试路径重试；若继续拿空 path 去匹配，会返回 404，
+    // 上层归类成 InvalidResponse（不可重试），把环境抖动固化成假失败。
+    if request_line.split_whitespace().count() < 2 {
+        let _ = stream.shutdown(std::net::Shutdown::Both);
+        return;
+    }
     let path_full = request_line
         .split_whitespace()
         .nth(1)
