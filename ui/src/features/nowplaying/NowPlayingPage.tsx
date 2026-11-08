@@ -17,12 +17,13 @@ import {
 import { toast, useSettingsStore } from '../../state/stores';
 import type { LyricsDto, TrackMetaDto } from '../../ipc/client';
 import { reportIpcError } from '../../ipc/errors';
+import { Icon, type IconName } from '../../components/Icon';
 
-const MODE_ICON: Record<PlayMode, string> = {
-  order: '→',
-  repeatAll: '🔁',
-  repeatOne: '🔂',
-  shuffle: '🔀',
+const MODE_ICON: Record<PlayMode, IconName> = {
+  order: 'order',
+  repeatAll: 'repeatAll',
+  repeatOne: 'repeatOne',
+  shuffle: 'shuffle',
 };
 
 function fmtTime(sec: number | null | undefined): string {
@@ -132,10 +133,13 @@ export function NowPlayingPage() {
         {artwork.kind === 'loading' && <div className="artwork-loading skeleton" aria-busy />}
         {artwork.kind === 'loaded' && <img className="artwork-img" src={artwork.dataUrl} alt="" />}
         {(artwork.kind === 'missing' || artwork.kind === 'corrupt') && (
-          <div className="artwork-placeholder">♪</div>
+          <div className="artwork-placeholder"><Icon name="music" size={56} /></div>
         )}
       </div>
       <div className="np-info">
+        <div className="np-eyebrow" aria-hidden>
+          <span className="np-eyebrow-dot" /> {t('np.nowPlayingLabel')}
+        </div>
         <h1 className="np-title">
           {snapshot?.title?.trim() || (snapshot?.trackPath ? fileBaseName(snapshot.trackPath) : null) || t('np.noTrack')}
         </h1>
@@ -150,6 +154,7 @@ export function NowPlayingPage() {
         <span className="time">{fmtTime(displayPos)}</span>
         <input
           className="seek-bar"
+          style={{ '--seek-progress': `${Math.round(safeProgress(displayPos, duration) * 100)}%` } as React.CSSProperties}
           type="range"
           min={0}
           max={duration ?? 0}
@@ -174,7 +179,7 @@ export function NowPlayingPage() {
             toast(t(`playMode.${next}`), 'success');
           }}
         >
-          {MODE_ICON[playMode]}
+          <Icon name={MODE_ICON[playMode]} size={18} />
         </button>
         <button
           className="ctl-btn"
@@ -182,7 +187,7 @@ export function NowPlayingPage() {
           title={t('controls.previous')}
           onClick={() => void playPrevious().catch(reportIpcError)}
         >
-          ⏮
+          <Icon name="previous" size={20} />
         </button>
         <button
           className={`ctl-btn primary ${playing ? 'glyph-pause' : 'glyph-play'}${playing ? ' pop' : ''}`}
@@ -199,7 +204,7 @@ export function NowPlayingPage() {
           title={t('controls.stop')}
           onClick={() => ipc.stop().catch(reportIpcError)}
         >
-          ⏹
+          <Icon name="stop" size={18} />
         </button>
         <button
           className="ctl-btn"
@@ -207,10 +212,10 @@ export function NowPlayingPage() {
           title={t('controls.next')}
           onClick={() => void playNext().catch(reportIpcError)}
         >
-          ⏭
+          <Icon name="next" size={20} />
         </button>
         <label className="volume" title={t('controls.volume')}>
-          <span aria-hidden>🔊</span>
+          <span className="volume-icon" aria-hidden><Icon name="volume" size={17} /></span>
           <input
             type="range"
             min={0}

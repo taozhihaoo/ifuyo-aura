@@ -10,12 +10,13 @@ import { useArtwork, useCurrentTrackId } from '../../components/Artwork';
 import { clampNumber, fileBaseName } from '../../ui/format';
 import { cyclePlayMode, playNext, playPrevious, usePlayMode, type PlayMode } from '../queue/QueueDrawer';
 import { reportIpcError } from '../../ipc/errors';
+import { Icon, type IconName } from '../../components/Icon';
 
-const MODE_ICON: Record<PlayMode, string> = {
-  order: '→',
-  repeatAll: '🔁',
-  repeatOne: '🔂',
-  shuffle: '🔀',
+const MODE_ICON: Record<PlayMode, IconName> = {
+  order: 'order',
+  repeatAll: 'repeatAll',
+  repeatOne: 'repeatOne',
+  shuffle: 'shuffle',
 };
 
 function fmt(sec: number): string {
@@ -87,7 +88,7 @@ export function PlayerBar() {
           {artwork.kind === 'loaded' && <img className="pb-art-img" src={artwork.dataUrl} alt="" />}
           {artwork.kind === 'loading' && <span className="pb-art-glyph skeleton" aria-busy />}
           {(artwork.kind === 'missing' || artwork.kind === 'corrupt') && (
-            <span className="pb-art-glyph">♪</span>
+            <span className="pb-art-glyph"><Icon name="music" size={20} /></span>
           )}
         </span>
         <span className="pb-meta">
@@ -107,7 +108,7 @@ export function PlayerBar() {
             title={t('controls.previous')}
             onClick={() => void playPrevious().catch(reportIpcError)}
           >
-            ⏮
+            <Icon name="previous" size={17} />
           </button>
           <button
             className={`ctl-btn primary pb-play ${playing ? 'glyph-pause' : 'glyph-play'}${playing ? ' pop' : ''}`}
@@ -122,13 +123,18 @@ export function PlayerBar() {
             title={t('controls.next')}
             onClick={() => void playNext().catch(reportIpcError)}
           >
-            ⏭
+            <Icon name="next" size={17} />
           </button>
         </div>
         <div className="pb-seek">
           <span className="time">{fmt(displayPos)}</span>
           <input
             className="seek-bar"
+            style={
+              {
+                '--seek-progress': `${duration ? Math.min(100, Math.max(0, (displayPos / duration) * 100)) : 0}%`,
+              } as React.CSSProperties
+            }
             type="range"
             min={0}
             max={duration ?? 0}
@@ -159,10 +165,10 @@ export function PlayerBar() {
           title={t(`playMode.${playMode}`)}
           onClick={cycleMode}
         >
-          {MODE_ICON[playMode]}
+          <Icon name={MODE_ICON[playMode]} size={17} />
         </button>
         <label className="volume" title={t('controls.volume')}>
-          <span aria-hidden>🔊</span>
+          <span className="volume-icon" aria-hidden><Icon name="volume" size={17} /></span>
           <input
             type="range"
             min={0}

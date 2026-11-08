@@ -3,6 +3,7 @@
 // 未加载完显示 ▣ 骨架，无封面显示通用音符图标。
 import { useEffect, useState } from 'react';
 import { loadArtwork, peekArtwork } from '../ipc/artworkCache';
+import { Icon } from './Icon';
 
 export function ArtworkThumb({ trackId, hasArtwork }: { trackId: number; hasArtwork: boolean }) {
   const [src, setSrc] = useState<string | null | undefined>(() => peekArtwork(trackId));
@@ -23,5 +24,9 @@ export function ArtworkThumb({ trackId, hasArtwork }: { trackId: number; hasArtw
   if (hasArtwork && src) {
     return <img className="tr-art-img" src={src} alt="" loading="lazy" />;
   }
-  return <span className="art-glyph">{hasArtwork ? '▣' : '♪'}</span>;
+  return (
+    <span className="art-glyph">
+      {hasArtwork ? <span className="art-glyph-skeleton" /> : <Icon name="music" size={14} />}
+    </span>
+  );
 }

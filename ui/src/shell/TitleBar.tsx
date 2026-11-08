@@ -3,6 +3,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { DREAMSCAPE_ENABLED, useUiStore, useSettingsStore, type ViewId } from '../state/stores';
 import { useTranslation } from '../i18n/react';
+import { Icon } from '../components/Icon';
 
 /** 主导航顺序与文案键（Alt+1/2/3/4 仍只覆盖前四个主视图，见 D-078）。 */
 const NAV: Array<{ id: ViewId; labelKey: string; needsDreamscape?: boolean }> = [
@@ -50,20 +51,20 @@ export function TitleBar() {
       </nav>
       <div className="titlebar-actions" data-tauri-drag-region>
         <button className="icon-btn" onClick={() => setPaletteOpen(true)} aria-label={t('palette.open')} title="Ctrl+K">
-          ⌘
+          <Icon name="search" size={16} />
         </button>
         <button className="icon-btn" onClick={() => setSettingsOpen(true)} aria-label={t('settings.title')} title={t('settings.title')}>
-          ⚙
+          <Icon name="settings" size={16} />
         </button>
         <div className="window-controls">
           <button className="win-btn" onClick={() => void win.minimize()} aria-label={t('title.minimize')}>
-            —
+            <Icon name="minimize" size={14} />
           </button>
           <button className="win-btn" onClick={() => void win.toggleMaximize()} aria-label={t('title.maximize')}>
-            ▢
+            <Icon name="maximize" size={13} />
           </button>
           <button className="win-btn close" onClick={() => void win.close()} aria-label={t('title.close')}>
-            ✕
+            <Icon name="close" size={14} />
           </button>
         </div>
       </div>

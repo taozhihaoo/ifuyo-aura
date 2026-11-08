@@ -186,6 +186,13 @@ export function LibraryPage() {
 
   return (
     <section className="library" aria-label={t('nav.library')}>
+      <header className="page-head">
+        <div>
+          <h1 className="page-title">{t('nav.library')}</h1>
+          <p className="page-subtitle">{t('library.subtitle')}</p>
+        </div>
+        <span className="page-count">{t('library.count', { count: tracks.length })}</span>
+      </header>
       <div className="library-toolbar">
         <input
           id="library-search"
