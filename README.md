@@ -1,96 +1,81 @@
 # ifuyo Aura
 
-> 以光与梦，编织每一次游玩。
-> Weave light and dreams into every session.
+**Weave light and dreams into every session.**
 
-**ifuyo Aura** 是一款面向 Windows 的本地优先、合法来源、零遥测的桌面音乐播放器（Tauri 2 + Rust + React）。
-**ifuyo Aura** is a local-first, legal-source, telemetry-free desktop music player for Windows (Tauri 2 + Rust + React).
+A local-first, legal-source, telemetry-free desktop music player for Windows.
+Built with Tauri 2, Rust and React.
 
----
+**English** · [简体中文](README.zh-CN.md)
 
-## 当前状态（M6）
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-8B7CF6.svg)](#license)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-5CC8F2.svg)](#build)
+[![Tauri](https://img.shields.io/badge/Tauri-2-F2789F.svg)](https://tauri.app)
 
-Music Map 根据本地音频分析结果，把音乐库组织成可探索的相似关系空间（§546：本地 M8 嵌入 → cosine 相似度 → kNN 图 → 确定性聚类与 2D 布局；不做任何"AI 理解品味"式宣称，全部数据本地生成）。
-下表是**当前真实状态**（§310，不宣称未实现功能）：
+![Now Playing](docs/screenshots/en/01-now-playing.png)
 
-| Feature | Status |
+## Why ifuyo Aura
+
+- **Local first.** Your library stays on your disk. No account, no cloud sync, no upload.
+- **Legal sources only.** Local files, direct HTTP(S) streams, Internet radio, and a self-hosted catalog — commercial-platform ripping is blocked by design.
+- **Zero telemetry.** No analytics, no tracking, no "phone home". The network is used only when *you* ask for a stream.
+- **Quietly capable.** Gapless playback, crossfade, loudness normalization, a 10-band EQ, a command palette, and a fully local Music Map.
+
+## Features
+
+| Area | What you get |
 | --- | --- |
-| 本地播放（FLAC/MP3/OGG/WAV/M4A/ALAC） | ✅ |
-| Gapless / Crossfade / Loudness | ✅ |
-| EQ（10-band 预设） | ✅ |
-| 音乐库（扫描/FTS5 搜索/中文/CJK/artwork/watcher） | ✅ |
-| 直链 HTTP(S) 来源 | ✅ |
-| Internet Radio（ICY metadata） | ✅ |
-| Radio Browser | ✅ |
-| 持久缓存（分块/WAL/LRU/pin/完整性） | ✅ |
-| Now Playing / Queue / Mini Player | ✅ |
-| Command Palette（Ctrl+K） | ✅ |
-| Aurora 视觉（WebGL fbm，播放响应） | ✅ |
-| Win11 Mica（Win10 solid fallback） | ✅ |
-| Music Map（相似度地图：构建/Canvas 渲染/搜索/过滤） | ✅ |
-| Dreamscape（确定性光场：seed/演化/稀有事件/快照 + 音乐驱动 WebGL2 渲染） | ✅ |
-| Windows 媒体控件（SMTC） | ✅（系统面板显示当前曲目；面板自身行为随 Windows 版本） |
-| 媒体键 | ✅（经 SMTC；无自定义全局快捷键） |
-| 系统托盘 | ✅（播放控制/视图入口/退出；菜单跟随应用语言） |
-| 单实例 | ✅（二次启动自动聚焦已有窗口） |
-| Installer | Future（M11） |
-| Updater | Future（M11） |
-| Steam | Future（M13） |
-| Analysis（LUFS/Tempo/Key/Spectral/MFCC 本地确定性分析） | ✅ |
-| Windows 集成里程碑（SMTC / 托盘 / 媒体键） | ✅（M10 落地） |
+| Playback | FLAC / MP3 / OGG / WAV / M4A / ALAC, gapless, crossfade 0–12 s, loudness normalization (−16 LUFS), 10-band EQ with presets |
+| Library | Folder scan, SQLite FTS5 search (including CJK), artwork extraction, file watcher, paging for large libraries |
+| Sources | Direct HTTP(S) audio, Internet radio with ICY metadata, Radio Browser, self-hosted **ifuyo** catalog |
+| Cache | Chunked range cache with WAL, LRU eviction, pinning, integrity verification |
+| Views | Now Playing, Library, Queue drawer, Mini Player, always-on-top desktop lyrics, Music Map, Dreamscape |
+| Map | Local audio analysis → cosine similarity → k-NN graph → deterministic 2D layout; search, filters, neighbors |
+| Dreamscape | Deterministic light field driven by track features and live levels (WebGL2 + CSS fallback) |
+| Windows | SMTC (system media panel + media keys), tray menu, single instance, Win11 Mica with solid fallback |
+| Experience | Command palette (`Ctrl+K`), `Alt+1…4` navigation, keyboard-first controls, reduced-motion support |
+| Language | English and 简体中文, switchable at runtime |
 
-## 截图（来自当前真实构建）
+## Screenshots
 
-| | |
+Captured from the real UI. The library shown is a fictional demo dataset, not a bundled catalog.
+
+| Now Playing | Library |
 | --- | --- |
-| ![Now Playing](docs/screenshots/01-now-playing.png) | ![Library](docs/screenshots/02-library.png) |
-| ![Command Palette](docs/screenshots/03-command-palette.png) | ![Mini Player](docs/screenshots/04-mini-player.png) |
-| ![Map Shell](docs/screenshots/05-map-shell.png) | ![Queue](docs/screenshots/07-queue.png) |
-| ![Dreamscape](docs/screenshots/10-dreamscape-default.png) | ![Dreamscape 环境](docs/screenshots/12-dreamscape-environment.png) |
+| ![Now Playing](docs/screenshots/en/01-now-playing.png) | ![Library](docs/screenshots/en/02-library.png) |
+| **Command Palette** | **Queue** |
+| ![Command Palette](docs/screenshots/en/03-command-palette.png) | ![Queue](docs/screenshots/en/04-queue.png) |
 
-## 安全与隐私
+Screenshots are reproducible with `node scripts/capture-readme-shots.mjs` (headless Edge + a mocked IPC layer). The Chinese set lives in [`docs/screenshots/zh-CN`](docs/screenshots/zh-CN) and is used by the [Chinese README](README.zh-CN.md).
 
-- **无遥测、无分析、无账户、无云同步**；联网仅发生在你主动播放直链 URL / 浏览电台时（详见 [PRIVACY.md](PRIVACY.md) / [SECURITY.md](SECURITY.md)）。
-- 不支持也无法用于商业平台音源提取（YouTube/Spotify/网易云等 URL 会被 `config/unsupported_platforms.json` 封锁表直接拒绝）。
-- 不捆绑任何音乐内容；不自动扫描 Documents/Desktop/全盘——音乐目录由你显式添加。
+## Build
 
-## 当前限制（如实）
-
-- Aurora FPS 绝对值未在真实 GPU 桌面环境采样（机制已内建：`canvas[data-fps]`）；Mica 视觉效果需 Win11 实机确认（API + fallback 已就绪）。
-- Dreamscape v2 为光场视觉（fbm 极光幕 + 星野 + 光尘 + 镜面；单张全屏片元着色器，无几何建模/阴影/后处理栈），由曲目特征与实时电平驱动；full-screen 模式、手动天气预设、多世界 slots 未实现。`docs/screenshots/10・12` 仍是 v1 3D 世界截图，待重截。数小时桌面 soak 未在本环境执行。
-- 音乐分析：合成 fixture 全过；真实音乐 BPM/Key 精度未做基准评估（算法为经典统计法，非 ML）。
-- 数小时级桌面 soak 未在本开发环境执行（远程虚拟显示）；本地复测脚本见 `docs/PERF.md`。
-- 安装包（NSIS bundle）未签名；M6 已实际产出 unsigned 产物（`tauri build`）。
-
-## 构建
-
-前置：Rust stable（MSVC）+ Node 20+ + WebView2 Runtime。
+Requirements: Rust stable (MSVC), Node.js 20+, WebView2 Runtime.
 
 ```powershell
-# 前端
+# Frontend
 cd ui
 npm install
-npm run build          # 产出 ui/dist
+npm run build            # outputs ui/dist
 
-# 桌面应用（内嵌 dist；等价 tauri build 的编译段）
+# Desktop app (embeds ui/dist; same compile step as `tauri build`)
 cd ..
 cargo build --release -p aura-shell --features custom-protocol
-# 产物：target/release/aura-shell.exe
+# Output: target/release/aura-shell.exe
 
-# 或走 Tauri CLI（若已安装 cargo tauri / npx tauri）
-cargo tauri build      # unsigned 产物
+# Or via the Tauri CLI
+cargo tauri build        # unsigned artifacts
 ```
 
-注意：`ui/dist` 变化不会自动触发 cargo 重编译（D-075）——重打包前 touch `src-tauri/src/lib.rs`。
+> `ui/dist` changes do not trigger a cargo rebuild (D-075). Touch `src-tauri/src/lib.rs` before repackaging.
 
-## 开发
+## Development
 
 ```powershell
-cd ui && npm run dev          # Vite dev server (5173)
-cargo run -p aura-shell       # 另一终端；debug 构建连 devUrl
+cd ui && npm run dev     # Vite dev server on :5173
+cargo run -p aura-shell  # in another terminal; debug builds use devUrl
 ```
 
-门禁（CI 同款）：
+Quality gates (same as CI):
 
 ```powershell
 cargo fmt --check
@@ -100,6 +85,49 @@ cargo deny check
 cd ui && npm run typecheck && npm run lint && npm test && npm run build
 ```
 
-桌面冒烟（真实窗口）：`cargo run -p aura-shell --bin smoke`。
+Desktop smoke test (real window): `cargo run -p aura-shell --bin smoke`.
 
-架构见 [ARCHITECTURE.md](ARCHITECTURE.md)；决策记录见 [DECISIONS.md](DECISIONS.md)；里程碑进度见 [PROGRESS.md](PROGRESS.md)。
+Architecture: [ARCHITECTURE.md](ARCHITECTURE.md) · Decisions: [DECISIONS.md](DECISIONS.md) · Milestones: [PROGRESS.md](PROGRESS.md) · Changelog: [CHANGELOG.md](CHANGELOG.md).
+
+## Privacy
+
+- **No telemetry, no analytics, no account, no cloud sync.** Network access happens only when you play a direct URL or browse radio.
+- No bundled music. Documents/Desktop/full disks are never scanned automatically — you add music folders explicitly.
+- Commercial-platform URLs (YouTube, Spotify, NetEase Cloud Music, …) are rejected by the blocklist in `config/unsupported_platforms.json` before any request is made.
+
+See [PRIVACY.md](PRIVACY.md) for the full data-flow description.
+
+## Security
+
+ifuyo Aura is pre-alpha software. Security design highlights:
+
+- **Strict URL policy.** Only `http`/`https`; URL credentials rejected; every redirect hop is re-validated (max 5 hops); private-network and loopback targets are denied unless the user explicitly confirms a LAN source; DNS results are re-checked on every resolution to prevent rebinding.
+- **Bounded inputs.** Response bodies, ICY metadata, redirects, batch sizes, seek values, volume, crossfade and EQ indices are all clamped or rejected at the IPC boundary; persisted settings are normalized on read and write.
+- **Minimal capabilities.** Tauri allowlist is limited to window controls and dialogs — no shell, no arbitrary filesystem or HTTP plugin. CSP blocks remote scripts, styles, fonts and images.
+- **Local-only state.** Credentials (if a source ever needs them) go to Windows Credential Manager, never to disk or logs. Log messages redact URL userinfo and query strings.
+- **Update integrity.** Manifests are validated and downgrade-rejected; release signatures are verified before installation.
+
+Report vulnerabilities through GitHub **Security Advisories** (private). Please do not open a public issue with details. Full policy: [SECURITY.md](SECURITY.md).
+
+## Status and honest limitations
+
+- Installer artifacts are **unsigned**; the update endpoint is a development/fake server in this repository and is not a working public auto-update channel.
+- Music analysis uses classic statistical algorithms (not ML); BPM/key accuracy on real-world music has not been benchmarked.
+- Dreamscape is a light-field renderer (fBm aurora, star field, light dust, mirror); full-screen mode, weather presets and multi-world slots are not implemented.
+- Multi-hour desktop soak testing was not executed in this development environment (remote virtual display).
+- Mica is confirmed on Win11; Windows 10 falls back to a solid surface by design.
+
+## License
+
+Dual-licensed under either of:
+
+- **Apache License, Version 2.0** — [LICENSE-APACHE](LICENSE-APACHE)
+- **MIT License** — [LICENSE-MIT](LICENSE-MIT)
+
+at your option. Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project shall be dual-licensed as above, without any additional terms or conditions.
+
+Third-party notices: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) · Content rules: [CONTENT_POLICY.md](CONTENT_POLICY.md) · Source policy: [SOURCES.md](SOURCES.md).
+
+---
+
+Copyright © 2026 ifuyo · 伊芙游 · <https://ifuyo.com>

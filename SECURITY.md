@@ -1,175 +1,313 @@
-# SECURITY
+# Security
 
-> 安全基线。随里程碑落地逐步具体化；实现与本文冲突时，实现必须改。
+> Security baseline for ifuyo Aura. This document is maintained in English; it is the
+> source of truth for the project's security posture. Where the implementation and this
+> document disagree, the implementation must be fixed.
 
-## Secret Handling
+## Reporting a vulnerability
 
-- 仓库不得包含任何真实 API key、密码、令牌、证书私钥、签名私钥。
-- 提交前审计清单：`api_key`、`apikey`、`client_secret`、`password`、`token`、`private_key`、`BEGIN PRIVATE KEY`、`.env`。
-- 签名/更新私钥只允许存在于 CI Secret（见 [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md)）。
-- 应用凭据只进 Windows Credential Manager（见 [PRIVACY.md](PRIVACY.md)）。
+This project is pre-alpha. Please report security issues through **GitHub Security
+Advisories** (the repository's *Security* tab), not in a public issue.
 
-## Dependency Review
+Include: affected version, reproduction steps, impact assessment, and a suggested fix if
+you have one. We will acknowledge receipt, triage, fix and release — without a fixed SLA.
 
-新增依赖前必须确认（与 Charter §20 一致）：必要性、许可证（禁 GPL/AGPL/LGPL）、维护状态、Windows 兼容、CI 可构建、架构耦合。`cargo deny` 与前端 license 检查在 CI 强制执行。
+**In scope:** IPC privilege escalation, path traversal, SSRF, update-signature bypass,
+secret leakage, client-side denial of service.
 
-## Unsafe Rust Review
+**Out of scope:** social engineering, attacks requiring physical access, and dev-only
+tooling issues (for example the Vite dev server).
 
-- 音频 callback 内禁止 allocation / lock / logging / syscall / blocking / IO / panic（Charter §8.2）。
-- 任何 `unsafe` 块必须：有注释说明不变量、有测试覆盖、可在 review 中追溯；目标是 unsafe 面积最小化（ring buffer、SIMD 等少数热点）。
+Only the latest tagged release (`app-v*`) receives security fixes.
 
-## IPC Validation
+## Secret handling
 
-- Tauri command 走 allowlist；capabilities 最小化。
-- 所有 IPC 输入必须校验（类型、范围、长度）；不可信输入不得直达领域层。
-- CSP 禁止 remote scripts / styles / fonts / images。
+- The repository must never contain real API keys, passwords, tokens, certificate private
+  keys or signing private keys.
+- Pre-commit audit list: `api_key`, `apikey`, `client_secret`, `password`, `token`,
+  `private_key`, `BEGIN PRIVATE KEY`, `.env`.
+- Signing and update private keys exist only in CI secrets (see
+  [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md)).
+- Application credentials go only to Windows Credential Manager (see [PRIVACY.md](PRIVACY.md)).
 
-## Path Traversal Protection
+## Dependency review
 
-用户提供的路径必须规范化并限定在其授权根目录内；文件/目录访问不得被 `..`、符号链接或 UNC 形式逃逸出授权范围。
+Before adding a dependency, confirm: necessity, license (GPL/AGPL/LGPL are rejected),
+maintenance status, Windows compatibility, CI buildability and architectural coupling.
+`cargo deny` and the frontend license check run in CI.
 
-## Network URL Validation
+## Unsafe Rust review
 
-- 仅允许 http/https scheme；最大 5 次重定向；connect/read 超时；响应体大小上限；描述性 User-Agent。
-- `config/unsupported_platforms.json` 命中的平台直接拒绝、不发请求。
-- 首次访问非公网地址需用户一次性确认。
+- Audio callbacks must not allocate, lock, log, perform syscalls, block, do I/O or panic
+  (Charter §8.2).
+- Every `unsafe` block must document its invariants, be covered by tests, and be
+  traceable in review. The goal is to minimise unsafe surface (ring buffers, SIMD and a
+  few other hot spots only).
 
-## Credential Handling
+## IPC validation
 
-Subsonic 等服务凭据只能存入 Windows Credential Manager；不明文写盘、不进日志、不进备份。
+- Tauri commands are allowlisted; capabilities are minimal.
+- Every IPC input is validated (type, range, length). Untrusted input never reaches the
+  domain layer directly.
+- CSP forbids remote scripts, styles, fonts and images.
+- Persisted settings are normalised on both read and write, so a caller cannot bypass
+  per-command clamping by saving the whole settings object.
 
-## Logging Redaction
+## Path traversal protection
 
-`tracing` 日志在写入前过滤：password、token、API key、凭据、完整 URL 查询参数（含 key 的）一律脱敏。
+User-supplied paths are normalised and confined to their authorised root. File and
+directory access must not escape that root via `..`, symlinks or UNC forms.
 
-## 问题反馈
+## Network and URL validation
 
-当前为 pre-alpha：请通过 GitHub 仓库的 private security advisory（Security 标签页）报告安全问题，不要在公开 issue 中披露细节。
+### URL policy
 
-## Source / Network Security（M4 实装，与代码一致）
+- Only `http` and `https` schemes. `file:`, `ftp:`, `data:`, `javascript:`, `blob:`,
+  `ws:` and similar are rejected.
+- The host must exist and be non-empty; malformed WHATWG-style authorities go through the
+  full validation chain.
+- URLs carrying credentials (`user:password@host`) are rejected by default (§15) and are
+  never written to logs, UI or storage.
 
-### URL Validation（url_policy.rs）
-- 只允许 `http` / `https` scheme；`file:` `ftp:` `data:` `javascript:` `blob:` `ws:` 等一律拒绝。
-- host 必须存在且非空；WHATWG 形态的畸形 authority 走完整校验链。
-- **带凭据的 URL（user:password@host）默认拒绝**（§15），不进日志/UI/存储。
+### Redirects
 
-### Redirect Validation
-- 上限 5 跳；**每一跳**重新执行 scheme/凭据/封锁平台/私网全套校验（§16）——首跳合法不等于目的地合法（有测试）。
+At most 5 hops. **Every hop** re-runs the full scheme / credentials / blocked-platform /
+private-network checks (§16) — a legal first hop does not make the destination legal
+(covered by tests).
 
-### SSRF / Private Network Policy
-- host 字符串层：`localhost`/`*.localhost`/`*.local` + IPv4/IPv6 私网/环回/链路本地/CGNAT/组播字面量默认拒绝；用户明确确认局域网来源后由应用层放开（`NetworkPolicy::allow_private`）。
-- **DNS 层复检**（防 rebinding，§18）：自定义解析器把解析结果逐 IP 过私网检查，命中即整个解析失败（不给连接层任何可用地址；有 DNS-rebind 仿真测试）。
-- 禁止内网探测/localhost 扫描：来源系统不存在任何主动扫描行为。
+### SSRF and private networks
 
-### Unsupported Platforms
-- `config/unsupported_platforms.json` 命中 → resolve 前拒绝，**零请求**（DNS spy 测试断言 0 次解析，§125）。
+- At the host-string level, `localhost`, `*.localhost`, `*.local`, plus IPv4/IPv6 private,
+  loopback, link-local, CGNAT and multicast literals are rejected by default. The
+  application layer may allow LAN sources after explicit user confirmation
+  (`NetworkPolicy::allow_private`).
+- **DNS re-check** (anti-rebinding, §18): a custom resolver validates every resolved IP
+  against the private-network rules and fails the whole resolution on a hit — no usable
+  address is handed to the connection layer. Covered by DNS-rebinding simulation tests.
+- No intranet probing or localhost scanning: the source layer performs no active scanning.
 
-### Response Size Limits
-- 文本响应（JSON/RSS/m3u8/ICY 头）：8 MiB 上限（servers 64 KiB），Content-Length 预检 + 读取超限双保险（§21）。
-- 音频流：有界内存缓冲（finite 1 MiB / live ≤30s 滚动），结构上排除无限累积（§29/§100）。
+### Unsupported platforms
 
-### ICY Limits
-- metadata 块协议上限 4080 字节；畸形/非 UTF-8 块仅丢弃，音频继续（§33/§36）。
+A hit in `config/unsupported_platforms.json` is rejected before resolution, with **zero
+requests** (DNS-spy tests assert zero resolutions, §125).
 
-### XML Safety
-- M4-A 不含 XML 解析（RSS 为 B 级）；将来实现必须禁用外部实体（XXE 不得可能）。
+### Response size limits
+
+- Text responses (JSON/RSS/m3u8/ICY headers): 8 MiB cap (64 KiB for server lists), with
+  both a `Content-Length` pre-check and a read-side limit (§21).
+- Audio streams use bounded memory buffers (finite: 1 MiB; live: rolling ≤30 s), which
+  structurally excludes unbounded accumulation (§29/§100).
+
+### ICY limits
+
+The metadata block protocol is capped at 4080 bytes; malformed or non-UTF-8 blocks are
+dropped while audio continues (§33/§36).
+
+### XML safety
+
+M4-A contains no XML parser (RSS is grade B). Any future implementation must disable
+external entities; XXE must remain impossible.
 
 ### Cancellation
-- 所有网络请求可取消；取消后消费侧即时返回，feeder 线程不成为孤儿（D-052，有测试）。
 
-### Logging
-- URL 日志脱敏：仅 scheme://host/path，query 与 userinfo 剥离（`redact_url`，§96）。
+All network requests are cancellable; consumers return immediately after cancellation and
+feeder threads do not become orphans (D-052, covered by tests).
 
-## M6 Desktop Shell（§191/§241）
+### Logging redaction
 
-### Tauri Capabilities
-- 最小集：`core:default` + `core:window:{minimize,toggle-maximize,close,start-dragging,show}` + `core:webview:{allow-create-webview-window,allow-get-all-webviews}` + `dialog:default`（D-066/D-076）。
-- **无** shell / fs / updater / http 通配权限；无任意导航。create-webview-window 仅应用代码以固定 URL（`index.html?view=mini`）调用。
-- 适用窗口：`main` + `mini`。
+`tracing` output is filtered before writing: passwords, tokens, API keys, credentials and
+full URL query strings (including keys) are redacted. URL logs contain only
+`scheme://host/path`; userinfo and query are stripped (`redact_url`, §96).
+
+## Desktop shell (Tauri)
+
+### Capabilities
+
+Minimal set: `core:default` + `core:window:{minimize,toggle-maximize,close,start-dragging,show}`
++ `core:webview:{allow-create-webview-window,allow-get-all-webviews}` + `dialog:default`
+(D-066/D-076). No shell, filesystem, updater or HTTP wildcard permissions; no arbitrary
+navigation. `create-webview-window` is called only by application code with a fixed URL
+(`index.html?view=mini`). Applies to the `main` and `mini` windows.
 
 ### CSP
-`default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src ipc: http://ipc.localhost`。artwork 经 `data:` URL（IPC base64 通道，非文件路径，D-067）。零远程 CDN/字体（§25 审计零命中）。
 
-### Asset Loading
-全部资源内嵌（custom-protocol 构建，D-075）；无 remote URL 资源、无 remote font。
+`default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src ipc: http://ipc.localhost`.
+Artwork is delivered as `data:` URLs over an IPC base64 channel, never as filesystem paths
+(D-067). Zero remote CDNs or fonts (§25 audit: no hits).
 
-### IPC Validation
-命令参数强类型（DTO 镜像 + serde 反序列化失败即拒）；本地路径仅用于 M3 库内查询（`track_id_by_path` 精确匹配已入库路径）；封面不传路径（D-067）；Open URL 走 M4 校验链（§193/§278），前端无 fetch。
+### Asset loading
 
-### External Links
-UI 无外链渲染；无 `shell`/open 能力——应用内无法打开浏览器/执行程序。
+All assets are embedded (custom-protocol build, D-075); no remote URLs or remote fonts.
 
-### Filesystem Access
-Rust 侧校验（§192）：文件播放经 M4 Local Source 存在性检查 + decoder probing；扫描目录来自原生 dialog（目录粒度，§272 不预扫系统目录）；无 fs 通配。
+### IPC validation
+
+Command arguments are strongly typed (DTO mirrors; serde deserialisation failure rejects).
+Local paths are used only for in-library queries (`track_id_by_path`, exact match against
+an indexed path). Artwork never passes a path (D-067). Open-URL goes through the M4
+validation chain (§193/§278); the frontend performs no `fetch`.
+
+### External links
+
+The UI renders no external links; no `shell` or open capability exists, so the app cannot
+launch a browser or execute programs.
+
+### Filesystem access
+
+Validation happens on the Rust side (§192): playback checks existence and probes the
+decoder through the M4 local source; scan directories come from the native dialog at
+directory granularity (§272 — no pre-scan of system directories). No filesystem wildcard.
 
 ### Production DevTools
-devtools 未显式启用（tauri v2 默认 release 关闭）；无调试日志输出（grep 零命中 console./dbg!/println! 于 ui/src 与 src-tauri/src 非测试代码）。
 
-### Credential / Secret Audit（§300 实测）
-`api_key|apikey|password|client_secret|Authorization|Cookie|BEGIN PRIVATE KEY` 全仓扫描（src/crates/ui/src/src-tauri）：仅命中凭据**拒绝逻辑**与对应测试（url_policy）；无 `.env`；无硬编码密钥。VisualTelemetry 为进程内渲染数据，非网络遥测（命名历史原因，PRIVACY.md 有说明）。
+DevTools are not explicitly enabled (Tauri v2 disables them in release builds). No debug
+logging is emitted (`grep` finds no `console.`/`dbg!`/`println!` in non-test code under
+`ui/src` or `src-tauri/src`).
 
-## M7 Dreamscape（§254/§318 实测）
+### Credential and secret audit (§300)
 
-### Snapshot 安全
-- 存储路径：app_data/dreamscape.json（§223 不写音乐目录）；原子写 tmp→rename（§225）；写前 seal、读后 validate（§300）。
-- 内容仅逻辑态（§222）：无凭据/无 Authorization/无 cookie/无绝对路径（结构上不持有）；integrity 校验和检测篡改（§299，测试锁定）。
-- 损坏/版本不符 → 回退默认世界继续启动（§224，实测）；restore 命令区分 NO_SNAPSHOT/CORRUPT/VERSION_UNAVAILABLE。
+Full-tree scan for `api_key|apikey|password|client_secret|Authorization|Cookie|BEGIN PRIVATE KEY`
+over `src`, `crates`, `ui/src` and `src-tauri`: hits are limited to credential *rejection
+logic* and its tests (`url_policy`). No `.env`; no hard-coded secrets. `VisualTelemetry` is
+in-process render data, not network telemetry (the name is historical; PRIVACY.md explains).
 
-### 输入与资源
-- Seed parser：任意 UTF-8（空/100KB/Unicode/emoji/NUL/坏 DS 格式）不 panic（§250/§251 fuzz 500 轮）。
-- Snapshot parser：malformed JSON/bytes 不 panic（§252）；未知字段忽略、缺字段默认（§229/§230）。
-- Manifest：UI 侧 validation-first（§253）——字段/数值有限性/实例总数 ≤2048/landmark ≤16，超界拒绝渲染。
-- 无任意资产路径：全部程序化生成（§59/§303 零外部模型/贴图/HDRI）；无网络需求（§301/§302 断网可玩）。
-- IPC 参数校验：set_quality 白名单；advance 单次 ≤ 一年逻辑 tick；相机值钳制。
+## Range cache
 
-### 凭据扫描（§318）
-api_key/password/token/client_secret/Authorization/Cookie/BEGIN PRIVATE KEY 全仓扫描： Dreamscape 相关零命中；无 .env。
+- Content keys are fixed-length hex derived from the URL; chunk paths are
+  `chunks/<prefix>/<key>/<index>.bin` with fixed depth and width and no user-controlled
+  strings. Every path is checked to remain under the cache root (§119).
+- Invalidating one entry removes only that entry's directory. The entry directory returned
+  by `entry_rel_dir` includes the full content key, so two entries sharing a two-character
+  prefix can never delete each other's chunks (regression test:
+  `remove_entry_files_is_scoped_to_one_content_key`).
+- Integrity scans quarantine invalid directory names by path, not by re-parsing them as
+  content keys (an invalid key cannot pass validation and would silently no-op).
+- Range responses are validated against `Content-Range`; a `200` answer to a range request
+  degrades to bounded sequential fill. Offline reads return a network error instead of a
+  fake end-of-stream.
 
-### Analysis（M8 下篇 §240–§251/§327）
-- Input validation：TrackId 参数化（库内存在性校验）；batch ≤500（§241）；advance 单次上限；相机值钳制。
-- Worker isolation：单 job panic 被 catch_unwind 捕获转错误（§244/§245）；embedding 失败隔离（§246 不污染其它特征）。
-- DB 失败语义（§247–§250）：SQLite 事务回滚；分析失败不破坏 M3 tracks/playlists/stats/artwork；Running→Pending 重启恢复（§211）。
-- 无网络（§328 offline audit PASS）：分析全链路零网络路径；模型=自有代码无下载（§204）。
-- BLOB 限制：嵌入 BLOB 读回 dim×4 校验（§29），越界拒绝。
-### Music Map（M9 中篇 §240–§249 精神）
-- Input validation：TrackId 全部参数化查询（库内存在性）；视口/limit 服务端钳制（limit ≤2 万）；非法/非有限视口回退全图缺省（不 crash §192）。
-- 前端 validation-first：节点/状态/邻居 DTO 逐字段守卫；非有限位置节点丢弃（§190/§191 不让 renderer NaN）。
-- 构建线程隔离：后台线程 panic 不落 snapshot（generation 检查）；取消幂等。
-- 无网络：地图全链路（构建/查询/渲染）零网络路径。
-### Music Map（M9 下篇 §364–§373/§549）
+## Dreamscape
 
-- Vector Validation（§370）：空/维度不符/非有限/零向量嵌入全部排除出 dataset（§32–§34 测试矩阵）。
-- Graph Validation（§367）：持久化图恢复必过 validate_graph 七检查（自环/未知节点/非有限权重/重复/对称/边预算 §61）——测试覆盖 self-loop 与未知节点拒绝。
-- Dataset Versioning（§281/§282）：model_id/model_version/analysis_version/dim 任一变化 → dataset hash 变 → 旧持久化 validate 失败 → 重建。
-- Derived Store Isolation（§185/§373）：map.json 在 app_data/map/，损坏即删重建，零写入 M3 tracks。
-- IPC Bounds（§366）：k clamp(1,50)、limit clamp(1,20000)、视口非法回退全图；过滤为结构化数值（无自由字符串注入面）。
-- Viewport/k Bounds（§364）：服务端 norm_axis 钳制 + NaN 回退。
-- NaN/Infinity Handling（§370/§371）：restore 拒绝非有限位置/簇统计；前端逐节点 finite 守卫丢弃坏节点。
-- Map Store Recovery（§187/§285）：损坏 map.json 启动即删除（测试锁定），状态 Pending/Stale，不 crash 主应用。
-- Build Generation（§166/§287）：旧 build 迟到不得覆盖（代号语义测试）。
-- No Network Dependency（§362/§363/§490）：地图构建/查询/搜索全链路零网络路径；搜索复用本地 M3 FTS5。
-- 参数化 SQL（§372）：所有 TrackId 查询经 rusqlite 参数绑定（M3/M8 层），map store 为 JSON 文件无 SQL。
-### Windows Integration（M10 上篇 §228–§236）
-- SMTC 外部事件 = untrusted（§232）：seek 位置经 coordinator 验证（finite/非负/可 seek/夹取 §69/§70）；字符串限长+控制字符清理（§133–§136）后才进系统。
-- 托盘（§229）：稳定菜单 ID（§156），metadata 只进显示行、绝不被解析为命令；locale 文案为常量表（无注入面）。
-- 单实例（§230/§231）：第二实例仅触发 show+focus；argv/cwd 不解析不路由不执行。
-- 无 shell 执行（§124）：SMTC/托盘零 PowerShell/cmd/外部可执行调用；无外链（§125）。
-- 路径安全（§235/§236/§48）：SMTC 封面只接受应用内 artwork 字节（InMemory 流），不存在用户路径注入面。
-- 权限最小化（§123/§238）：tauri 仅加 tray-icon/image-png feature；windows crate 仅 4 个 feature 面；无全局快捷键插件。
-### Release Engineering（M11 下篇 §233/§28–§29/§109/§370）
-- 更新安全边界（§109）：远程 manifest → 版本校验（降级拒绝 §47 单测）→ 字段校验 §46（单测）→ minisign 签名验证（updater 插件 Rust 侧）→ 官方安装流程；无"下载 exe 即执行"路径（§6/§9 无 shell）。
-- updater 端点（§9/§77）：production 仅 HTTPS（GitHub Releases latest.json §54）；dev=本地 fake server，配置严格隔离（release overlay 由 CI secrets 生成）；无用户可配端点。
-- secrets（§26/§28/§29）：私钥/证书只存 GitHub Secrets；gitleaks 全 history 扫描入 CI；.gitleaks.toml 基线（无 secret 允许项）。
-- 单实例（§230/§231）：第二实例仅 focus。
-- CI 日志（§27）：不回显 secret；记录 artifact/版本/签名状态。
+### Snapshot safety
 
-## Supported versions / 漏洞报告（§48）
+- Stored at `app_data/dreamscape.json` (§223 — never in music folders), written atomically
+  via tmp → rename (§225), sealed before write and validated after read (§300).
+- Contains logical state only (§222): no credentials, `Authorization`, cookies or absolute
+  paths. An integrity checksum detects tampering (§299, locked by tests).
+- Corrupt or version-mismatched snapshots fall back to the default world and keep
+  starting (§224). The restore command distinguishes `NO_SNAPSHOT`, `CORRUPT` and
+  `VERSION_UNAVAILABLE`.
 
-- 支持版本：仅最新 tag 发布（app-v*；此前版本不接收安全补丁）。
-- 报告渠道：GitHub Security Advisories（私有）或仓库 SECURITY.md 所列
-  联系方式；**不要公开 issue 披露**（§48 What not to disclose publicly first）。
-- 报告请含：影响版本/复现步骤/影响评估/可能的修复建议。
-- 响应：确认收到 → 评估 → 修复 → 发布（无固定时限承诺 §48）。
-- 范围内：IPC 提权、路径穿越、SSRF、更新签名绕过、secret 泄露、
-  拒绝服务（客户端）。范围外：社交工程、需物理接触的攻击、
-  dev-only 工具链问题（vite dev server 等）。
+### Input and resources
+
+- Seed parser: arbitrary UTF-8 (empty, 100 KB, Unicode, emoji, NUL, malformed DS format)
+  never panics (§250/§251, 500-round fuzz).
+- Snapshot parser: malformed JSON/bytes never panic (§252); unknown fields are ignored and
+  missing fields default (§229/§230).
+- Manifest: validation-first on the UI side (§253) — fields, numeric finiteness, instance
+  count ≤2048, landmarks ≤16; out-of-range input is refused.
+- No arbitrary asset paths: everything is generated procedurally (§59/§303 — zero external
+  models/textures/HDRI); no network required (§301/§302, works offline).
+- IPC parameters: `set_quality` allowlist; a single `advance` is capped at one logical
+  year; camera values are clamped.
+
+### Credential scan (§318)
+
+Full-tree scan for `api_key/password/token/client_secret/Authorization/Cookie/BEGIN PRIVATE KEY`:
+zero hits for Dreamscape; no `.env`.
+
+## Analysis
+
+- Input validation: `TrackId` is parameterised (library membership checked); batches are
+  ≤500 (§241); `advance` has a per-call cap; camera values are clamped.
+- Worker isolation: a panicking job is caught by `catch_unwind` and converted into an
+  error (§244/§245); embedding failures are isolated (§246) and do not poison other
+  features.
+- Database failure semantics (§247–§250): SQLite transactions roll back; analysis failure
+  does not damage M3 `tracks/playlists/stats/artwork`; `Running → Pending` recovery on
+  restart (§211).
+- No network (§328 offline audit: PASS): the analysis pipeline has no network path; models
+  are in-tree code, nothing is downloaded (§204).
+- BLOB limits: embedding BLOBs are checked as `dim × 4` when read back (§29); out-of-range
+  reads are rejected.
+
+## Music Map
+
+- Input validation: all `TrackId` queries are parameterised; viewport and limit are
+  clamped server-side (`limit ≤ 20 000`); non-finite or invalid viewports fall back to the
+  whole map instead of crashing (§192).
+- Frontend validation-first: node/status/neighbour DTOs are field-guarded; nodes with
+  non-finite positions are dropped (§190/§191) so the renderer never sees NaN.
+- Build-thread isolation: a background panic does not persist a snapshot (generation
+  check); cancellation is idempotent.
+- No network: build, query and rendering have no network path.
+- Vector validation (§370): empty, wrong-dimension, non-finite or zero embeddings are
+  excluded from the dataset.
+- Graph validation (§367): restored graphs must pass all seven `validate_graph` checks
+  (self-loops, unknown nodes, non-finite weights, duplicates, symmetry, edge budget §61);
+  tests cover self-loop and unknown-node rejection.
+- Dataset versioning (§281/§282): any change to `model_id/model_version/analysis_version/dim`
+  changes the dataset hash, fails validation of the old persisted map and triggers a
+  rebuild.
+- Derived-store isolation (§185/§373): `map.json` lives in `app_data/map/`; corruption
+  deletes and rebuilds it, with zero writes to M3 `tracks`.
+- IPC bounds (§366): `k` clamped to 1..50, `limit` to 1..20 000, invalid viewports fall
+  back to the full map; filters are structured numbers (no free-form injection surface).
+- Viewport/k bounds (§364): server-side `norm_axis` clamping plus NaN fallback.
+- NaN/Infinity handling (§370/§371): restore rejects non-finite positions and cluster
+  statistics; the frontend drops bad nodes via per-node finite guards.
+- Store recovery (§187/§285): a corrupt `map.json` is deleted at startup (locked by tests);
+  state becomes `Pending`/`Stale` without crashing the app.
+- Build generation (§166/§287): a late result from an old build cannot overwrite a newer
+  one (semantic test).
+- No network dependency (§362/§363/§490): build, query and search are fully local; search
+  reuses the local M3 FTS5 index.
+- Parameterised SQL (§372): every `TrackId` query binds parameters through rusqlite;
+  the map store is a JSON file with no SQL.
+
+## Windows integration
+
+- SMTC events are untrusted (§232): seek positions are validated by the coordinator
+  (finite, non-negative, seekable, clamped §69/§70); strings are length-limited and
+  control characters stripped (§133–§136) before reaching the system.
+- Tray (§229): stable menu IDs (§156); metadata appears only as display text and is never
+  parsed as a command; locale strings are a constant table (no injection surface).
+- Single instance (§230/§231): a second instance only triggers show + focus; argv/cwd are
+  never parsed, routed or executed.
+- No shell execution (§124): SMTC and tray perform zero PowerShell/cmd/external-executable
+  calls; no external links (§125).
+- Path safety (§235/§236/§48): SMTC artwork accepts only in-app artwork bytes (in-memory
+  stream); there is no user-path injection surface.
+- Least privilege (§123/§238): Tauri enables only the `tray-icon`/`image-png` features;
+  the `windows` crate exposes only four feature areas; no global-shortcut plugin.
+
+## Release engineering
+
+- Update boundary (§109): remote manifest → version validation (downgrades rejected §47,
+  unit-tested) → field validation §46 (unit-tested) → minisign signature verification
+  (updater plugin, Rust side) → official install flow. There is no "download an exe and
+  run it" path (§6/§9 — no shell).
+- Updater endpoint (§9/§77): production is HTTPS-only (GitHub Releases `latest.json` §54);
+  development uses a local fake server with strictly isolated configuration (a release
+  overlay generated from CI secrets). The endpoint is not user-configurable.
+- Secrets (§26/§28/§29): private keys and certificates live only in GitHub Secrets;
+  gitleaks scans the full history in CI; `.gitleaks.toml` is a baseline with no secret
+  allowlist entries.
+- CI logs (§27): secrets are never echoed; artifacts, versions and signing status are
+  recorded.
+- Installers are currently **unsigned**; this is documented in the README and is not a
+  claim of a working public update channel.
+
+## Recent hardening
+
+- **Settings writes are unified.** `save_settings` normalises the whole object (language,
+  UI scale, crossfade, EQ preset) before persisting, takes the settings lock across
+  write + cache update, and uses a unique temporary file — eliminating a concurrent-write
+  race that could truncate `settings.json` or leave memory and disk out of sync.
+- **Cache invalidation is entry-scoped** (see *Range cache* above), preventing silent
+  deletion of unrelated cached tracks.
+- **Queue and updater state machines** now advance correctly for `order` playback and
+  self-transition on download progress; the updater also respects the user's
+  auto-check setting and no longer throws on cancel-during-check.
+- **Test harness jitter** is no longer reported as a routing failure: the fake HTTP server
+  waits for a complete request head and closes the connection instead of answering `404`
+  when the request has not arrived yet.
