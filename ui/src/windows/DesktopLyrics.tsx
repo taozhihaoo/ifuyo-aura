@@ -109,7 +109,12 @@ export function DesktopLyrics() {
       .onCloseRequested((e) => {
         e.preventDefault();
         void getCurrentWindow().hide();
+        // 两个 webview 是独立 JS realm：只改本 realm 的 store，主窗按钮
+        // 仍是 active（要连点两次才能重开）。通知主窗同步关闭态。
         useUiStore.getState().setDesktopLyricsOpen(false);
+        void import('@tauri-apps/api/event').then(({ emitTo }) => {
+          void emitTo('main', 'aura://lyrics-closed', {}).catch(() => undefined);
+        });
       })
       .then((fn) => {
         if (cancelled) {
@@ -122,6 +127,17 @@ export function DesktopLyrics() {
       cancelled = true;
       off?.();
     };
+  }, []);
+
+  // 独立 realm 不会跑主窗的 getSettings 副作用——不补一次读取的话，
+  // 主窗切到 English 后悬浮窗的「未在播放 / 锁定」等文案仍是中文。
+  useEffect(() => {
+    void ipc
+      .getSettings()
+      .then((s) =>
+        useSettingsStore.getState().setLocale(s.language === 'en' ? 'en' : 'zh-CN'),
+      )
+      .catch(() => undefined);
   }, []);
 
   // M15b 修复：悬浮窗是独立 JS realm——远程歌词登记表（audioUrl→lyricsUrl）
@@ -202,6 +218,9 @@ export function DesktopLyrics() {
             pathRef.current = p;
             idxRef.current = -1;
             lyricsRef.current = null;
+            // 换曲必须同步归零/对齐新曲进度；否则 position 还停在上一曲
+            // 的 180s，新歌词一加载就直接命中最后一句。
+            position = s.positionSeconds;
             // 与梦境舞台同一解析器：远程曲目的路径是 URL、没有本地 TrackId，
             // 走 trackIdByPath 会让在线歌永远没词。
             const gen = ++lyricsGen;

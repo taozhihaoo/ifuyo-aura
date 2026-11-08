@@ -135,7 +135,11 @@ impl LibraryService {
 
         let root_id = {
             let tx = self.db.transaction()?;
-            repo::insert_root(&tx, &canonical.to_string_lossy(), (self.now_ms)())?
+            let id = repo::insert_root(&tx, &canonical.to_string_lossy(), (self.now_ms)())?;
+            // rusqlite 的 Transaction 在 drop 时默认回滚；不显式 commit 会让
+            // 这次插入丢失，返回的 root_id 指向一个并不存在的行。
+            tx.commit()?;
+            id
         };
 
         let mut seen = Vec::with_capacity(result.files_seen as usize);

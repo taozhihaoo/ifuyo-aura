@@ -47,7 +47,10 @@ export const TRANSITIONS: Record<UpdateState['kind'], readonly UpdateState['kind
   checking: ['upToDate', 'available', 'failed', 'cancelled'],
   upToDate: ['checking'],
   available: ['downloading', 'idle'],
-  downloading: ['downloaded', 'failed', 'cancelled'],
+  // downloading → downloading 是进度事件的自转移（Started/Progress 每次
+  // 都带新的 progress）；缺少它会让 UpdateService 的 apply 静默 no-op，
+  // 进度条永远停在 "正在下载更新…"。
+  downloading: ['downloading', 'downloaded', 'failed', 'cancelled'],
   downloaded: ['installing', 'idle'],
   installing: ['restartRequired', 'failed'],
   restartRequired: ['idle'],

@@ -5,22 +5,32 @@ import { useUiStore } from '../state/stores';
 import { usePlayerStore } from '../state/stores';
 import { ipc } from '../ipc/client';
 import { useTranslation } from '../i18n/react';
+import { Icon } from '../components/Icon';
 
 export function isMiniPlayer(): boolean {
   return new URLSearchParams(window.location.search).get('view') === 'mini';
 }
 
+/** 首次挂载时 miniPlayerOpen=false 不应去 hide 一个还不存在的窗口；
+ *  一旦窗口被创建过，关闭开关就必须真的隐藏它（Ctrl+M / 命令面板路径）。 */
+let windowSeen = false;
+
 export function useMiniPlayerOpener() {
   const miniPlayerOpen = useUiStore((s) => s.miniPlayerOpen);
   const setMiniPlayerOpen = useUiStore((s) => s.setMiniPlayerOpen);
   useEffect(() => {
-    if (!miniPlayerOpen) return;
+    if (!miniPlayerOpen && !windowSeen) return;
+    let cancelled = false;
     void import('@tauri-apps/api/webviewWindow').then(async ({ WebviewWindow }) => {
       const existing = await WebviewWindow.getByLabel('mini');
+      if (cancelled) return;
+      windowSeen = true;
       if (existing) {
-        await existing.show();
+        if (miniPlayerOpen) await existing.show().catch(() => undefined);
+        else await existing.hide().catch(() => undefined);
         return;
       }
+      if (!miniPlayerOpen) return;
       const mini = new WebviewWindow('mini', {
         url: 'index.html?view=mini',
         title: 'ifuyo Aura — Mini',
@@ -33,6 +43,9 @@ export function useMiniPlayerOpener() {
       mini.once('tauri://created', () => undefined);
       mini.once('tauri://error', () => setMiniPlayerOpen(false));
     });
+    return () => {
+      cancelled = true;
+    };
   }, [miniPlayerOpen, setMiniPlayerOpen]);
 }
 
@@ -71,7 +84,7 @@ export function MiniPlayer() {
   return (
     <div className="mini-player" data-tauri-drag-region>
       <div className="mini-artwork" aria-hidden>
-        ♪
+        <Icon name="music" size={22} />
       </div>
       <div className="mini-info">
         <div className="mini-title" title={snapshot?.trackPath ?? undefined}>
@@ -86,7 +99,7 @@ export function MiniPlayer() {
           aria-label={t('controls.previous')}
           onClick={() => requestTransport('previous')}
         >
-          ⏮
+          <Icon name="previous" size={15} />
         </button>
         <button
           type="button"
@@ -94,7 +107,7 @@ export function MiniPlayer() {
           aria-label={playing ? t('controls.pause') : t('controls.play')}
           onClick={() => (playing ? ipc.pause() : ipc.play()).catch(() => undefined)}
         >
-          {playing ? '⏸' : '▶'}
+          <Icon name={playing ? 'pause' : 'play'} size={15} />
         </button>
         <button
           type="button"
@@ -102,7 +115,7 @@ export function MiniPlayer() {
           aria-label={t('controls.next')}
           onClick={() => requestTransport('next')}
         >
-          ⏭
+          <Icon name="next" size={15} />
         </button>
       </div>
     </div>

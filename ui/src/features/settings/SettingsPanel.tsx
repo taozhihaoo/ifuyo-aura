@@ -328,7 +328,10 @@ export function SettingsPanel() {
               setCrossfade(next);
               if (crossfadeTimer.current !== null) window.clearTimeout(crossfadeTimer.current);
               crossfadeTimer.current = window.setTimeout(() => {
-                s.setAll({ ...s, crossfadeSeconds: next });
+                // 取最新快照：150ms 里用户可能改了语言/EQ 等其它设置，
+                // 用 render 时捕获的 `s` 会把那些改动回滚。
+                const cur = useSettingsStore.getState();
+                cur.setAll({ ...cur, crossfadeSeconds: next });
                 void ipc
                   .setCrossfade(next, true)
                   .catch((err) => toast(errorToI18nKey(err), 'error'));

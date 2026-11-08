@@ -613,7 +613,9 @@ impl CacheManager {
                 };
                 if !keys::is_valid_content_key(ck) {
                     // §116：非法目录名（注入产物）→ 整目录 quarantine。
-                    let _ = self.store.remove_entry_files(ck);
+                    // 直接按路径删：remove_entry_files 会先校验 content key，
+                    // 非法名必然返回 Err，旧写法把隔离变成了空操作。
+                    let _ = self.store.remove_dir_all_at(&content_dir);
                     report.orphaned += 1;
                     continue;
                 }

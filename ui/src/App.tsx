@@ -2,6 +2,7 @@
 // 高频视觉走 Aurora/位置插值（§10/§14），不经 Zustand 全树渲染。
 import { useEffect } from 'react';
 import { FeatureBoundary } from './components/ErrorBoundary';
+import { Icon } from './components/Icon';
 import { useTranslation } from './i18n/react';
 import { DREAMSCAPE_ENABLED, useUiStore, usePlayerStore, useSettingsStore } from './state/stores';
 import { ipc } from './ipc/client';
@@ -201,6 +202,33 @@ function MainWindow() {
     return () => window.removeEventListener('keydown', onKey);
   }, [setPaletteOpen, setView]);
 
+  // 桌面悬浮歌词是独立 realm：它自己关闭时主窗的开关不会变，
+  // 靠这条跨窗事件把主窗按钮状态同步回来。
+  useEffect(() => {
+    let cancelled = false;
+    let off: (() => void) | null = null;
+    const internals = (globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    // 非 Tauri 环境（jsdom / 浏览器预览）没有 IPC 桥，listen 会抛出
+    // "transformCallback is not a function" 并变成未处理 rejection。
+    if (internals) {
+      void import('@tauri-apps/api/event')
+        .then(({ listen }) =>
+          listen('aura://lyrics-closed', () =>
+            useUiStore.getState().setDesktopLyricsOpen(false),
+          ),
+        )
+        .then((fn) => {
+          if (cancelled) fn();
+          else off = fn;
+        })
+        .catch(() => undefined);
+    }
+    return () => {
+      cancelled = true;
+      off?.();
+    };
+  }, []);
+
   // M10 §162–§166：托盘/系统集成的导航桥。
   useEffect(() => {
     // `let un = null; .then(off => un = off)` 在 StrictMode 下首次 cleanup
@@ -284,7 +312,7 @@ function MainWindow() {
           </span>
           <span className="notice-text">{translate(locale, notice)}</span>
           <button className="icon-btn" onClick={() => setNotice(null)} aria-label={t('common.ok')}>
-            ✕
+            <Icon name="close" size={14} />
           </button>
         </div>
       )}

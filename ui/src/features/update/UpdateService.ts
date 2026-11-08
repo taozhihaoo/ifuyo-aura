@@ -15,6 +15,7 @@ import {
   type UpdateErrorKind,
   type UpdateState,
 } from './updateTypes';
+import { useSettingsStore } from '../../state/stores';
 
 /** tauri-plugin-updater 的 check() 元数据（§14 子集）。 */
 type UpdaterPluginLike = {
@@ -49,7 +50,13 @@ function defaultDeps(): UpdateServiceDeps {
     },
     now: () => Date.now(),
     localStorage: g.localStorage ?? null,
-    autoCheckEnabled: () => true,
+    // 设置里的「自动检查更新」必须真正生效。设置未加载完成时保持默认
+    // （true），加载完成后以用户持久化的值为准；否则开关形同虚设，
+    // 关掉后启动仍会发出非预期网络请求。
+    autoCheckEnabled: () => {
+      const s = useSettingsStore.getState();
+      return s.loaded ? s.updatesAutoCheck : true;
+    },
   };
 }
 
@@ -134,6 +141,9 @@ export class UpdateService {
     try {
       this.touchCheck();
       const found = await this.deps.plugin?.check({ timeout: 10_000 });
+      // 检查期间用户可能点了取消：此后不能再往 upToDate/available/failed
+      // 转移（状态机拒绝 → catch 里再转 failed 又拒绝 → 未处理 rejection）。
+      if (useUpdateStore.getState().state.kind !== 'checking') return this.state;
       if (!found) {
         this.transition({ kind: 'upToDate' });
         return this.state;
@@ -152,7 +162,10 @@ export class UpdateService {
       });
       return this.state;
     } catch (e) {
-      this.transition({ kind: 'failed', error: classify(e) });
+      // 取消竞态下状态已不是 checking，强行转移会抛错并把失败冒泡给 UI。
+      if (useUpdateStore.getState().state.kind === 'checking') {
+        this.transition({ kind: 'failed', error: classify(e) });
+      }
       return this.state;
     } finally {
       this.checking = false;
@@ -190,7 +203,8 @@ export class UpdateService {
             break;
           case 'Progress': {
             downloaded += event.data.chunkLength;
-            const now = Date.now();
+            // 走注入时钟：测试可确定性地控制节流窗口，不受真实时间影响。
+            const now = this.deps.now();
             if (now - this.lastProgressEmit >= PROGRESS_THROTTLE_MS) {
               this.lastProgressEmit = now;
               const cur = useUpdateStore.getState().state;

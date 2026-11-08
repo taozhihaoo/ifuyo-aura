@@ -231,8 +231,14 @@ fn handle_conn(
     requests: &Mutex<Vec<String>>,
     heads: &Mutex<Vec<String>>,
 ) {
-    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-    // 读请求头（简化：读到 CRLFCRLF）。
+    // CI/并行负载下 accept 与客户端发出请求头之间可能有秒级调度延迟；
+    // 5s 曾把「请求头还没到」当成空请求，最终在 cache 的 revalidate 路径
+    // 上表现为 Freshness::Stale 的偶发失败（与 aura-sources 的同类修复一致）。
+    stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
+    // 读请求头（简化：读到 CRLFCRLF）。WouldBlock/TimedOut 只是还没收到
+    // 下一批字节，不能当成读错误提前 break——否则请求头被截断，客户端拿到
+    // 半截/无响应，上层会把环境抖动误判成网络失败。
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
     let mut buf = Vec::with_capacity(1024);
     let mut chunk = [0u8; 512];
     loop {
@@ -241,6 +247,14 @@ fn handle_conn(
             Ok(n) => {
                 buf.extend_from_slice(&chunk[..n]);
                 if buf.windows(4).any(|w| w == b"\r\n\r\n") || buf.len() > 8192 {
+                    break;
+                }
+            }
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                if std::time::Instant::now() >= deadline {
                     break;
                 }
             }

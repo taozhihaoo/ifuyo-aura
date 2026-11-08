@@ -852,10 +852,18 @@ pub fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> CmdRe
         .library
         .save_settings(&settings)
         .map_err(|e| from_err("SETTINGS_WRITE", e, true))?;
+    // 读回归一化后的值：`save_settings` 会钳制/纠正非法字段，副作用必须
+    // 与真正落盘的值一致（否则 tray 会拿到未校验的语言字符串）。
+    let saved = state
+        .library
+        .settings
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or(settings);
     // M15a：乱码修复开关同步（扫描线程原子量）。
-    aura_library::metadata::mojibake::set_mojibake_fix(settings.mojibake_fix);
+    aura_library::metadata::mojibake::set_mojibake_fix(saved.mojibake_fix);
     // §93/§94：托盘菜单跟随应用语言（只改文本，不重建图标）。
-    crate::integration::tray::set_locale(&settings.language);
+    crate::integration::tray::set_locale(&saved.language);
     Ok(())
 }
 

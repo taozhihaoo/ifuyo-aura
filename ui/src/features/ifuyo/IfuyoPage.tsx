@@ -15,6 +15,16 @@ import { usePlayerStore, useUiStore } from '../../state/stores';
 
 type ListState = { kind: 'loading' } | { kind: 'error'; key: string } | { kind: 'ready'; data: IfuyoList };
 
+/** 文件名可能含孤立的 `%`（如 `100%.flac`）——decodeURIComponent 会抛
+ *  URIError，渲染期冒泡会让整页落进错误边界。解码失败就按原文比较。 */
+function safeDecode(v: string): string {
+  try {
+    return decodeURIComponent(v);
+  } catch {
+    return v;
+  }
+}
+
 export function IfuyoPage() {
   const { t } = useTranslation();
   const [state, setState] = useState<ListState>({ kind: 'loading' });
@@ -47,7 +57,8 @@ export function IfuyoPage() {
       await ipc.ifuyoPlay(track.url, track.title, track.artist);
     } catch (e) {
       // 远程失败原因多样（网络/解码/被拦截），如实提示而不是静默不变。
-      setNotice(t(errorToI18nKey(e)));
+      // notice 存的是 i18n key（App 层按当前语言翻译），且错误必须常驻。
+      setNotice(errorToI18nKey(e), 'error');
     } finally {
       setBusyUrl(null);
     }
@@ -96,8 +107,8 @@ export function IfuyoPage() {
             {data.tracks.map((track) => {
               const isCurrent =
                 nowPath !== null &&
-                decodeURIComponent(nowPath.split(/[\\/]/).pop() ?? '') ===
-                  decodeURIComponent(track.url.split('/').pop() ?? '');
+                safeDecode(nowPath.split(/[\\/]/).pop() ?? '') ===
+                  safeDecode(track.url.split('/').pop() ?? '');
               return (
                 <li key={`${track.id}-${track.url}`}>
                   <button

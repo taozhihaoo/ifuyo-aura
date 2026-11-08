@@ -69,6 +69,14 @@ describe('状态机转移（§7 typed union）', () => {
       expect(canTransition(path[i - 1] as UpdateState, path[i] as UpdateState)).toBe(true);
     }
   });
+  it('downloading 进度自转移合法（否则 Started/Progress 被静默丢弃）', () => {
+    expect(
+      canTransition({ kind: 'downloading', progress: null }, { kind: 'downloading', progress: 0 }),
+    ).toBe(true);
+    expect(
+      canTransition({ kind: 'downloading', progress: 0 }, { kind: 'downloading', progress: 42 }),
+    ).toBe(true);
+  });
   it('非法转移拒绝（idle→downloaded / installed 后取消等）', () => {
     expect(canTransition({ kind: 'idle' }, { kind: 'downloaded' })).toBe(false);
     expect(canTransition({ kind: 'installing' }, { kind: 'cancelled' })).toBe(false) // §69 提交后不可取消;

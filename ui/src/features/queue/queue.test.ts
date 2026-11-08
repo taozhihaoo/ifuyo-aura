@@ -117,12 +117,23 @@ describe('play mode & track-ended advance（M12.6）', () => {
     expect(cyclePlayMode()).toBe('order');
   });
 
-  it('order：播完不前进；空队列不前进', () => {
+  it('order：按队列顺序前进，到队尾停止；空队列不前进', () => {
     playWithQueueContext(track(1), [track(1), track(2)]);
+    expect(advanceOnTrackEnded()).toBe(true);
+    expect(ipc.playTrack).toHaveBeenLastCalledWith(2);
+    expect(getQueueState().currentIndex).toBe(1);
     expect(advanceOnTrackEnded()).toBe(false);
-    expect(ipc.playTrack).not.toHaveBeenCalled();
     clearQueue();
     expect(advanceOnTrackEnded()).toBe(false);
+  });
+
+  it('repeatAll：手动下一曲在队尾回绕到首曲', async () => {
+    playWithQueueContext(track(2), [track(1), track(2)]);
+    cyclePlayMode(); // repeatAll
+    expect(hasNext()).toBe(true);
+    expect(await playNext()).toBe(true);
+    expect(ipc.playTrack).toHaveBeenLastCalledWith(1);
+    expect(getQueueState().currentIndex).toBe(0);
   });
 
   it('repeatAll：末曲回绕到首曲', () => {
@@ -216,10 +227,15 @@ describe('远程队列项（修：在线音乐播放时队列恒空 → 传输�
     expect(ipc.ifuyoPlay).toHaveBeenCalledTimes(1);
   });
 
-  it('order 模式下远程播完不前进（与本地同语义）', () => {
+  it('order 模式下远程按顺序前进、到队尾停止（与本地同语义）', () => {
     playWithRemoteContext(remote(1), [remote(1), remote(2)]);
+    expect(advanceOnTrackEnded()).toBe(true);
+    expect(ipc.ifuyoPlay).toHaveBeenLastCalledWith(
+      'https://ifuyo.com/audio/a2.mp3',
+      'Remote 2',
+      'Artist 2',
+    );
     expect(advanceOnTrackEnded()).toBe(false);
-    expect(ipc.ifuyoPlay).not.toHaveBeenCalled();
   });
 
   it('本地↔远程切换上下文：来源不混，removeAt 后游标仍自洽', () => {

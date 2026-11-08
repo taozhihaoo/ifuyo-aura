@@ -8,6 +8,7 @@ import { useTranslation } from '../../i18n/react';
 import type { TrackSummary } from '../../ipc/types';
 import type { IfuyoTrack } from '../../ipc/ifuyo';
 import { reportIpcError } from '../../ipc/errors';
+import { Icon } from '../../components/Icon';
 
 /** 队列项有两种来源：本地库 TrackId，或远程清单条目（按 URL 播）。
  *  §197「全应用唯一 queue 权威」不变，放宽的只是播放目标——此前远程曲目根本
@@ -66,9 +67,31 @@ export function setCurrentIndexByTrack(trackId: number) {
   }
 }
 
-/** §257：执行前检查边界；无下一曲返回 false（调用方不盲目执行）。 */
+/** 按播放模式求「下一曲」游标；null = 到队尾且不应继续（order）。
+ *  手动「下一曲」与曲终自动前进共用，避免两条路径语义分叉。 */
+function nextIndexFor(mode: PlayMode, from: number): number | null {
+  if (items.length === 0) return null;
+  switch (mode) {
+    case 'order':
+    case 'repeatOne': // 单曲循环只影响自动续播，不劫持手动「下一曲」
+      return from + 1 < items.length ? from + 1 : null;
+    case 'repeatAll':
+      return (from + 1) % items.length;
+    case 'shuffle': {
+      if (items.length === 1) return 0;
+      let next = from;
+      while (next === from) next = Math.floor(Math.random() * items.length);
+      return next;
+    }
+  }
+}
+
+/** §257：执行前检查边界；无下一曲返回 false（调用方不盲目执行）。
+ *  repeatAll / shuffle 在队尾仍有下一曲（回绕/随机），与 playNext 一致。 */
 export function hasNext(): boolean {
-  return currentIndex >= 0 && currentIndex + 1 < items.length;
+  if (items.length === 0 || currentIndex < 0) return false;
+  if (playMode === 'repeatAll' || playMode === 'shuffle') return true;
+  return currentIndex + 1 < items.length;
 }
 
 export function hasPrevious(): boolean {
@@ -76,8 +99,12 @@ export function hasPrevious(): boolean {
 }
 
 export async function playNext(): Promise<boolean> {
-  if (!hasNext()) return false;
-  currentIndex += 1;
+  // 没有当前项（队列刚建立但游标未定位）时不要自作主张播第一首——
+  // 与 hasNext() 的边界语义保持一致。
+  if (currentIndex < 0) return false;
+  const next = nextIndexFor(playMode, currentIndex);
+  if (next === null) return false;
+  currentIndex = next;
   emit();
   const item = items[currentIndex];
   if (!item) return false;
@@ -164,35 +191,22 @@ export function usePlayMode(): PlayMode {
 }
 
 /** 曲目自然播完（后端 track-ended 事件）→ 按播放模式自动前进。
- *  order：不前进（后端已 Stop）；返回是否触发了播放。 */
+ *  后端每曲播完即 Stop 并只发事件，队列全在前端内存里，因此 order 也必须
+ *  由这里推进（播到队尾才停）；否则「顺序播放」只播第一首就结束。
+ *  返回是否触发了播放。 */
 export function advanceOnTrackEnded(): boolean {
   if (items.length === 0) return false;
-  switch (playMode) {
-    case 'order':
-      return false;
-    case 'repeatOne': {
-      const i = currentIndex >= 0 ? currentIndex : 0;
-      const item = items[i];
-      if (!item) return false;
-      void playItem(item).catch(reportIpcError);
-      return true;
-    }
-    case 'repeatAll': {
-      const next = currentIndex + 1 >= items.length ? 0 : currentIndex + 1;
-      playItemAt(next);
-      return true;
-    }
-    case 'shuffle': {
-      if (items.length === 1) {
-        playItemAt(0);
-        return true;
-      }
-      let next = currentIndex;
-      while (next === currentIndex) next = Math.floor(Math.random() * items.length);
-      playItemAt(next);
-      return true;
-    }
+  if (playMode === 'repeatOne') {
+    const i = currentIndex >= 0 ? currentIndex : 0;
+    const item = items[i];
+    if (!item) return false;
+    void playItem(item).catch(reportIpcError);
+    return true;
   }
+  const next = nextIndexFor(playMode, currentIndex);
+  if (next === null) return false;
+  playItemAt(next);
+  return true;
 }
 
 export function useQueue(): { items: QueueItem[]; currentIndex: number } {
@@ -212,13 +226,16 @@ export function QueueDrawer() {
   const setOpen = useUiStore((s) => s.setQueueOpen);
   const { items, currentIndex } = useQueue();
   const { t } = useTranslation();
+  const mode = usePlayMode();
 
   // M10 §65/§153：queue 边界上报（SMTC/托盘 Next/Previous enablement）。
+  // items 是模块级数组且原地增删，引用永远不变——按 length/游标/模式
+  // 作依赖，否则删除队尾项或切换播放模式时上报会静默漏掉。
   useEffect(() => {
     void ipc
       .reportQueueState(hasPrevious(), hasNext())
       .catch(reportIpcError);
-  }, [items, currentIndex]);
+  }, [items.length, currentIndex, mode]);
 
   // M10 §23/§24：SMTC/托盘 next/previous → 复用应用层 queue 语义。
   useEffect(() => {
@@ -282,7 +299,9 @@ export function QueueDrawer() {
         <h2>{t('queue.title')}</h2>
         <div>
           <button className="btn" onClick={() => clearQueue()}>{t('queue.clear')}</button>
-          <button className="icon-btn" onClick={() => setOpen(false)} aria-label={t('common.close')}>✕</button>
+          <button className="icon-btn" onClick={() => setOpen(false)} aria-label={t('common.close')}>
+            <Icon name="close" size={15} />
+          </button>
         </div>
       </div>
       {items.length === 0 ? (
@@ -296,7 +315,7 @@ export function QueueDrawer() {
                 aria-current={i === currentIndex ? 'true' : undefined}
                 onClick={() => playItemAt(i)}
               >
-                {i === currentIndex ? '▶ ' : ''}
+                {i === currentIndex && <Icon name="music" size={13} className="queue-now-icon" />}
                 {itemLabel(item)}
                 {item.kind === 'remote' && <span className="queue-src">{t('queue.online')}</span>}
               </button>
@@ -306,7 +325,7 @@ export function QueueDrawer() {
                 aria-label={`${t('queue.remove')} ${itemLabel(item)}`}
                 title={t('queue.remove')}
               >
-                ✕
+                <Icon name="close" size={12} />
               </button>
             </li>
           ))}

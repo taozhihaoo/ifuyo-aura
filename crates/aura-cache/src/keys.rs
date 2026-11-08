@@ -109,14 +109,19 @@ pub fn chunk_rel_path(content_key: &str, chunk_index: u64) -> Result<String> {
     ))
 }
 
-/// 条目元数据目录相对路径。
+/// 条目 chunk 目录相对路径：`chunks/<ck[0..2]>/<ck>/`。
+///
+/// 必须精确到**单个条目**：磁盘布局把同一个 2 字符前缀下的多个 content key
+/// 放在同一父目录里（`chunk_rel_path`），若这里只返回前缀目录，
+/// `remove_entry_files` 的 `remove_dir_all` 会连带删掉共享前缀的其它条目
+/// （约 1/256 概率），而 DB 行仍保留 → 无关条目离线播放失效。
 pub fn entry_rel_dir(content_key: &str) -> Result<String> {
     if !is_valid_content_key(content_key) {
         return Err(CacheError::InvalidKey {
             reason: "content key must be 32 lowercase hex chars".into(),
         });
     }
-    Ok(format!("chunks/{}/", &content_key[..2]))
+    Ok(format!("chunks/{}/{}/", &content_key[..2], content_key))
 }
 
 /// URL 脱敏展示（§12/§13/§86/§96）：scheme://host[:port]/path（无 query）。

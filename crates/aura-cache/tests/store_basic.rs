@@ -133,6 +133,29 @@ fn orphan_chunk_listed_and_cleanable() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// 回归：作废旧内容时不得误删共享 2 字符前缀的其它条目。
+/// `entry_rel_dir` 曾经只返回 `chunks/<prefix>/`，remove_dir_all 会连坐
+/// 同前缀的全部条目（DB 行还在，离线播放却失效）。
+#[test]
+fn remove_entry_files_is_scoped_to_one_content_key() {
+    let root = temp_root("prefix-isolation");
+    let store = ChunkStore::new(&root, Arc::new(RealFs)).unwrap();
+    let first = content_key("https://example.com/isolated-a.mp3").unwrap();
+    // 找出一个与 first 共享前两位 hex 的 key（哈希前两位只有 256 种）。
+    let second = (0..4096)
+        .map(|i| content_key(&format!("https://example.com/isolated-{i}.mp3")).unwrap())
+        .find(|ck| ck[..2] == first[..2] && ck != &first)
+        .expect("需要一对共享前缀的 content key");
+    store.write_chunk(&first, 0, b"first").unwrap();
+    store.write_chunk(&second, 0, b"second").unwrap();
+
+    store.remove_entry_files(&first).unwrap();
+
+    assert!(store.list_entry_files(&first).unwrap().is_empty());
+    assert_eq!(store.read_chunk(&second, 0).unwrap(), b"second");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// §65/§101：write failure（FaultFS）→ temp 不残留、错误上抛。
 #[test]
 fn faultfs_write_failure_leaves_no_temp() {

@@ -169,6 +169,22 @@ impl ChunkStore {
         Ok(self.fs.list_dir(path)?)
     }
 
+    /// 删除 cache 根内任意目录（integrity 的非法目录 quarantine）。
+    /// 与 `remove_entry_files` 不同：调用方手里已有路径，路径合法性由
+    /// `starts_with(root)` 保证，不能再用 content_key 校验（非法目录名
+    /// 必然校验失败，会让隔离变成空操作）。
+    pub fn remove_dir_all_at(&self, path: &Path) -> Result<()> {
+        if !path.starts_with(&self.root) {
+            return Err(CacheError::InvalidKey {
+                reason: "path escaped cache root".into(),
+            });
+        }
+        if self.fs.exists(path) {
+            self.fs.remove_dir_all(path)?;
+        }
+        Ok(())
+    }
+
     /// 删除任意 cache 根内文件（integrity 修复路径；校验在根内 §119）。
     pub fn remove_file(&self, path: &Path) -> Result<()> {
         if !path.starts_with(&self.root) {

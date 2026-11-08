@@ -2,7 +2,7 @@
 //! UI 只见本模块 DTO；SQLite 细节留在 aura-library（§7 分层）。
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use aura_library::service::LibraryService;
@@ -89,6 +89,28 @@ fn default_eq_preset() -> usize {
     0
 }
 
+impl AppSettings {
+    /// IPC 边界统一规范化。`save_settings` 接收的是前端整包对象，若不在这里
+    /// 钳制，就会绕过 `set_crossfade` / `set_eq_preset` 等 setter 的校验，
+    /// 把超界值写进 settings.json，启动时又直接喂给音频引擎。
+    pub fn normalized(mut self) -> Self {
+        if !matches!(self.language.as_str(), "en" | "zh-CN") {
+            self.language = default_language();
+        }
+        if !self.ui_scale.is_finite() || !(0.9..=1.4).contains(&self.ui_scale) {
+            self.ui_scale = default_scale();
+        }
+        if !self.crossfade_seconds.is_finite() {
+            self.crossfade_seconds = 0.0;
+        }
+        self.crossfade_seconds = self.crossfade_seconds.clamp(0.0, 12.0);
+        self.eq_preset = self
+            .eq_preset
+            .min(aura_core::dsp::EQ_PRESETS.len().saturating_sub(1));
+        self
+    }
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -132,7 +154,7 @@ impl LibraryState {
         let settings_path = app_dir.join("settings.json");
         let settings = match std::fs::read(&settings_path) {
             Ok(bytes) => match serde_json::from_slice::<AppSettings>(&bytes) {
-                Ok(s) => s,
+                Ok(s) => s.normalized(),
                 Err(e) => {
                     // 写盘中途崩溃/断电会留下截断 JSON。旧实现直接
                     // `.ok().unwrap_or_default()` 静默丢光全部偏好且不留现场；
@@ -167,14 +189,22 @@ impl LibraryState {
     /// # Errors
     /// 序列化/写盘失败。
     pub fn save_settings(&self, s: &AppSettings) -> Result<(), String> {
-        self.write_settings(s)?;
-        *self.settings.lock().expect("settings") = s.clone();
+        let normalized = s.clone().normalized();
+        // 全程持锁：与 set_crossfade 等「持锁 + write_settings」的命令共用
+        // 同一把锁，避免两个写者同时写同一个临时文件、互相覆盖 rename。
+        // 写盘失败时不改内存缓存，否则 UI 回读新值、重启却回滚旧值。
+        let mut guard = self
+            .settings
+            .lock()
+            .map_err(|_| "settings lock poisoned".to_string())?;
+        self.write_settings(&normalized)?;
+        *guard = normalized;
         Ok(())
     }
 
     /// 仅写盘。供**已持有 settings 锁**的调用方（set_crossfade 等
-    /// 部分持久化命令）使用——save_settings 内部会再锁缓存，持锁重入
-    /// 即死锁。
+    /// 部分持久化命令）使用；save_settings 也会持锁后调用它。
+    /// 本函数自身不取锁，避免持锁重入死锁。
     ///
     /// # Errors
     /// 序列化/写盘失败。
@@ -182,7 +212,14 @@ impl LibraryState {
         let json = serde_json::to_vec_pretty(s).map_err(|e| e.to_string())?;
         // tmp → 原子 rename：裸 fs::write 在写入中途崩溃会留下半截 JSON，
         // 下次启动用户偏好被静默清空（Dreamscape/Map 早已采用此写法）。
-        let tmp = self.settings_path.with_extension("json.tmp");
+        // 临时名必须唯一：Tauri 命令是线程池，两个并发写者共用固定的
+        // settings.json.tmp 会互相截断/抢占 rename。
+        static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
+        let tmp = self.settings_path.with_extension(format!(
+            "json.{}.{}.tmp",
+            std::process::id(),
+            TMP_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
         std::fs::write(&tmp, &json).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, &self.settings_path).map_err(|e| e.to_string())
     }

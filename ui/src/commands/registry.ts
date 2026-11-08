@@ -37,9 +37,11 @@ export interface CommandContext {
 /** 命令表：声明式注册（§99），无 if/else 链。 */
 export function buildCommands(ctx: CommandContext, t: (key: string) => string): Command[] {
   return [
-    { id: 'nav.now-playing', titleKey: 'nav.nowPlaying', keywords: 'now playing home', shortcut: '1', execute: () => ctx.setView('now-playing') },
-    { id: 'nav.library', titleKey: 'nav.library', keywords: 'library music list', shortcut: '2', execute: () => ctx.setView('library') },
-    { id: 'nav.map', titleKey: 'nav.map', keywords: 'map graph', shortcut: '3', execute: () => ctx.setView('map') },
+    // 快捷键与 App.tsx 的 keydown 绑定保持一致（Alt+1/2/3/4）；只写数字
+    // 会让面板提示的按键按不出来。
+    { id: 'nav.now-playing', titleKey: 'nav.nowPlaying', keywords: 'now playing home', shortcut: 'Alt+1', execute: () => ctx.setView('now-playing') },
+    { id: 'nav.library', titleKey: 'nav.library', keywords: 'library music list', shortcut: 'Alt+2', execute: () => ctx.setView('library') },
+    { id: 'nav.map', titleKey: 'nav.map', keywords: 'map graph', shortcut: 'Alt+3', execute: () => ctx.setView('map') },
     { id: 'nav.ifuyo', titleKey: 'nav.ifuyo', keywords: 'ifuyo remote library 远程曲库', execute: () => ctx.setView('ifuyo') },
     { id: 'play.toggle', titleKey: 'controls.play', keywords: 'play pause', shortcut: 'Space', execute: () => (ctx.isPlaying() ? ctx.pause() : ctx.play()) },
     { id: 'play.next', titleKey: 'controls.next', keywords: 'next track', execute: ctx.next },
